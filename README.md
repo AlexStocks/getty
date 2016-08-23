@@ -15,22 +15,22 @@
 
 - 2016/08/22
 	> rename (Session)OnIdle to (Session)OnCron
-	> rewrite server.go: add Server{done, wg}
-	> add utils.go
-	> version: 0.2.03
+	  rewrite server.go: add Server{done, wg}
+	  add utils.go
+	  version: 0.2.03
 
 - 2016/08/21
 	> add name for Session
-	> add OnError for Codec
+	  add OnError for Codec
 
 - 2016/08/18
 	> delete last clause of handleRead
-	> add reqQ handle case in last clause of handleLoop
-	> add conditon check in (*Session)RunEventLoop()
-	> version: 0.2.02
+	  add reqQ handle case in last clause of handleLoop
+	  add conditon check in (*Session)RunEventLoop()
+	  version: 0.2.02
 
 - 2016/08/16
 	> rename all structs
-	> add getty connection
-	> rewrite (Session)handleRead & (Session)handleEventLoop
-	> version: 0.2.01
+	  add getty connection
+	  rewrite (Session)handleRead & (Session)handleEventLoop
+	  version: 0.2.01
