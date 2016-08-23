@@ -8,11 +8,15 @@
   LICENCE    : Apache License 2.0   
   AUTHOR     : https://github.com/sanbit   
   MAINTAINER : Alex Stocks   
-  EMAIL      : alexstocks@foxmail.com   
+  EMAIL      : alexstocks@foxmail.com
 
 ## develop history ##
 ---
 
+- 2016/08/23
+	> do not consider empty package as a error in (Session)handlePackage   
+    > version: 0.2.04   
+    
 - 2016/08/22
 	> rename (Session)OnIdle to (Session)OnCron   
 	> rewrite server.go: add Server{done, wg}   
@@ -21,7 +25,7 @@
 
 - 2016/08/21
 	> add name for Session   
-	> add OnError for Codec
+	> add OnError for Codec   
 
 - 2016/08/18
 	> delete last clause of handleRead   

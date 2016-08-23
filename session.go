@@ -456,13 +456,15 @@ func (this *Session) handlePackage() {
 				break
 			}
 			pkg, err = this.pkgHandler.Read(this, pktBuf)
-			if err != nil || pkg == nil {
-				log.Info("%s:%d:%s [session.pkgHandler.Read] = pkg{%#v}, error{%+v}",
-					this.name, this.Id, this.conn.RemoteAddr().String(), pkg, err)
+			if err != nil {
+				log.Info("%s:%d:%s [session.pkgHandler.Read] = error{%+v}",
+					this.name, this.Id, this.conn.RemoteAddr().String(), err)
 				exit = true
 				break
 			}
-			this.reqQ <- pkg
+			if pkg != nil {
+				this.reqQ <- pkg
+			}
 		}
 		if exit {
 			break
