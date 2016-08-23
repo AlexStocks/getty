@@ -433,11 +433,11 @@ func (this *Session) handlePackage() {
 			this.conn.SetReadDeadline(time.Now().Add(this.readDeadline))
 			len, err = this.read(buf)
 			if err != nil {
-				log.Warn("%s:%d:%s [session.conn.read] = error{%s}",
-					this.name, this.Id, this.conn.RemoteAddr().String(), err.Error())
 				if nerr, ok = err.(net.Error); ok && nerr.Timeout() {
 					break
 				}
+				log.Error("%s:%d:%s [session.conn.read] = error{%s}",
+					this.name, this.Id, this.conn.RemoteAddr().String(), err.Error())
 				// 遇到网络错误的时候，handlePackage能够及时退出，但是handleLoop的第一个for-select因为要处理(Codec)OnMessage
 				// 导致程序不能及时退出，此处添加(Codec)OnError调用以及时通知getty调用者
 				// AS, 2016/08/21
@@ -462,9 +462,10 @@ func (this *Session) handlePackage() {
 				exit = true
 				break
 			}
-			if pkg != nil {
-				this.reqQ <- pkg
+			if pkg == nil {
+				break
 			}
+			this.reqQ <- pkg
 		}
 		if exit {
 			break
