@@ -10,5 +10,5 @@
 package getty
 
 var (
-	Version = "0.2.03"
+	Version = "0.2.04"
 )
