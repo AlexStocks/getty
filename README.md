@@ -13,9 +13,13 @@
 ## develop history ##
 ---
 
+- 2016/08/24
+	> delete session.go:Session:wg(atomic.WaitGroup). Add session.go:Session:grNum instead to prevent from (Session)Close() block on session.go:Session:wg.Wait()   
+	> version: 0.2.05      
+    
 - 2016/08/23
 	> do not consider empty package as a error in (Session)handlePackage   
-    > version: 0.2.04   
+	> version: 0.2.04   
     
 - 2016/08/22
 	> rename (Session)OnIdle to (Session)OnCron   

@@ -29,7 +29,7 @@ const (
 	cronPeriod         = 60 * 1e9 // 1 minute
 	pendingDuration    = 3e9
 	defaultSessionName = "Session"
-	outputFormat       = "%s:%d:%s, Read Count: %d, Write Count: %d, Read Pkg Count: %d, Write Pkg Count: %d"
+	outputFormat       = "session %s, Read Count: %d, Write Count: %d, Read Pkg Count: %d, Write Pkg Count: %d"
 )
 
 var (
@@ -97,7 +97,7 @@ type Session struct {
 	// attribute
 	attrs map[string]interface{}
 	// goroutines sync
-	wg   sync.WaitGroup
+	grNum int32
 	lock sync.RWMutex
 }
 
@@ -120,9 +120,7 @@ func (this *Session) Conn() net.Conn { return this.conn }
 func (this *Session) Stat() string {
 	return fmt.Sprintf(
 		outputFormat,
-		this.name,
-		this.Id,
-		this.conn.RemoteAddr().String(),
+		this.sessionToken(),
 		atomic.LoadUint32(&(this.readCount)),
 		atomic.LoadUint32(&(this.writeCount)),
 		atomic.LoadUint32(&(this.readPkgCount)),
@@ -247,7 +245,17 @@ func (this *Session) stop() {
 
 func (this *Session) Close() {
 	this.stop()
-	this.wg.Wait()
+	log.Info("%s closed now, its current gr num %d",
+		this.sessionToken(), atomic.LoadInt32(&(this.grNum)))
+}
+
+func (this *Session) sessionToken() string {
+	return fmt.Sprintf(
+		"%s:%d:%s:%s",
+		this.name, this.Id,
+		this.conn.LocalAddr().String(),
+		this.conn.RemoteAddr().String(),
+	)
 }
 
 // Queued write, for handler
@@ -258,8 +266,7 @@ func (this *Session) WritePkg(pkg interface{}) error {
 
 	defer func() {
 		if err := recover(); err != nil {
-			log.Error("%s:%d:%s [session.WritePkg] err=%+v\n",
-				this.name, this.Id, this.conn.RemoteAddr().String(), err)
+			log.Error("%s [session.WritePkg] err=%+v\n", this.sessionToken(), err)
 		}
 	}()
 
@@ -298,10 +305,8 @@ func (this *Session) RunEventloop() {
 		panic(errStr)
 	}
 
-	this.wg.Add(1)
+	atomic.AddInt32(&(this.grNum), 2)
 	go this.handleLoop()
-
-	this.wg.Add(1)
 	go this.handlePackage()
 }
 
@@ -315,20 +320,19 @@ func (this *Session) handleLoop() {
 	)
 
 	defer func() {
+		var grNum int32
 		if err := recover(); err != nil {
-			log.Error("%s:%d:%s [session.handleLoop] err=%+v\n",
-				this.name, this.Id, this.conn.RemoteAddr().String(), err)
+			log.Error("%s, [session.handleLoop] err=%+v\n", this.sessionToken(), err)
 		}
 		close(this.rspQ)
 		close(this.reqQ)
-		this.wg.Done()
+		grNum = atomic.AddInt32(&(this.grNum), -1)
 		if this.listener != nil {
 			this.listener.OnClose(this)
 		}
-		// real close connection, dispose会调用(Session)Close,(Session)Close中的wg.Wait多次调用并不会引起任何问题
+		// real close connection, dispose会调用(conn)Close,
 		this.dispose()
-		log.Info("%s:%d:%s [session.handleLoop] goroutine end, statistic{%s}",
-			this.name, this.Id, this.conn.RemoteAddr().String(), this.Stat())
+		log.Info("statistic{%s}, [session.handleLoop] goroutine exit now, left gr num %d", this.Stat(), grNum)
 	}()
 
 	// call session opened
@@ -341,8 +345,7 @@ LOOP:
 	for {
 		select {
 		case <-this.done:
-			log.Info("%s:%d:%s [session.handleLoop] got done signal ",
-				this.name, this.Id, this.conn.RemoteAddr().String())
+			log.Info("%s, [session.handleLoop] got done signal ", this.Stat())
 			break LOOP
 		case reqPkg = <-this.reqQ:
 			if this.listener != nil {
@@ -351,8 +354,7 @@ LOOP:
 			}
 		case rspPkg = <-this.rspQ:
 			if err = this.pkgHandler.Write(this, rspPkg); err != nil {
-				log.Error("%s:%d:%s [session.handleLoop] = error{%+v}",
-					this.name, this.Id, this.conn.RemoteAddr().String(), err)
+				log.Error("%s, [session.handleLoop] = error{%+v}", this.sessionToken(), err)
 				break LOOP
 			}
 			this.incWritePkgCount()
@@ -372,7 +374,7 @@ LOOP:
 	start = time.Now()
 LAST:
 	for {
-		if time.Since(start).Nanoseconds() > this.closeWait.Nanoseconds() {
+		if time.Since(start).Nanoseconds() >= this.closeWait.Nanoseconds() {
 			break
 		}
 
@@ -388,7 +390,7 @@ LAST:
 				this.listener.OnMessage(this, reqPkg)
 			}
 		default:
-			log.Info("%s:%d:%s [session.handleLoop] default", this.name, this.Id, this.conn.RemoteAddr().String())
+			log.Info("%s, [session.handleLoop] default", this.sessionToken())
 			break LAST
 		}
 	}
@@ -397,26 +399,30 @@ LAST:
 // get package from tcp stream(packet)
 func (this *Session) handlePackage() {
 	var (
-		err    error
-		nerr   net.Error
-		ok     bool
-		exit   bool
-		len    int
-		buf    []byte
-		pktBuf *bytes.Buffer
-		pkg    interface{}
+		err       error
+		nerr      net.Error
+		ok        bool
+		exit      bool
+		reconnect bool
+		len       int
+		buf       []byte
+		pktBuf    *bytes.Buffer
+		pkg       interface{}
 	)
 
 	defer func() {
+		var grNum int32
 		if err := recover(); err != nil {
-			log.Error("%s:%d:%s [session.handlePackage] = err{%+v}",
-				this.name, this.Id, this.conn.RemoteAddr().String(), err)
+			log.Error("%s, [session.handlePackage] = err{%+v}", this.sessionToken(), err)
 		}
-		this.wg.Done()
 		this.stop()
 		close(this.readerDone)
-		log.Info("%s:%d:%s [session.handlePackage] goroutine exit......",
-			this.name, this.Id, this.conn.RemoteAddr().String())
+		grNum = atomic.AddInt32(&(this.grNum), -1)
+		log.Info("%s, [session.handlePackage] gr will exit now, left gr num %d", this.sessionToken(), grNum)
+		if reconnect && this.listener != nil {
+			log.Info("%s, [session.handlePackage] reconnect", this.sessionToken())
+			this.listener.OnError(this, nerr)
+		}
 	}()
 
 	buf = make([]byte, maxReadBufLen)
@@ -436,14 +442,11 @@ func (this *Session) handlePackage() {
 				if nerr, ok = err.(net.Error); ok && nerr.Timeout() {
 					break
 				}
-				log.Error("%s:%d:%s [session.conn.read] = error{%s}",
-					this.name, this.Id, this.conn.RemoteAddr().String(), err.Error())
+				log.Error("%s, [session.conn.read] = error{%v}", this.sessionToken(), err)
 				// 遇到网络错误的时候，handlePackage能够及时退出，但是handleLoop的第一个for-select因为要处理(Codec)OnMessage
 				// 导致程序不能及时退出，此处添加(Codec)OnError调用以及时通知getty调用者
 				// AS, 2016/08/21
-				if this.listener != nil {
-					this.listener.OnError(this, nerr)
-				}
+				reconnect = true
 				exit = true
 			}
 			break
@@ -457,8 +460,7 @@ func (this *Session) handlePackage() {
 			}
 			pkg, err = this.pkgHandler.Read(this, pktBuf)
 			if err != nil {
-				log.Info("%s:%d:%s [session.pkgHandler.Read] = error{%+v}",
-					this.name, this.Id, this.conn.RemoteAddr().String(), err)
+				log.Info("%s, [session.pkgHandler.Read] = error{%+v}", this.sessionToken(), err)
 				exit = true
 				break
 			}
