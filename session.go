@@ -84,6 +84,7 @@ type Session struct {
 	*gettyConn
 	pkgHandler ReadWriter
 	listener   EventListener
+	once       sync.Once
 	done       chan struct{}
 	readerDone chan struct{} // end reader
 
@@ -98,7 +99,7 @@ type Session struct {
 	attrs map[string]interface{}
 	// goroutines sync
 	grNum int32
-	lock sync.RWMutex
+	lock  sync.RWMutex
 }
 
 func NewSession(conn net.Conn) *Session {
@@ -239,7 +240,8 @@ func (this *Session) stop() {
 	case <-this.done:
 		return
 	default:
-		close(this.done)
+		// defeat "panic: close of closed channel"
+		this.once.Do(func() { close(this.done) })
 	}
 }
 
