@@ -13,6 +13,12 @@
 ## develop history ##
 ---
 
+- 2016/08/25
+	> move close done to once clause in server.go:(Server)stop
+	> rename reqQ to rQ which means read queue and its relative params
+	> rename rspQ to wQ which means write queue and its relative params
+	> version: 0.2.06
+
 - 2016/08/24
 	> delete session.go:Session:wg(atomic.WaitGroup). Add session.go:Session:grNum instead to prevent from (Session)Close() block on session.go:Session:wg.Wait()
 	> add once for session.go:Session:done(chan struct{})

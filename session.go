@@ -33,7 +33,7 @@ const (
 )
 
 var (
-	connId            uint32 = 0
+	connID            uint32 = 0
 	ErrSessionClosed         = errors.New("Session Already Closed")
 	ErrSessionBlocked        = errors.New("Session full blocked")
 )
@@ -44,7 +44,7 @@ var (
 
 type gettyConn struct {
 	conn          net.Conn
-	Id            uint32
+	ID            uint32
 	readCount     uint32 // read() count
 	writeCount    uint32 // write() count
 	readPkgCount  uint32 // send pkg count
@@ -52,7 +52,7 @@ type gettyConn struct {
 }
 
 func newGettyConn(conn net.Conn) *gettyConn {
-	return &gettyConn{conn: conn, Id: atomic.AddUint32(&connId, 1)}
+	return &gettyConn{conn: conn, ID: atomic.AddUint32(&connID, 1)}
 }
 
 func (this *gettyConn) read(p []byte) (int, error) {
@@ -91,9 +91,9 @@ type Session struct {
 	cronPeriod    time.Duration
 	readDeadline  time.Duration
 	writeDeadline time.Duration
-	closeWait     time.Duration
-	reqQ          chan interface{}
-	rspQ          chan interface{}
+	wait          time.Duration
+	rQ            chan interface{}
+	wQ            chan interface{}
 
 	// attribute
 	attrs map[string]interface{}
@@ -111,7 +111,7 @@ func NewSession(conn net.Conn) *Session {
 		cronPeriod:    cronPeriod,
 		readDeadline:  netIOTimeout,
 		writeDeadline: netIOTimeout,
-		closeWait:     pendingDuration,
+		wait:          pendingDuration,
 		attrs:         make(map[string]interface{}),
 	}
 }
@@ -136,8 +136,6 @@ func (this *Session) IsClosed() bool {
 	default:
 		return false
 	}
-
-	return false
 }
 
 func (this *Session) SetName(name string) { this.name = name }
@@ -162,23 +160,25 @@ func (this *Session) SetCronPeriod(period int) {
 	this.lock.Unlock()
 }
 
-func (this *Session) SetReadChanLen(readChanLen int) {
-	if readChanLen < 1 {
-		panic("@readChanLen < 1")
+// set @Session's read queue size
+func (this *Session) SetRQLen(readQLen int) {
+	if readQLen < 1 {
+		panic("@readQLen < 1")
 	}
 
 	this.lock.Lock()
-	this.reqQ = make(chan interface{}, readChanLen)
+	this.rQ = make(chan interface{}, readQLen)
 	this.lock.Unlock()
 }
 
-func (this *Session) SetWriteChanLen(writeChanLen int) {
-	if writeChanLen < 1 {
-		panic("@writeChanLen < 1")
+// set @Session's write queue size
+func (this *Session) SetWQLen(writeQLen int) {
+	if writeQLen < 1 {
+		panic("@writeQLen < 1")
 	}
 
 	this.lock.Lock()
-	this.rspQ = make(chan interface{}, writeChanLen)
+	this.wQ = make(chan interface{}, writeQLen)
 	this.lock.Unlock()
 }
 
@@ -205,13 +205,14 @@ func (this *Session) SetWriteDeadline(writeDeadline time.Duration) {
 	this.lock.Unlock()
 }
 
-func (this *Session) SetCloseWait(closeWait time.Duration) {
-	if closeWait < 1 {
-		panic("@closeWait < 1")
+// set maximum wait time when session got error or got exit signal
+func (this *Session) SetWaitTime(waitTime time.Duration) {
+	if waitTime < 1 {
+		panic("@wait < 1")
 	}
 
 	this.lock.Lock()
-	this.closeWait = closeWait
+	this.wait = waitTime
 	this.lock.Unlock()
 }
 
@@ -254,7 +255,7 @@ func (this *Session) Close() {
 func (this *Session) sessionToken() string {
 	return fmt.Sprintf(
 		"%s:%d:%s:%s",
-		this.name, this.Id,
+		this.name, this.ID,
 		this.conn.LocalAddr().String(),
 		this.conn.RemoteAddr().String(),
 	)
@@ -273,7 +274,7 @@ func (this *Session) WritePkg(pkg interface{}) error {
 	}()
 
 	select {
-	case this.rspQ <- pkg:
+	case this.wQ <- pkg:
 		break // for possible gen a new pkg
 	default:
 		return ErrSessionBlocked
@@ -294,9 +295,9 @@ func (this *Session) dispose() {
 }
 
 func (this *Session) RunEventloop() {
-	if this.reqQ == nil || this.rspQ == nil {
-		errStr := fmt.Sprintf("Session{name:%s, reqQ:%#v, rspQ:%#v}",
-			this.name, this.reqQ, this.rspQ)
+	if this.rQ == nil || this.wQ == nil {
+		errStr := fmt.Sprintf("Session{name:%s, rQ:%#v, wQ:%#v}",
+			this.name, this.rQ, this.wQ)
 		log.Error(errStr)
 		panic(errStr)
 	}
@@ -318,7 +319,7 @@ func (this *Session) handleLoop() {
 		start  time.Time
 		ticker *time.Ticker
 		reqPkg interface{}
-		rspPkg interface{}
+		Pkg    interface{}
 	)
 
 	defer func() {
@@ -326,8 +327,8 @@ func (this *Session) handleLoop() {
 		if err := recover(); err != nil {
 			log.Error("%s, [session.handleLoop] err=%+v\n", this.sessionToken(), err)
 		}
-		close(this.rspQ)
-		close(this.reqQ)
+		close(this.wQ)
+		close(this.rQ)
 		grNum = atomic.AddInt32(&(this.grNum), -1)
 		if this.listener != nil {
 			this.listener.OnClose(this)
@@ -349,13 +350,13 @@ LOOP:
 		case <-this.done:
 			log.Info("%s, [session.handleLoop] got done signal ", this.Stat())
 			break LOOP
-		case reqPkg = <-this.reqQ:
+		case reqPkg = <-this.rQ:
 			if this.listener != nil {
 				this.incReadPkgCount()
 				this.listener.OnMessage(this, reqPkg)
 			}
-		case rspPkg = <-this.rspQ:
-			if err = this.pkgHandler.Write(this, rspPkg); err != nil {
+		case Pkg = <-this.wQ:
+			if err = this.pkgHandler.Write(this, Pkg); err != nil {
 				log.Error("%s, [session.handleLoop] = error{%+v}", this.sessionToken(), err)
 				break LOOP
 			}
@@ -376,17 +377,17 @@ LOOP:
 	start = time.Now()
 LAST:
 	for {
-		if time.Since(start).Nanoseconds() >= this.closeWait.Nanoseconds() {
+		if time.Since(start).Nanoseconds() >= this.wait.Nanoseconds() {
 			break
 		}
 
 		select {
-		case rspPkg = <-this.rspQ:
-			if err = this.pkgHandler.Write(this, rspPkg); err != nil {
+		case Pkg = <-this.wQ:
+			if err = this.pkgHandler.Write(this, Pkg); err != nil {
 				break LAST
 			}
 			this.incWritePkgCount()
-		case reqPkg = <-this.reqQ:
+		case reqPkg = <-this.rQ:
 			if this.listener != nil {
 				this.incReadPkgCount()
 				this.listener.OnMessage(this, reqPkg)
@@ -469,7 +470,7 @@ func (this *Session) handlePackage() {
 			if pkg == nil {
 				break
 			}
-			this.reqQ <- pkg
+			this.rQ <- pkg
 		}
 		if exit {
 			break

@@ -42,8 +42,8 @@ func (this *Server) stop() {
 	case <-this.done:
 		return
 	default:
-		close(this.done)
 		this.Once.Do(func() {
+			close(this.done)
 			// 把listener.Close放在这里，既能防止多次关闭调用，
 			// 又能及时让Server因accept返回错误而从RunEventloop退出
 			this.listener.Close()
@@ -58,8 +58,6 @@ func (this *Server) IsClosed() bool {
 	default:
 		return false
 	}
-
-	return false
 }
 
 func (this *Server) Bind(network string, host string, port int) error {
