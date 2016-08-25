@@ -318,8 +318,8 @@ func (this *Session) handleLoop() {
 		err    error
 		start  time.Time
 		ticker *time.Ticker
-		reqPkg interface{}
-		Pkg    interface{}
+		inPkg interface{}
+		outPkg interface{}
 	)
 
 	defer func() {
@@ -350,13 +350,13 @@ LOOP:
 		case <-this.done:
 			log.Info("%s, [session.handleLoop] got done signal ", this.Stat())
 			break LOOP
-		case reqPkg = <-this.rQ:
+		case inPkg = <-this.rQ:
 			if this.listener != nil {
 				this.incReadPkgCount()
-				this.listener.OnMessage(this, reqPkg)
+				this.listener.OnMessage(this, inPkg)
 			}
-		case Pkg = <-this.wQ:
-			if err = this.pkgHandler.Write(this, Pkg); err != nil {
+		case outPkg = <-this.wQ:
+			if err = this.pkgHandler.Write(this, outPkg); err != nil {
 				log.Error("%s, [session.handleLoop] = error{%+v}", this.sessionToken(), err)
 				break LOOP
 			}
@@ -382,15 +382,15 @@ LAST:
 		}
 
 		select {
-		case Pkg = <-this.wQ:
-			if err = this.pkgHandler.Write(this, Pkg); err != nil {
+		case outPkg = <-this.wQ:
+			if err = this.pkgHandler.Write(this, outPkg); err != nil {
 				break LAST
 			}
 			this.incWritePkgCount()
-		case reqPkg = <-this.rQ:
+		case inPkg = <-this.rQ:
 			if this.listener != nil {
 				this.incReadPkgCount()
-				this.listener.OnMessage(this, reqPkg)
+				this.listener.OnMessage(this, inPkg)
 			}
 		default:
 			log.Info("%s, [session.handleLoop] default", this.sessionToken())
