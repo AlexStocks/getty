@@ -11,51 +11,54 @@
 ---
 
 - 2016/08/25
-	> move close done to once clause in server.go:(Server)stop   
+	> 1 move close done to once clause in server.go:(Server)stop   
 	>
-	> rename reqQ to rQ which means read queue and its relative params   
+	> 2 rename reqQ to rQ which means read queue and its relative params   
 	>
-	> rename rspQ to wQ which means write queue and its relative params   
+	> 3 rename rspQ to wQ which means write queue and its relative params   
 	>
-	> version: 0.2.06   
+	> 4 version: 0.2.06   
 
 - 2016/08/24
-	> delete session.go:Session:wg(atomic.WaitGroup). Add session.go:Session:grNum instead to prevent from  (Session)Close() block on session.go:Session:wg.Wait()   
+	> 1 delete session.go:Session:wg(atomic.WaitGroup). Add session.go:Session:grNum instead to prevent from  (Session)Close() block on session.go:Session:wg.Wait()   
 	>
-	> add once for session.go:Session:done(chan struct{})   
+	> 2 add once for session.go:Session:done(chan struct{})   
 	>
-	> version: 0.2.05   
+	> 3 version: 0.2.05   
 
 - 2016/08/23
-	> do not consider empty package as a error in (Session)handlePackage   
+	> 1 do not consider empty package as a error in (Session)handlePackage   
 	>
-	> version: 0.2.04   
+	> 2 version: 0.2.04   
 
 - 2016/08/22
-	> rename (Session)OnIdle to (Session)OnCron   
+	> 1 rename (Session)OnIdle to (Session)OnCron   
 	>
-	> rewrite server.go: add Server{done, wg}   
+	> 2 rewrite server.go: add Server{done, wg}   
 	>
-	> add utils.go   
+	> 3 add utils.go   
 	>
-	> version: 0.2.03   
+	> 4 version: 0.2.03   
 
 - 2016/08/21
-	> add name for Session   
+	> 1 add name for Session   
 	>
-	> add OnError for Codec   
+	> 2 add OnError for Codec   
 
 - 2016/08/18
-	> delete last clause of handleRead   
+	> 1 delete last clause of handleRead   
 	>
-	> add reqQ handle case in last clause of handleLoop   
+	> 2 add reqQ handle case in last clause of handleLoop   
 	>
-	> add conditon check in (*Session)RunEventLoop()   
+	> 3 add conditon check in (*Session)RunEventLoop()   
 	>
-	> version: 0.2.02   
+	> 4 version: 0.2.02   
 
 - 2016/08/16
-	> rename all structs   
-	> add getty connection   
-	> rewrite (Session)handleRead & (Session)handleEventLoop   
-	> version: 0.2.01   
+	> 1 rename all structs   
+	>
+	> 2 add getty connection   
+	>
+	> 3 rewrite (Session)handleRead & (Session)handleEventLoop   
+	>
+	> 4 version: 0.2.01   
