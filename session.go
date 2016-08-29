@@ -427,7 +427,7 @@ func (this *Session) handlePackage() {
 		log.Info("%s, [session.handlePackage] gr will exit now, left gr num %d", this.sessionToken(), grNum)
 		if errFlag && this.listener != nil {
 			log.Info("%s, [session.handlePackage] errFlag", this.sessionToken())
-			this.listener.OnError(this, nerr)
+			this.listener.OnError(this, err)
 		}
 	}()
 

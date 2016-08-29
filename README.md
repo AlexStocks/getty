@@ -12,7 +12,15 @@
 - 2016/08/29
 	> 1 rename reconnect to errFlag in function session.go:(Session)handlePackage
 	>
-   	> 2 version: 0.2.07
+    > 2 session.go:(gettyConn)readCount is reconsidered as read in tcp stream bytes
+	>
+    > 3 session.go:(gettyConn)writeCount is reconsidered as write out tcp stream bytes
+	>
+    > 4 reconstruct session output token string session.go:(Session)sessionToken
+	>
+    > 5 use err instead of nerr in session.go:(Session)handlePackage:defer:OnError
+	>
+   	> 6 version: 0.2.07
     
 - 2016/08/25
 	> 1 move close done to once clause in server.go:(Server)stop
