@@ -9,7 +9,11 @@
 
 ## develop history ##
 ---
-
+- 2016/08/29
+	> 1 rename reconnect to errFlag in function session.go:(Session)handlePackage
+	>
+   	> 2 version: 0.2.07
+    
 - 2016/08/25
 	> 1 move close done to once clause in server.go:(Server)stop
 	>

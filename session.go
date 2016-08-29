@@ -33,9 +33,9 @@ const (
 )
 
 var (
-	connID            uint32 = 0
-	ErrSessionClosed         = errors.New("Session Already Closed")
-	ErrSessionBlocked        = errors.New("Session full blocked")
+	connID            uint32
+	ErrSessionClosed  = errors.New("Session Already Closed")
+	ErrSessionBlocked = errors.New("Session full blocked")
 )
 
 /////////////////////////////////////////
@@ -56,12 +56,14 @@ func newGettyConn(conn net.Conn) *gettyConn {
 }
 
 func (this *gettyConn) read(p []byte) (int, error) {
-	atomic.AddUint32(&this.readCount, 1)
+	// atomic.AddUint32(&this.readCount, 1)
+	atomic.AddUint32(&this.readCount, (uint32)(len(p)))
 	return this.conn.Read(p)
 }
 
 func (this *gettyConn) write(p []byte) (int, error) {
-	atomic.AddUint32(&this.writeCount, 1)
+	// atomic.AddUint32(&this.writeCount, 1)
+	atomic.AddUint32(&this.writeCount, (uint32)(len(p)))
 	return this.conn.Write(p)
 }
 
@@ -254,8 +256,9 @@ func (this *Session) Close() {
 
 func (this *Session) sessionToken() string {
 	return fmt.Sprintf(
-		"%s:%d:%s:%s",
-		this.name, this.ID,
+		"{%s, %d, %s <-> %s}",
+		this.name,
+		this.ID,
 		this.conn.LocalAddr().String(),
 		this.conn.RemoteAddr().String(),
 	)
@@ -318,7 +321,7 @@ func (this *Session) handleLoop() {
 		err    error
 		start  time.Time
 		ticker *time.Ticker
-		inPkg interface{}
+		inPkg  interface{}
 		outPkg interface{}
 	)
 
@@ -402,15 +405,15 @@ LAST:
 // get package from tcp stream(packet)
 func (this *Session) handlePackage() {
 	var (
-		err       error
-		nerr      net.Error
-		ok        bool
-		exit      bool
-		reconnect bool
-		len       int
-		buf       []byte
-		pktBuf    *bytes.Buffer
-		pkg       interface{}
+		err     error
+		nerr    net.Error
+		ok      bool
+		exit    bool
+		errFlag bool
+		len     int
+		buf     []byte
+		pktBuf  *bytes.Buffer
+		pkg     interface{}
 	)
 
 	defer func() {
@@ -422,8 +425,8 @@ func (this *Session) handlePackage() {
 		close(this.readerDone)
 		grNum = atomic.AddInt32(&(this.grNum), -1)
 		log.Info("%s, [session.handlePackage] gr will exit now, left gr num %d", this.sessionToken(), grNum)
-		if reconnect && this.listener != nil {
-			log.Info("%s, [session.handlePackage] reconnect", this.sessionToken())
+		if errFlag && this.listener != nil {
+			log.Info("%s, [session.handlePackage] errFlag", this.sessionToken())
 			this.listener.OnError(this, nerr)
 		}
 	}()
@@ -449,7 +452,7 @@ func (this *Session) handlePackage() {
 				// 遇到网络错误的时候，handlePackage能够及时退出，但是handleLoop的第一个for-select因为要处理(Codec)OnMessage
 				// 导致程序不能及时退出，此处添加(Codec)OnError调用以及时通知getty调用者
 				// AS, 2016/08/21
-				reconnect = true
+				errFlag = true
 				exit = true
 			}
 			break
