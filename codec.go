@@ -13,6 +13,11 @@ import (
 	"bytes"
 )
 
+// SessionCallback will be invoked when server accepts a new client connection or client connects to server successfully.
+// if there are too many client connections or u do not want to connect a server again, u can return non-nil error. And
+// then getty will close the new session.
+type SessionCallback func(*Session) error
+
 // Reader is used to unmarshal a complete pkg from buffer
 type Reader interface {
 	// Parse pkg from buffer and if possible return a complete pkg

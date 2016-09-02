@@ -20,8 +20,6 @@ import (
 	log "github.com/AlexStocks/log4go"
 )
 
-type SessionCallback func(*Session) error
-
 type Server struct {
 	// net
 	host     string

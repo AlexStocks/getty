@@ -65,6 +65,7 @@ func (this *Client) dial() net.Conn {
 		err  error
 		conn net.Conn
 	)
+
 	for {
 		if this.IsClosed() {
 			return nil
@@ -80,8 +81,9 @@ func (this *Client) dial() net.Conn {
 	}
 }
 
-func (this *Client) getSessionNum() int {
+func (this *Client) sessionNum() int {
 	var num int
+
 	this.Lock()
 	for s := range this.sessionMap {
 		if s.IsClosed() {
@@ -94,27 +96,13 @@ func (this *Client) getSessionNum() int {
 	return num
 }
 
-func (this *Client) GetSessionArray() []*Session {
-	var array []*Session
-	this.Lock()
-	for s := range this.sessionMap {
-		if s.IsClosed() {
-			delete(this.sessionMap, s)
-			continue
-		}
-		array = append(array, s)
-	}
-	this.Unlock()
-
-	return array
-}
-
 func (this *Client) connect() {
 	var (
 		err  error
 		conn net.Conn
 		ss   *Session
 	)
+
 	for {
 		conn = this.dial()
 		if conn == nil {
@@ -147,13 +135,15 @@ func (this *Client) RunEventLoop(newSession SessionCallback) {
 		this.Lock()
 		max = this.number
 		this.Unlock()
+		// log.Info("maximum client connection number:%d", max)
 		for {
 			if this.IsClosed() {
 				log.Warn("client{peer:%s} goroutine exit now.", this.addr)
 				break
 			}
 
-			num = this.getSessionNum()
+			num = this.sessionNum()
+			// log.Info("current client connction number:%d", num)
 			if max <= num {
 				time.Sleep(this.interval)
 				continue
