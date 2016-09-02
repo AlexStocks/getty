@@ -9,6 +9,14 @@
 
 ## develop history ##
 ---
+
+- 2016/09/02
+	> 1 add session.go:(gettyConn)close and session.go:(Session)dispose
+	>
+    > 2 add client.go:Client
+    >
+    > 3 version: 0.3.00
+
 - 2016/08/29
 	> 1 rename reconnect to errFlag in function session.go:(Session)handlePackage
 	>

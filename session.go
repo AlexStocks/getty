@@ -67,6 +67,14 @@ func (this *gettyConn) write(p []byte) (int, error) {
 	return this.conn.Write(p)
 }
 
+func (this *gettyConn) close(waitSec int) {
+	// if tcpConn, ok := this.conn.(*net.TCPConn); ok {
+	// tcpConn.SetLinger(0)
+	// }
+	this.conn.(*net.TCPConn).SetLinger(waitSec)
+	this.conn.Close()
+}
+
 func (this *gettyConn) incReadPkgCount() {
 	atomic.AddUint32(&this.readPkgCount, 1)
 }
@@ -294,7 +302,10 @@ func (this *Session) WriteBytes(pkg []byte) error {
 }
 
 func (this *Session) dispose() {
-	this.conn.Close()
+	this.lock.Lock()
+	// this.conn.Close()
+	this.gettyConn.close((int)((int64)(this.wait)))
+	this.lock.Unlock()
 }
 
 func (this *Session) RunEventloop() {

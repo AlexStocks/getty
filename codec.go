@@ -45,5 +45,7 @@ type EventListener interface {
 	OnCron(*Session)
 
 	// invoked when receive packge. Pls attention that do not handle long time logic processing in this func.
+	// Y'd better set the package's maximum length. If the message's length is greater than it, u should
+	// should return err and getty will close this connection soon.
 	OnMessage(*Session, interface{})
 }

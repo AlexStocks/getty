@@ -20,7 +20,7 @@ import (
 	log "github.com/AlexStocks/log4go"
 )
 
-type SessionCallback func(*Session)
+type SessionCallback func(*Session) error
 
 type Server struct {
 	// net
@@ -76,7 +76,7 @@ func (this *Server) Bind(network string, host string, port int) error {
 	return nil
 }
 
-func (this *Server) RunEventloop(newSessionCallback func(*Session)) {
+func (this *Server) RunEventloop(newSession SessionCallback) {
 	this.wg.Add(1)
 	go func() {
 		defer this.wg.Done()
@@ -93,9 +93,9 @@ func (this *Server) RunEventloop(newSessionCallback func(*Session)) {
 			if delay != 0 {
 				time.Sleep(delay)
 			}
-			client, err = this.Accept(newSessionCallback)
+			client, err = this.Accept(newSession)
 			if err != nil {
-				if ne, ok := err.(net.Error); ok && ne.Temporary() {
+				if netErr, ok := err.(net.Error); ok && netErr.Temporary() {
 					if delay == 0 {
 						delay = 5 * time.Millisecond
 					} else {
@@ -119,14 +119,18 @@ func (this *Server) Listener() net.Listener {
 	return this.listener
 }
 
-func (this *Server) Accept(newSessionCallback func(*Session)) (*Session, error) {
+func (this *Server) Accept(newSession SessionCallback) (*Session, error) {
 	conn, err := this.listener.Accept()
 	if err != nil {
 		return nil, err
 	}
 
 	session := NewSession(conn)
-	newSessionCallback(session)
+	err = newSession(session)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
 
 	return session, nil
 }
