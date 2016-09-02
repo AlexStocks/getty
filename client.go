@@ -94,6 +94,21 @@ func (this *Client) getSessionNum() int {
 	return num
 }
 
+func (this *Client) GetSessionArray() []*Session {
+	var array []*Session
+	this.Lock()
+	for s := range this.sessionMap {
+		if s.IsClosed() {
+			delete(this.sessionMap, s)
+			continue
+		}
+		array = append(array, s)
+	}
+	this.Unlock()
+
+	return array
+}
+
 func (this *Client) connect() {
 	var (
 		err  error

@@ -13,9 +13,11 @@
 - 2016/09/02
 	> 1 add session.go:(gettyConn)close and session.go:(Session)dispose
 	>
-    > 2 add client.go:Client
+    > 2 modify return value of server.go:SessionCallback from void to err
+	>
+    > 3 add client.go:Client
     >
-    > 3 version: 0.3.00
+    > 4 version: 0.3.00
 
 - 2016/08/29
 	> 1 rename reconnect to errFlag in function session.go:(Session)handlePackage
