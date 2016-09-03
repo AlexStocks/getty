@@ -21,7 +21,9 @@
     >
     > 5 session.go:(Session)SetConn
     >
-    > 6 version: 0.3.01
+    > 6 add elastic sleep time machanism in client.go:(Client)RunEventLoop
+    >
+    > 7 version: 0.3.01
     
 - 2016/09/02
 	> 1 add session.go:(gettyConn)close and session.go:(Session)dispose

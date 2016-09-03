@@ -14,19 +14,10 @@ import (
 	"encoding/binary"
 	"net"
 	"strconv"
-	"time"
 )
 
 func HostAddress(host string, port int) string {
 	return net.JoinHostPort(host, strconv.Itoa(port))
-}
-
-func dial(addr string) (net.Conn, error) {
-	return net.Dial("tcp", addr)
-}
-
-func dialTimeout(addr string, timeout time.Duration) (net.Conn, error) {
-	return net.DialTimeout("tcp", addr, timeout)
 }
 
 ////////////////////////////////////////

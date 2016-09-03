@@ -21,6 +21,8 @@ import (
 
 const (
 	defaultInterval = 3e9 // 3s
+	connectTimeout  = 5e9
+	maxTimes        = 10
 )
 
 type empty struct{}
@@ -70,7 +72,7 @@ func (this *Client) dial() net.Conn {
 		if this.IsClosed() {
 			return nil
 		}
-		conn, err = net.DialTimeout("tcp", this.addr, this.interval)
+		conn, err = net.DialTimeout("tcp", this.addr, connectTimeout)
 		if err == nil {
 			return conn
 		}
@@ -129,7 +131,7 @@ func (this *Client) RunEventLoop(newSession SessionCallback) {
 
 	this.wg.Add(1)
 	go func() {
-		var num, max int
+		var num, max, times int
 		defer this.wg.Done()
 
 		this.Lock()
@@ -145,10 +147,16 @@ func (this *Client) RunEventLoop(newSession SessionCallback) {
 			num = this.sessionNum()
 			// log.Info("current client connction number:%d", num)
 			if max <= num {
-				time.Sleep(this.interval)
+				times++
+				if maxTimes < times {
+					times = maxTimes
+				}
+				time.Sleep(time.Duration(times * defaultInterval))
 				continue
 			}
+			times = 0
 			this.connect()
+			// time.Sleep(this.interval) // build this.number connections asap
 		}
 	}()
 }
