@@ -10,6 +10,19 @@
 ## develop history ##
 ---
 
+- 2016/09/03
+	> 1 modify return value of session.go:(Session)Close from void to error
+	>
+    > 2 add clause "this.attrs = nil" in session.go:(Session)Close
+	>
+    > 3 modify session.go:Session{*gettyConn} to session.go:Session{gettyConn}
+	>
+    > 4 session.go:(Session)Reset
+    >
+    > 5 session.go:(Session)SetConn
+    >
+    > 6 version: 0.3.01
+    
 - 2016/09/02
 	> 1 add session.go:(gettyConn)close and session.go:(Session)dispose
 	>

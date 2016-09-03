@@ -17,9 +17,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-)
 
-import (
 	log "github.com/AlexStocks/log4go"
 )
 
@@ -32,15 +30,13 @@ const (
 	outputFormat       = "session %s, Read Count: %d, Write Count: %d, Read Pkg Count: %d, Write Pkg Count: %d"
 )
 
-var (
-	connID            uint32
-	ErrSessionClosed  = errors.New("Session Already Closed")
-	ErrSessionBlocked = errors.New("Session full blocked")
-)
-
 /////////////////////////////////////////
 // getty connection
 /////////////////////////////////////////
+
+var (
+	connID uint32
+)
 
 type gettyConn struct {
 	conn          net.Conn
@@ -51,8 +47,8 @@ type gettyConn struct {
 	writePkgCount uint32 // recv pkg count
 }
 
-func newGettyConn(conn net.Conn) *gettyConn {
-	return &gettyConn{conn: conn, ID: atomic.AddUint32(&connID, 1)}
+func newGettyConn(conn net.Conn) gettyConn {
+	return gettyConn{conn: conn, ID: atomic.AddUint32(&connID, 1)}
 }
 
 func (this *gettyConn) read(p []byte) (int, error) {
@@ -87,11 +83,16 @@ func (this *gettyConn) incWritePkgCount() {
 // session
 /////////////////////////////////////////
 
+var (
+	ErrSessionClosed  = errors.New("Session Already Closed")
+	ErrSessionBlocked = errors.New("Session full blocked")
+)
+
 // getty base session
 type Session struct {
 	name string
 	// net read write
-	*gettyConn
+	gettyConn
 	pkgHandler ReadWriter
 	listener   EventListener
 	once       sync.Once
@@ -126,7 +127,19 @@ func NewSession(conn net.Conn) *Session {
 	}
 }
 
-func (this *Session) Conn() net.Conn { return this.conn }
+func (this *Session) Reset() {
+	this.name = defaultSessionName
+	this.done = make(chan struct{})
+	this.readerDone = make(chan struct{})
+	this.cronPeriod = cronPeriod
+	this.readDeadline = netIOTimeout
+	this.writeDeadline = netIOTimeout
+	this.wait = pendingDuration
+	this.attrs = make(map[string]interface{})
+}
+
+func (this *Session) SetConn(conn net.Conn) { this.gettyConn = newGettyConn(conn) }
+func (this *Session) Conn() net.Conn        { return this.conn }
 
 func (this *Session) Stat() string {
 	return fmt.Sprintf(
@@ -256,10 +269,13 @@ func (this *Session) stop() {
 	}
 }
 
-func (this *Session) Close() {
+func (this *Session) Close() error {
 	this.stop()
+	this.attrs = nil
 	log.Info("%s closed now, its current gr num %d",
 		this.sessionToken(), atomic.LoadInt32(&(this.grNum)))
+
+	return nil
 }
 
 func (this *Session) sessionToken() string {
@@ -366,8 +382,8 @@ LOOP:
 			break LOOP
 		case inPkg = <-this.rQ:
 			if this.listener != nil {
-				this.incReadPkgCount()
 				this.listener.OnMessage(this, inPkg)
+				this.incReadPkgCount()
 			}
 		case outPkg = <-this.wQ:
 			if err = this.pkgHandler.Write(this, outPkg); err != nil {
@@ -403,8 +419,8 @@ LAST:
 			this.incWritePkgCount()
 		case inPkg = <-this.rQ:
 			if this.listener != nil {
-				this.incReadPkgCount()
 				this.listener.OnMessage(this, inPkg)
+				this.incReadPkgCount()
 			}
 		default:
 			log.Info("%s, [session.handleLoop] default", this.sessionToken())
