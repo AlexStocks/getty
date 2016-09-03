@@ -15,7 +15,7 @@
 	>
     > 2 add clause "this.attrs = nil" in session.go:(Session)Close
 	>
-    > 3 modify session.go:Session{*gettyConn} to session.go:Session{gettyConn}
+    > 3 session.go:Session{*gettyConn, readDeadline, writeDeadline} -> session.go:Session{gettyConn, rDeadline, wDeadline}
 	>
     > 4 session.go:(Session)Reset
     >

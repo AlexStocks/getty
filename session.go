@@ -24,7 +24,7 @@ import (
 const (
 	maxReadBufLen      = 4 * 1024
 	netIOTimeout       = 100e6    // 100ms
-	cronPeriod         = 60 * 1e9 // 1 minute
+	peroid             = 60 * 1e9 // 1 minute
 	pendingDuration    = 3e9
 	defaultSessionName = "Session"
 	outputFormat       = "session %s, Read Count: %d, Write Count: %d, Read Pkg Count: %d, Write Pkg Count: %d"
@@ -99,12 +99,12 @@ type Session struct {
 	done       chan struct{}
 	readerDone chan struct{} // end reader
 
-	cronPeriod    time.Duration
-	readDeadline  time.Duration
-	writeDeadline time.Duration
-	wait          time.Duration
-	rQ            chan interface{}
-	wQ            chan interface{}
+	peroid    time.Duration
+	rDeadline time.Duration
+	wDeadline time.Duration
+	wait      time.Duration
+	rQ        chan interface{}
+	wQ        chan interface{}
 
 	// attribute
 	attrs map[string]interface{}
@@ -115,15 +115,15 @@ type Session struct {
 
 func NewSession(conn net.Conn) *Session {
 	return &Session{
-		name:          defaultSessionName,
-		gettyConn:     newGettyConn(conn),
-		done:          make(chan struct{}),
-		readerDone:    make(chan struct{}),
-		cronPeriod:    cronPeriod,
-		readDeadline:  netIOTimeout,
-		writeDeadline: netIOTimeout,
-		wait:          pendingDuration,
-		attrs:         make(map[string]interface{}),
+		name:       defaultSessionName,
+		gettyConn:  newGettyConn(conn),
+		done:       make(chan struct{}),
+		readerDone: make(chan struct{}),
+		peroid:     peroid,
+		rDeadline:  netIOTimeout,
+		wDeadline:  netIOTimeout,
+		wait:       pendingDuration,
+		attrs:      make(map[string]interface{}),
 	}
 }
 
@@ -131,9 +131,9 @@ func (this *Session) Reset() {
 	this.name = defaultSessionName
 	this.done = make(chan struct{})
 	this.readerDone = make(chan struct{})
-	this.cronPeriod = cronPeriod
-	this.readDeadline = netIOTimeout
-	this.writeDeadline = netIOTimeout
+	this.peroid = peroid
+	this.rDeadline = netIOTimeout
+	this.wDeadline = netIOTimeout
 	this.wait = pendingDuration
 	this.attrs = make(map[string]interface{})
 }
@@ -179,7 +179,7 @@ func (this *Session) SetCronPeriod(period int) {
 	}
 
 	this.lock.Lock()
-	this.cronPeriod = time.Duration(period) * time.Millisecond
+	this.peroid = time.Duration(period) * time.Millisecond
 	this.lock.Unlock()
 }
 
@@ -205,26 +205,26 @@ func (this *Session) SetWQLen(writeQLen int) {
 	this.lock.Unlock()
 }
 
-func (this *Session) SetReadDeadline(readDeadline time.Duration) {
-	if readDeadline < 1 {
-		panic("@readDeadline < 1")
+func (this *Session) SetReadDeadline(rDeadline time.Duration) {
+	if rDeadline < 1 {
+		panic("@rDeadline < 1")
 	}
 
 	this.lock.Lock()
-	this.readDeadline = readDeadline
-	if this.writeDeadline == 0 {
-		this.writeDeadline = readDeadline
+	this.rDeadline = rDeadline
+	if this.wDeadline == 0 {
+		this.wDeadline = rDeadline
 	}
 	this.lock.Unlock()
 }
 
-func (this *Session) SetWriteDeadline(writeDeadline time.Duration) {
-	if writeDeadline < 1 {
-		panic("@writeDeadline < 1")
+func (this *Session) SetWriteDeadline(wDeadline time.Duration) {
+	if wDeadline < 1 {
+		panic("@wDeadline < 1")
 	}
 
 	this.lock.Lock()
-	this.writeDeadline = writeDeadline
+	this.wDeadline = wDeadline
 	this.lock.Unlock()
 }
 
@@ -312,7 +312,7 @@ func (this *Session) WritePkg(pkg interface{}) error {
 
 // for codecs
 func (this *Session) WriteBytes(pkg []byte) error {
-	this.conn.SetWriteDeadline(time.Now().Add(this.readDeadline))
+	this.conn.SetWriteDeadline(time.Now().Add(this.rDeadline))
 	_, err := this.write(pkg)
 	return err
 }
@@ -373,7 +373,7 @@ func (this *Session) handleLoop() {
 		this.listener.OnOpen(this)
 	}
 
-	ticker = time.NewTicker(this.cronPeriod)
+	ticker = time.NewTicker(this.peroid)
 LOOP:
 	for {
 		select {
@@ -469,7 +469,7 @@ func (this *Session) handlePackage() {
 			if exit {
 				break // 退出前不再读取任何packet，跳到下个for-loop处理完pktBuf中的stream
 			}
-			this.conn.SetReadDeadline(time.Now().Add(this.readDeadline))
+			this.conn.SetReadDeadline(time.Now().Add(this.rDeadline))
 			len, err = this.read(buf)
 			if err != nil {
 				if nerr, ok = err.(net.Error); ok && nerr.Timeout() {
