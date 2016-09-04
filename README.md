@@ -9,7 +9,11 @@
 
 ## develop history ##
 ---
-
+- 2016/09/04
+	> 1 add server.go:(Server)Listen
+	>
+    > 2 version: 0.3.02
+    
 - 2016/09/03
 	> 1 modify return value of session.go:(Session)Close from void to error
 	>
@@ -17,9 +21,9 @@
 	>
     > 3 session.go:Session{*gettyConn, readDeadline, writeDeadline} -> session.go:Session{gettyConn, rDeadline, wDeadline}
 	>
-    > 4 session.go:(Session)Reset
+    > 4 add session.go:(Session)Reset
     >
-    > 5 session.go:(Session)SetConn
+    > 5 add session.go:(Session)SetConn
     >
     > 6 add elastic sleep time machanism in client.go:(Client)RunEventLoop
     >

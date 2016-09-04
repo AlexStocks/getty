@@ -16,6 +16,7 @@ import (
 	"strconv"
 )
 
+// HostAddress composes a ip:port style address. Its opposite function is net.SplitHostPort.
 func HostAddress(host string, port int) string {
 	return net.JoinHostPort(host, strconv.Itoa(port))
 }

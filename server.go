@@ -22,8 +22,7 @@ import (
 
 type Server struct {
 	// net
-	host     string
-	port     int
+	addr     string
 	listener net.Listener
 
 	sync.Once
@@ -58,17 +57,21 @@ func (this *Server) IsClosed() bool {
 	}
 }
 
+// (Server)Bind's functionality is equal to (Server)Listen.
 func (this *Server) Bind(network string, host string, port int) error {
 	if port <= 0 {
 		return errors.New("port<=0 illegal")
 	}
 
-	this.host = host
-	this.port = port
-	listener, err := net.Listen(network, HostAddress(host, port))
+	return this.Listen(network, HostAddress(host, port))
+}
+
+func (this *Server) Listen(network string, addr string) error {
+	listener, err := net.Listen(network, addr)
 	if err != nil {
 		return err
 	}
+	this.addr = addr
 	this.listener = listener
 
 	return nil
@@ -85,7 +88,7 @@ func (this *Server) RunEventloop(newSession SessionCallback) {
 		)
 		for {
 			if this.IsClosed() {
-				log.Warn("Server{%s:%d} stop acceptting client connect request.", this.host, this.port)
+				log.Warn("Server{%s} stop acceptting client connect request.", this.addr)
 				return
 			}
 			if delay != 0 {
@@ -104,7 +107,7 @@ func (this *Server) RunEventloop(newSession SessionCallback) {
 					}
 					continue
 				}
-				log.Info("Server{%s:%d}.Accept() = err {%+v}", this.host, this.port, err)
+				log.Info("Server{%s}.Accept() = err {%#v}", this.addr, err)
 				continue
 			}
 			delay = 0
