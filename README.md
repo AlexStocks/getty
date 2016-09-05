@@ -5,7 +5,8 @@
 ## introdction ##
 ---
 > DESC       : a asynchronous network I/O library in golang
-  LICENCE    : Apache License 2.0
+>
+> LICENCE    : Apache License 2.0
 
 ## develop history ##
 ---
