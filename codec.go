@@ -21,6 +21,7 @@ type SessionCallback func(*Session) error
 // Reader is used to unmarshal a complete pkg from buffer
 type Reader interface {
 	// Parse pkg from buffer and if possible return a complete pkg
+	// If length of buf is not long enough, u should return {nil, nil}
 	Read(*Session, *bytes.Buffer) (interface{}, error)
 }
 

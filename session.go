@@ -494,6 +494,7 @@ func (this *Session) handlePackage() {
 			pkg, err = this.pkgHandler.Read(this, pktBuf)
 			if err != nil {
 				log.Info("%s, [session.pkgHandler.Read] = error{%+v}", this.sessionToken(), err)
+				errFlag = true
 				exit = true
 				break
 			}
