@@ -9,10 +9,6 @@
 
 package getty
 
-import (
-	"bytes"
-)
-
 // SessionCallback will be invoked when server accepts a new client connection or client connects to server successfully.
 // if there are too many client connections or u do not want to connect a server again, u can return non-nil error. And
 // then getty will close the new session.
@@ -22,7 +18,7 @@ type SessionCallback func(*Session) error
 type Reader interface {
 	// Parse pkg from buffer and if possible return a complete pkg
 	// If length of buf is not long enough, u should return {nil, nil}
-	Read(*Session, *bytes.Buffer) (interface{}, error)
+	Read(*Session, []byte) (interface{}, error)
 }
 
 // Writer is used to marshal pkg and write to session

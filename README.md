@@ -14,7 +14,9 @@
 - 2016/09/05
 	> 1 add 'errFlag = true' when got err in pkgHandler.Read loop clause in session.go:(Session)handlePackage
 	>
-    > 2 version: 0.3.03
+    > 2 use '[]byte' instead of bytes.Buffer in codec.go:(Reader)Read
+	>
+    > 3 version: 0.3.03
 
 - 2016/09/04
 	> 1 add server.go:(Server)Listen
