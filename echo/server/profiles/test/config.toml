@@ -1,0 +1,8 @@
+# toml configure file
+
+# Host                    = "127.0.0.1"
+Host                    = "192.168.35.1"
+Ports                   = ["10000", "20000"]
+ProfilePort             = 10086
+# client与server之间连接的超时时间
+SessionTimeout          = "20s"
