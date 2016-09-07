@@ -33,7 +33,7 @@ type Client struct {
 	number     int
 	interval   time.Duration
 	addr       string
-	newSession SessionCallback
+	newSession NewSessionCallback
 	sessionMap map[*Session]empty
 
 	sync.Once
@@ -100,9 +100,9 @@ func (this *Client) sessionNum() int {
 
 func (this *Client) connect() {
 	var (
-		err  error
-		conn net.Conn
-		ss   *Session
+		err     error
+		conn    net.Conn
+		session *Session
 	)
 
 	for {
@@ -111,12 +111,12 @@ func (this *Client) connect() {
 			// client has been closed
 			break
 		}
-		ss = NewSession(conn)
-		err = this.newSession(ss)
+		session = NewSession(conn)
+		err = this.newSession(session)
 		if err == nil {
-			ss.RunEventloop()
+			session.RunEventLoop()
 			this.Lock()
-			this.sessionMap[ss] = empty{}
+			this.sessionMap[session] = empty{}
 			this.Unlock()
 			break
 		}
@@ -124,7 +124,7 @@ func (this *Client) connect() {
 	}
 }
 
-func (this *Client) RunEventLoop(newSession SessionCallback) {
+func (this *Client) RunEventLoop(newSession NewSessionCallback) {
 	this.Lock()
 	this.newSession = newSession
 	this.Unlock()

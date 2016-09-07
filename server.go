@@ -77,7 +77,7 @@ func (this *Server) Listen(network string, addr string) error {
 	return nil
 }
 
-func (this *Server) RunEventloop(newSession SessionCallback) {
+func (this *Server) RunEventloop(newSession NewSessionCallback) {
 	this.wg.Add(1)
 	go func() {
 		defer this.wg.Done()
@@ -111,7 +111,7 @@ func (this *Server) RunEventloop(newSession SessionCallback) {
 				continue
 			}
 			delay = 0
-			client.RunEventloop()
+			client.RunEventLoop()
 		}
 	}()
 }
@@ -120,7 +120,7 @@ func (this *Server) Listener() net.Listener {
 	return this.listener
 }
 
-func (this *Server) Accept(newSession SessionCallback) (*Session, error) {
+func (this *Server) Accept(newSession NewSessionCallback) (*Session, error) {
 	conn, err := this.listener.Accept()
 	if err != nil {
 		return nil, err

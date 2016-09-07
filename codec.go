@@ -9,16 +9,17 @@
 
 package getty
 
-// SessionCallback will be invoked when server accepts a new client connection or client connects to server successfully.
+// NewSessionCallback will be invoked when server accepts a new client connection or client connects to server successfully.
 // if there are too many client connections or u do not want to connect a server again, u can return non-nil error. And
 // then getty will close the new session.
-type SessionCallback func(*Session) error
+type NewSessionCallback func(*Session) error
 
 // Reader is used to unmarshal a complete pkg from buffer
 type Reader interface {
 	// Parse pkg from buffer and if possible return a complete pkg
-	// If length of buf is not long enough, u should return {nil, nil}
-	Read(*Session, []byte) (interface{}, error)
+	// If length of buf is not long enough, u should return {nil,0, nil}
+	// The second return value is the length of the pkg.
+	Read(*Session, []byte) (interface{}, int, error)
 }
 
 // Writer is used to marshal pkg and write to session
@@ -35,7 +36,7 @@ type ReadWriter interface {
 // EventListener is used to process pkg that recved from remote session
 type EventListener interface {
 	// invoked when session opened
-	OnOpen(*Session)
+	OnOpen(*Session) error
 
 	// invoked when session closed
 	OnClose(*Session)

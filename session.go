@@ -17,7 +17,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+)
 
+import (
 	log "github.com/AlexStocks/log4go"
 )
 
@@ -28,6 +30,10 @@ const (
 	pendingDuration    = 3e9
 	defaultSessionName = "Session"
 	outputFormat       = "session %s, Read Count: %d, Write Count: %d, Read Pkg Count: %d, Write Pkg Count: %d"
+)
+
+var (
+	ErrInvalidConnection = errors.New("connection has been closed.")
 )
 
 /////////////////////////////////////////
@@ -52,12 +58,19 @@ func newGettyConn(conn net.Conn) gettyConn {
 }
 
 func (this *gettyConn) read(p []byte) (int, error) {
+	// if this.conn == nil {
+	//	return 0, ErrInvalidConnection
+	// }
 	// atomic.AddUint32(&this.readCount, 1)
 	atomic.AddUint32(&this.readCount, (uint32)(len(p)))
 	return this.conn.Read(p)
 }
 
 func (this *gettyConn) write(p []byte) (int, error) {
+	// if this.conn == nil {
+	//	return 0, ErrInvalidConnection
+	// }
+
 	// atomic.AddUint32(&this.writeCount, 1)
 	atomic.AddUint32(&this.writeCount, (uint32)(len(p)))
 	return this.conn.Write(p)
@@ -67,8 +80,11 @@ func (this *gettyConn) close(waitSec int) {
 	// if tcpConn, ok := this.conn.(*net.TCPConn); ok {
 	// tcpConn.SetLinger(0)
 	// }
-	this.conn.(*net.TCPConn).SetLinger(waitSec)
-	this.conn.Close()
+	if this.conn != nil {
+		this.conn.(*net.TCPConn).SetLinger(waitSec)
+		this.conn.Close()
+		this.conn = nil
+	}
 }
 
 func (this *gettyConn) incReadPkgCount() {
@@ -141,6 +157,7 @@ func (this *Session) Reset() {
 func (this *Session) SetConn(conn net.Conn) { this.gettyConn = newGettyConn(conn) }
 func (this *Session) Conn() net.Conn        { return this.conn }
 
+// return the connect statistic data
 func (this *Session) Stat() string {
 	return fmt.Sprintf(
 		outputFormat,
@@ -152,6 +169,7 @@ func (this *Session) Stat() string {
 	)
 }
 
+// check whether the session has been closed.
 func (this *Session) IsClosed() bool {
 	select {
 	case <-this.done:
@@ -205,6 +223,7 @@ func (this *Session) SetWQLen(writeQLen int) {
 	this.lock.Unlock()
 }
 
+// SetReadDeadline sets deadline for the future read calls.
 func (this *Session) SetReadDeadline(rDeadline time.Duration) {
 	if rDeadline < 1 {
 		panic("@rDeadline < 1")
@@ -218,6 +237,7 @@ func (this *Session) SetReadDeadline(rDeadline time.Duration) {
 	this.lock.Unlock()
 }
 
+// SetWriteDeadlile sets deadline for the future read calls.
 func (this *Session) SetWriteDeadline(wDeadline time.Duration) {
 	if wDeadline < 1 {
 		panic("@wDeadline < 1")
@@ -259,25 +279,6 @@ func (this *Session) RemoveAttribute(key string) {
 	this.lock.Unlock()
 }
 
-func (this *Session) stop() {
-	select {
-	case <-this.done:
-		return
-	default:
-		// defeat "panic: close of closed channel"
-		this.once.Do(func() { close(this.done) })
-	}
-}
-
-func (this *Session) Close() error {
-	this.stop()
-	this.attrs = nil
-	log.Info("%s closed now, its current gr num %d",
-		this.sessionToken(), atomic.LoadInt32(&(this.grNum)))
-
-	return nil
-}
-
 func (this *Session) sessionToken() string {
 	return fmt.Sprintf(
 		"{%s, %d, %s <-> %s}",
@@ -317,25 +318,24 @@ func (this *Session) WriteBytes(pkg []byte) error {
 	return err
 }
 
-func (this *Session) dispose() {
-	this.lock.Lock()
-	// this.conn.Close()
-	this.gettyConn.close((int)((int64)(this.wait)))
-	this.lock.Unlock()
-}
-
-func (this *Session) RunEventloop() {
+func (this *Session) RunEventLoop() {
 	if this.rQ == nil || this.wQ == nil {
 		errStr := fmt.Sprintf("Session{name:%s, rQ:%#v, wQ:%#v}",
 			this.name, this.rQ, this.wQ)
 		log.Error(errStr)
 		panic(errStr)
 	}
-	if this.conn == nil || this.pkgHandler == nil {
-		errStr := fmt.Sprintf("Session{name:%s, conn:%#v, pkgHandler:%#v}",
-			this.name, this.conn, this.pkgHandler)
+	if this.conn == nil || this.listener == nil || this.pkgHandler == nil {
+		errStr := fmt.Sprintf("Session{name:%s, conn:%#v, listener:%#v, pkgHandler:%#v}",
+			this.name, this.conn, this.listener, this.pkgHandler)
 		log.Error(errStr)
 		panic(errStr)
+	}
+
+	// call session opened
+	if err := this.listener.OnOpen(this); err != nil {
+		this.Close()
+		return
 	}
 
 	atomic.AddInt32(&(this.grNum), 2)
@@ -357,21 +357,12 @@ func (this *Session) handleLoop() {
 		if err := recover(); err != nil {
 			log.Error("%s, [session.handleLoop] err=%+v\n", this.sessionToken(), err)
 		}
-		close(this.wQ)
-		close(this.rQ)
-		grNum = atomic.AddInt32(&(this.grNum), -1)
-		if this.listener != nil {
-			this.listener.OnClose(this)
-		}
-		// real close connection, dispose会调用(conn)Close,
-		this.dispose()
-		log.Info("statistic{%s}, [session.handleLoop] goroutine exit now, left gr num %d", this.Stat(), grNum)
-	}()
 
-	// call session opened
-	if this.listener != nil {
-		this.listener.OnOpen(this)
-	}
+		grNum = atomic.AddInt32(&(this.grNum), -1)
+		this.listener.OnClose(this)
+		log.Info("statistic{%s}, [session.handleLoop] goroutine exit now, left gr num %d", this.Stat(), grNum)
+		this.Close()
+	}()
 
 	ticker = time.NewTicker(this.peroid)
 LOOP:
@@ -381,10 +372,10 @@ LOOP:
 			log.Info("%s, [session.handleLoop] got done signal ", this.Stat())
 			break LOOP
 		case inPkg = <-this.rQ:
-			if this.listener != nil {
-				this.listener.OnMessage(this, inPkg)
-				this.incReadPkgCount()
-			}
+
+			this.listener.OnMessage(this, inPkg)
+			this.incReadPkgCount()
+
 		case outPkg = <-this.wQ:
 			if err = this.pkgHandler.Write(this, outPkg); err != nil {
 				log.Error("%s, [session.handleLoop] = error{%+v}", this.sessionToken(), err)
@@ -392,9 +383,7 @@ LOOP:
 			}
 			this.incWritePkgCount()
 		case <-ticker.C:
-			if this.listener != nil {
-				this.listener.OnCron(this)
-			}
+			this.listener.OnCron(this)
 		}
 	}
 	ticker.Stop()
@@ -418,10 +407,10 @@ LAST:
 			}
 			this.incWritePkgCount()
 		case inPkg = <-this.rQ:
-			if this.listener != nil {
-				this.listener.OnMessage(this, inPkg)
-				this.incReadPkgCount()
-			}
+
+			this.listener.OnMessage(this, inPkg)
+			this.incReadPkgCount()
+
 		default:
 			log.Info("%s, [session.handleLoop] default", this.sessionToken())
 			break LAST
@@ -452,7 +441,7 @@ func (this *Session) handlePackage() {
 		close(this.readerDone)
 		grNum = atomic.AddInt32(&(this.grNum), -1)
 		log.Info("%s, [session.handlePackage] gr will exit now, left gr num %d", this.sessionToken(), grNum)
-		if errFlag && this.listener != nil {
+		if errFlag {
 			log.Info("%s, [session.handlePackage] errFlag", this.sessionToken())
 			this.listener.OnError(this, err)
 		}
@@ -492,7 +481,7 @@ func (this *Session) handlePackage() {
 				break
 			}
 			// pkg, err = this.pkgHandler.Read(this, pktBuf)
-			pkg, err = this.pkgHandler.Read(this, pktBuf.Bytes())
+			pkg, len, err = this.pkgHandler.Read(this, pktBuf.Bytes())
 			if err != nil {
 				log.Info("%s, [session.pkgHandler.Read] = error{%+v}", this.sessionToken(), err)
 				errFlag = true
@@ -503,9 +492,44 @@ func (this *Session) handlePackage() {
 				break
 			}
 			this.rQ <- pkg
+			pktBuf.Next(len)
 		}
 		if exit {
 			break
 		}
 	}
+}
+
+func (this *Session) stop() {
+	select {
+	case <-this.done:
+		return
+	default:
+		this.once.Do(func() { close(this.done) })
+	}
+}
+
+// this function will be invoked by NewSessionCallback(if return error is not nil) or (Session)handleLoop automatically.
+// It is goroutine-safe to be invoked many times.
+func (this *Session) Close() error {
+	this.stop()
+	log.Info("%s closed now, its current gr num %d",
+		this.sessionToken(), atomic.LoadInt32(&(this.grNum)))
+	this.lock.Lock()
+	if this.attrs != nil {
+		this.attrs = nil
+		select {
+		case <-this.readerDone:
+		default:
+			close(this.readerDone)
+		}
+		close(this.wQ)
+		this.wQ = nil
+		close(this.rQ)
+		this.rQ = nil
+		this.gettyConn.close((int)((int64)(this.wait)))
+	}
+	this.lock.Unlock()
+
+	return nil
 }

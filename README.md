@@ -11,6 +11,13 @@
 ## develop history ##
 ---
 
+- 2016/09/06
+	> 1 codec.go:(Reader)Read(*Session, []byte) (interface{}, error)  -> codec.go:(Reader)Read(*Session, []byte) (interface{}, int, error) 
+	>
+    > 2 codec.go:(EventListener)OnOpen(*Session) -> codec.go:(EventListener)OnOpen(*Session) error
+	>
+    > 3 version: 0.3.04
+
 - 2016/09/05
 	> 1 add 'errFlag = true' when got err in pkgHandler.Read loop clause in session.go:(Session)handlePackage
 	>
@@ -41,7 +48,7 @@
 - 2016/09/02
 	> 1 add session.go:(gettyConn)close and session.go:(Session)dispose
 	>
-    > 2 modify return value of server.go:SessionCallback from void to err
+    > 2 modify return value of server.go:NewSessionCallback from void to err
 	>
     > 3 add client.go:Client
     >
