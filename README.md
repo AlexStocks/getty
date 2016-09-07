@@ -13,6 +13,10 @@
 
 - 2016/09/07
 	> 1 session.go:(Session)Close() -> session.go:(Session)gc() to be invoked by session.go:(Session)handleLoop
+    >
+    > 2 add panic stack message for session.go:(Session)handleLoop & session.go:(Session)handlePackage
+    >
+    > 3 version: 0.3.05
 
 - 2016/09/06
 	> 1 codec.go:(Reader)Read(*Session, []byte) (interface{}, error)  -> codec.go:(Reader)Read(*Session, []byte) (interface{}, int, error) 

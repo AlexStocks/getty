@@ -21,6 +21,7 @@ import (
 
 import (
 	log "github.com/AlexStocks/log4go"
+	"runtime"
 )
 
 const (
@@ -353,8 +354,12 @@ func (this *Session) handleLoop() {
 
 	defer func() {
 		var grNum int32
-		if err := recover(); err != nil {
-			log.Error("%s, [session.handleLoop] err=%+v\n", this.sessionToken(), err)
+
+		if r := recover(); r != nil {
+			const size = 64 << 10
+			rBuf := make([]byte, size)
+			rBuf = rBuf[:runtime.Stack(rBuf, false)]
+			log.Error("[session.handleLoop] panic session %s: err=%#v\n%s", this.sessionToken(), r, rBuf)
 		}
 
 		grNum = atomic.AddInt32(&(this.grNum), -1)
@@ -433,9 +438,14 @@ func (this *Session) handlePackage() {
 
 	defer func() {
 		var grNum int32
-		if err := recover(); err != nil {
-			log.Error("%s, [session.handlePackage] = err{%+v}", this.sessionToken(), err)
+
+		if r := recover(); r != nil {
+			const size = 64 << 10
+			rBuf := make([]byte, size)
+			rBuf = rBuf[:runtime.Stack(rBuf, false)]
+			log.Error("[session.handlePackage] panic session %s: err=%#v\n%s", this.sessionToken(), r, rBuf)
 		}
+
 		this.stop()
 		close(this.readerDone)
 		grNum = atomic.AddInt32(&(this.grNum), -1)
