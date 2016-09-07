@@ -17,6 +17,10 @@ import (
 	"unsafe"
 )
 
+import (
+	log "github.com/AlexStocks/log4go"
+)
+
 ////////////////////////////////////////////
 //  echo command
 ////////////////////////////////////////////
@@ -122,6 +126,7 @@ func (this *EchoPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
 		return 0, err
 	}
 	if this.H.Magic != echoPkgMagic {
+		log.Error("@this.H.Magic{%x}, right magic{%x}", this.H.Magic, echoPkgMagic)
 		return 0, ErrIllegalMagic
 	}
 	if buf.Len() < (int)(this.H.Len) {
