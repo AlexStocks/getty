@@ -280,13 +280,12 @@ func (this *Session) RemoveAttribute(key string) {
 }
 
 func (this *Session) sessionToken() string {
-	return fmt.Sprintf(
-		"{%s, %d, %s <-> %s}",
-		this.name,
-		this.ID,
-		this.conn.LocalAddr().String(),
-		this.conn.RemoteAddr().String(),
-	)
+	var localAddr, peerAddr string
+	if this.conn != nil {
+		localAddr = this.conn.LocalAddr().String()
+		peerAddr = this.conn.RemoteAddr().String()
+	}
+	return fmt.Sprintf("{%s, %d, %s <-> %s}", this.name, this.ID, localAddr, peerAddr)
 }
 
 // Queued write, for handler
@@ -361,7 +360,7 @@ func (this *Session) handleLoop() {
 		grNum = atomic.AddInt32(&(this.grNum), -1)
 		this.listener.OnClose(this)
 		log.Info("statistic{%s}, [session.handleLoop] goroutine exit now, left gr num %d", this.Stat(), grNum)
-		this.Close()
+		this.gc()
 	}()
 
 	ticker = time.NewTicker(this.peroid)
@@ -509,20 +508,15 @@ func (this *Session) stop() {
 	}
 }
 
-// this function will be invoked by NewSessionCallback(if return error is not nil) or (Session)handleLoop automatically.
-// It is goroutine-safe to be invoked many times.
-func (this *Session) Close() error {
-	this.stop()
-	log.Info("%s closed now, its current gr num %d",
-		this.sessionToken(), atomic.LoadInt32(&(this.grNum)))
+func (this *Session) gc() {
 	this.lock.Lock()
 	if this.attrs != nil {
 		this.attrs = nil
-		select {
-		case <-this.readerDone:
-		default:
-			close(this.readerDone)
-		}
+		// select {
+		// case <-this.readerDone:
+		// default:
+		// 	close(this.readerDone)
+		// }
 		close(this.wQ)
 		this.wQ = nil
 		close(this.rQ)
@@ -530,6 +524,12 @@ func (this *Session) Close() error {
 		this.gettyConn.close((int)((int64)(this.wait)))
 	}
 	this.lock.Unlock()
+}
 
-	return nil
+// this function will be invoked by NewSessionCallback(if return error is not nil) or (Session)handleLoop automatically.
+// It is goroutine-safe to be invoked many times.
+func (this *Session) Close() {
+	this.stop()
+	log.Info("%s closed now, its current gr num %d",
+		this.sessionToken(), atomic.LoadInt32(&(this.grNum)))
 }

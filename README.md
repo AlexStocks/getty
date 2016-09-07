@@ -11,6 +11,9 @@
 ## develop history ##
 ---
 
+- 2016/09/07
+	> 1 session.go:(Session)Close() -> session.go:(Session)clear() to be invoked by session.go:(Session)handleLoop
+
 - 2016/09/06
 	> 1 codec.go:(Reader)Read(*Session, []byte) (interface{}, error)  -> codec.go:(Reader)Read(*Session, []byte) (interface{}, int, error) 
 	>
