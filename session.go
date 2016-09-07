@@ -375,8 +375,8 @@ LOOP:
 		case <-this.done:
 			log.Info("%s, [session.handleLoop] got done signal ", this.Stat())
 			break LOOP
-		case inPkg = <-this.rQ:
 
+		case inPkg = <-this.rQ:
 			this.listener.OnMessage(this, inPkg)
 			this.incReadPkgCount()
 
@@ -386,6 +386,7 @@ LOOP:
 				break LOOP
 			}
 			this.incWritePkgCount()
+
 		case <-ticker.C:
 			this.listener.OnCron(this)
 		}
