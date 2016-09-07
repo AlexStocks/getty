@@ -36,6 +36,7 @@ type ReadWriter interface {
 // EventListener is used to process pkg that recved from remote session
 type EventListener interface {
 	// invoked when session opened
+	// If the return error is not nil, @Session will be closed.
 	OnOpen(*Session) error
 
 	// invoked when session closed
