@@ -142,5 +142,5 @@ func (this *EchoPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
 	}
 	this.B = (string)(buf.Next((int)(len)))
 
-	return (int)(this.H.Len) + echoPkgHeaderLen, nil
+	return (int)(this.H.Len) + 1 + echoPkgHeaderLen, nil
 }

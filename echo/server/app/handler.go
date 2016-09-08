@@ -25,7 +25,7 @@ var (
 )
 
 type PackageHandler interface {
-	Handle(*getty.Session, *EchoPackage)
+	Handle(*getty.Session, *EchoPackage) error
 }
 
 ////////////////////////////////////////////
@@ -34,7 +34,7 @@ type PackageHandler interface {
 
 type HeartbeatHandler struct{}
 
-func (this *HeartbeatHandler) Handle(session *getty.Session, pkg *EchoPackage) {
+func (this *HeartbeatHandler) Handle(session *getty.Session, pkg *EchoPackage) error {
 	log.Debug("get echo heartbeat package{%s}", pkg)
 
 	var rspPkg EchoPackage
@@ -42,7 +42,7 @@ func (this *HeartbeatHandler) Handle(session *getty.Session, pkg *EchoPackage) {
 	rspPkg.B = echoHeartbeatResponseString
 	rspPkg.H.Len = uint16(len(rspPkg.B))
 
-	session.WritePkg(&rspPkg)
+	return session.WritePkg(&rspPkg)
 }
 
 ////////////////////////////////////////////
@@ -51,9 +51,9 @@ func (this *HeartbeatHandler) Handle(session *getty.Session, pkg *EchoPackage) {
 
 type MessageHandler struct{}
 
-func (this *MessageHandler) Handle(session *getty.Session, pkg *EchoPackage) {
+func (this *MessageHandler) Handle(session *getty.Session, pkg *EchoPackage) error {
 	log.Debug("get echo package{%s}", pkg)
-	session.WritePkg(pkg)
+	return session.WritePkg(pkg)
 }
 
 ////////////////////////////////////////////
@@ -128,13 +128,15 @@ func (this *EchoMessageHandler) OnMessage(session *getty.Session, pkg interface{
 		log.Error("illegal command{%d}", p.H.Command)
 		return
 	}
-	handler.Handle(session, p)
-	this.rwlock.Lock()
-	if _, ok := this.sessionMap[session]; ok {
-		this.sessionMap[session].active = time.Now()
-		this.sessionMap[session].reqNum++
+	err := handler.Handle(session, p)
+	if err != nil {
+		this.rwlock.Lock()
+		if _, ok := this.sessionMap[session]; ok {
+			this.sessionMap[session].active = time.Now()
+			this.sessionMap[session].reqNum++
+		}
+		this.rwlock.Unlock()
 	}
-	this.rwlock.Unlock()
 }
 
 func (this *EchoMessageHandler) OnCron(session *getty.Session) {

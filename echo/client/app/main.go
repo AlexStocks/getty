@@ -25,6 +25,7 @@ import (
 
 import (
 	"github.com/AlexStocks/getty"
+	"github.com/AlexStocks/gocolor"
 	log "github.com/AlexStocks/log4go"
 )
 
@@ -159,6 +160,7 @@ func echo() {
 		if err != nil {
 			log.Warn("session.WritePkg(session{%s}, pkg{%s}) = error{%v}", session.Stat(), pkg, err)
 			session.Close()
+			client.removeSession(session)
 		}
 	}
 }
@@ -171,7 +173,14 @@ func test() {
 		time.Sleep(1e9)
 	}
 
+	var (
+		cost    int64
+		counter getty.CountWatch
+	)
+	counter.Start()
 	for i := 0; i < conf.EchoTimes; i++ {
 		echo()
 	}
+	cost = counter.Count()
+	gocolor.Info("after loop %d times, echo cost %d ms", conf.EchoTimes, cost/1e6)
 }

@@ -156,8 +156,10 @@ func (this *EchoClient) heartbeat(session *getty.Session) {
 	pkg.B = echoHeartbeatRequestString
 	pkg.H.Len = (uint16)(len(pkg.B))
 
-	if err := session.WritePkg(pkg); err != nil {
+	if err := session.WritePkg(&pkg); err != nil {
 		log.Warn("session.WritePkg(session{%s}, pkg{%s}) = error{%v}", session.Stat(), pkg, err)
 		session.Close()
+
+		this.removeSession(session)
 	}
 }

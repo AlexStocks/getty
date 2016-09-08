@@ -2,7 +2,6 @@
 
 LocalHost               = "127.0.0.1"
 
-# ServerHost              = "192.168.35.3"
 ServerHost              = "192.168.35.1"
 ServerPort              = 10000
 ProfilePort             = 10080
@@ -18,4 +17,4 @@ HeartbeatPeriod         = "10s"
 SessionTimeout          = "20s"
 
 # 发送echo请求次数
-EchoTimes               = 100
+EchoTimes               = 100000
