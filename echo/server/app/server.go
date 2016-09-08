@@ -134,7 +134,8 @@ func initServer() {
 	for _, port := range portList {
 		server = getty.NewServer()
 		// addr = *host + ":" + port
-		addr = conf.Host + ":" + port
+		// addr = conf.Host + ":" + port
+		addr = getty.HostAddress2(conf.Host, port)
 		err = server.Listen("tcp", addr)
 		if err != nil {
 			panic(fmt.Sprintf("server.Listen(tcp, addr:%s) = error{%#v}", addr, err))
