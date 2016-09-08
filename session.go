@@ -296,8 +296,11 @@ func (this *Session) WritePkg(pkg interface{}) error {
 	}
 
 	defer func() {
-		if err := recover(); err != nil {
-			log.Error("%s [session.WritePkg] err=%+v\n", this.sessionToken(), err)
+		if r := recover(); r != nil {
+			const size = 64 << 10
+			rBuf := make([]byte, size)
+			rBuf = rBuf[:runtime.Stack(rBuf, false)]
+			log.Error("[session.handleLoop] panic session %s: err=%#v\n%s", this.sessionToken(), r, rBuf)
 		}
 	}()
 
@@ -345,11 +348,12 @@ func (this *Session) RunEventLoop() {
 
 func (this *Session) handleLoop() {
 	var (
-		err    error
-		start  time.Time
-		ticker *time.Ticker
-		inPkg  interface{}
-		outPkg interface{}
+		err error
+		// start  time.Time
+		counter CountWatch
+		ticker  *time.Ticker
+		inPkg   interface{}
+		outPkg  interface{}
 	)
 
 	defer func() {
@@ -398,10 +402,12 @@ LOOP:
 	<-this.readerDone
 
 	// process pending pkg
-	start = time.Now()
+	// start = time.Now()
+	counter.Start()
 LAST:
 	for {
-		if time.Since(start).Nanoseconds() >= this.wait.Nanoseconds() {
+		// if time.Since(start).Nanoseconds() >= this.wait.Nanoseconds() {
+		if counter.Count() > this.wait.Nanoseconds() {
 			break
 		}
 
@@ -431,7 +437,8 @@ func (this *Session) handlePackage() {
 		ok      bool
 		exit    bool
 		errFlag bool
-		len     int
+		bufLen  int
+		pkgLen  int
 		buf     []byte
 		pktBuf  *bytes.Buffer
 		pkg     interface{}
@@ -461,39 +468,40 @@ func (this *Session) handlePackage() {
 	pktBuf = new(bytes.Buffer)
 	for {
 		if this.IsClosed() {
-			exit = true
+			break // 退出前不再读取任何packet，buf中剩余的stream bytes也不可能凑够一个package, 所以直接退出
 		}
 
-		for {
-			if exit {
-				break // 退出前不再读取任何packet，跳到下个for-loop处理完pktBuf中的stream
-			}
+		bufLen = 0
+		for { // for clause for the network timeout condition check
 			this.conn.SetReadDeadline(time.Now().Add(this.rDeadline))
-			len, err = this.read(buf)
+			bufLen, err = this.read(buf)
 			if err != nil {
 				if nerr, ok = err.(net.Error); ok && nerr.Timeout() {
 					break
 				}
 				log.Error("%s, [session.conn.read] = error{%v}", this.sessionToken(), err)
-				// 遇到网络错误的时候，handlePackage能够及时退出，但是handleLoop的第一个for-select因为要处理(Codec)OnMessage
-				// 导致程序不能及时退出，此处添加(Codec)OnError调用以及时通知getty调用者
-				// AS, 2016/08/21
+				// for (Codec)OnErr
 				errFlag = true
 				exit = true
 			}
 			break
 		}
-		if 0 < len {
-			pktBuf.Write(buf[:len])
+		if exit {
+			break
 		}
+		if 0 == bufLen {
+			continue // just continue if connection has read no more stream bytes.
+		}
+		pktBuf.Write(buf[:bufLen])
 		for {
 			if pktBuf.Len() <= 0 {
 				break
 			}
 			// pkg, err = this.pkgHandler.Read(this, pktBuf)
-			pkg, len, err = this.pkgHandler.Read(this, pktBuf.Bytes())
+			pkg, pkgLen, err = this.pkgHandler.Read(this, pktBuf.Bytes())
 			if err != nil {
 				log.Info("%s, [session.pkgHandler.Read] = error{%+v}", this.sessionToken(), err)
+				// for (Codec)OnErr
 				errFlag = true
 				exit = true
 				break
@@ -502,7 +510,7 @@ func (this *Session) handlePackage() {
 				break
 			}
 			this.rQ <- pkg
-			pktBuf.Next(len)
+			pktBuf.Next(pkgLen)
 		}
 		if exit {
 			break

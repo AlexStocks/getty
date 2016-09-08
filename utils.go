@@ -12,9 +12,26 @@ package getty
 import (
 	"net"
 	"strconv"
+	"time"
 )
 
 // HostAddress composes a ip:port style address. Its opposite function is net.SplitHostPort.
 func HostAddress(host string, port int) string {
 	return net.JoinHostPort(host, strconv.Itoa(port))
+}
+
+type CountWatch struct {
+	start time.Time
+}
+
+func (w *CountWatch) Start() {
+	w.start = time.Now()
+}
+
+func (w *CountWatch) Reset() {
+	w.start = time.Now()
+}
+
+func (w *CountWatch) Count() int64 {
+	return time.Since(w.start).Nanoseconds()
 }

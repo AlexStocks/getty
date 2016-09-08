@@ -4,12 +4,19 @@
 
 ## introdction ##
 ---
-> DESC       : a asynchronous network I/O library in golang
+> DESC       : a asynchronous network I/O library in golang. In getty there are two goroutines in one connection(session), one handle network read buffer tcp stream, the other handle logic process and write response into network write buffer. If your logic process may take a long time, you should start a new logic process goroutine by yourself in (Codec):OnMessage.
 >
 > LICENCE    : Apache License 2.0
 
 ## develop history ##
 ---
+
+- 2016/09/08
+	> 1 rewrite session.go:(Session)handlePackage() error handle logic
+    >
+    > 2 add utils.go:CountWatch
+    >
+    > 3 version: 0.3.06
 
 - 2016/09/07
 	> 1 session.go:(Session)Close() -> session.go:(Session)gc() to be invoked by session.go:(Session)handleLoop
