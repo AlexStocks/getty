@@ -50,6 +50,8 @@ type (
 
 	// Config holds supported types by the multiconfig package
 	Config struct {
+		// local
+		AppName   string `default:"echo-client"`
 		LocalHost string `default:"127.0.0.1"`
 
 		// server

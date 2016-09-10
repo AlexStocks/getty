@@ -24,6 +24,7 @@ import (
 
 import (
 	"github.com/AlexStocks/getty"
+	"github.com/AlexStocks/gocolor"
 	log "github.com/AlexStocks/log4go"
 )
 
@@ -51,6 +52,10 @@ func main() {
 	initProfiling()
 
 	initServer()
+	gocolor.Info("%s starts successfull! its version=%s, its listen ends=%s:%s\n",
+		conf.AppName, Version, conf.Host, conf.Ports)
+	log.Info("%s starts successfull! its version=%s, its listen ends=%s:%s\n",
+		conf.AppName, Version, conf.Host, conf.Ports)
 
 	initSignal()
 }

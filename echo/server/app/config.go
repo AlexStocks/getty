@@ -51,6 +51,7 @@ type (
 	// Config holds supported types by the multiconfig package
 	Config struct {
 		// local address
+		AppName     string   `default:"echo-server"`
 		Host        string   `default:"127.0.0.1"`
 		Ports       []string `default:["10000"]`
 		ProfilePort int      `default:"10086"`

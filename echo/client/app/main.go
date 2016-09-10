@@ -47,6 +47,8 @@ func main() {
 	initProfiling()
 
 	initClient()
+	gocolor.Info("%s starts successfull! its version=%s\n", conf.AppName, Version)
+	log.Info("%s starts successfull! its version=%s\n", conf.AppName, Version)
 
 	go test()
 
@@ -168,5 +170,6 @@ func test() {
 		echo()
 	}
 	cost = counter.Count()
+	log.Info("after loop %d times, echo cost %d ms", conf.EchoTimes, cost/1e6)
 	gocolor.Info("after loop %d times, echo cost %d ms", conf.EchoTimes, cost/1e6)
 }
