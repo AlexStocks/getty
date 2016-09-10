@@ -114,7 +114,7 @@ type Session struct {
 	listener   EventListener
 	once       sync.Once
 	done       chan struct{}
-	readerDone chan struct{} // end reader
+	// readerDone chan struct{} // end reader
 
 	peroid    time.Duration
 	rDeadline time.Duration
@@ -132,22 +132,22 @@ type Session struct {
 
 func NewSession(conn net.Conn) *Session {
 	return &Session{
-		name:       defaultSessionName,
-		gettyConn:  newGettyConn(conn),
-		done:       make(chan struct{}),
-		readerDone: make(chan struct{}),
-		peroid:     peroid,
-		rDeadline:  netIOTimeout,
-		wDeadline:  netIOTimeout,
-		wait:       pendingDuration,
-		attrs:      make(map[string]interface{}),
+		name:      defaultSessionName,
+		gettyConn: newGettyConn(conn),
+		done:      make(chan struct{}),
+		// readerDone: make(chan struct{}),
+		peroid:    peroid,
+		rDeadline: netIOTimeout,
+		wDeadline: netIOTimeout,
+		wait:      pendingDuration,
+		attrs:     make(map[string]interface{}),
 	}
 }
 
 func (this *Session) Reset() {
 	this.name = defaultSessionName
 	this.done = make(chan struct{})
-	this.readerDone = make(chan struct{})
+	// this.readerDone = make(chan struct{})
 	this.peroid = peroid
 	this.rDeadline = netIOTimeout
 	this.wDeadline = netIOTimeout
@@ -387,6 +387,7 @@ LOOP:
 		case outPkg = <-this.wQ:
 			if err = this.pkgHandler.Write(this, outPkg); err != nil {
 				log.Error("%s, [session.handleLoop] = error{%+v}", this.sessionToken(), err)
+				this.stop()
 				break LOOP
 			}
 			this.incWritePkgCount()
@@ -397,18 +398,20 @@ LOOP:
 	}
 	ticker.Stop()
 
-	this.stop()
 	// wait for reader goroutine closed
-	<-this.readerDone
+	// <-this.readerDone
 
 	// process pending pkg
 	// start = time.Now()
 	counter.Start()
 LAST:
 	for {
-		// if time.Since(start).Nanoseconds() >= this.wait.Nanoseconds() {
-		if counter.Count() > this.wait.Nanoseconds() {
-			break
+		if atomic.LoadInt32(&(this.grNum)) == 1 {
+			counter.Start()
+			// if time.Since(start).Nanoseconds() >= this.wait.Nanoseconds() {
+			if counter.Count() > this.wait.Nanoseconds() {
+				break
+			}
 		}
 
 		select {
@@ -418,10 +421,8 @@ LAST:
 			}
 			this.incWritePkgCount()
 		case inPkg = <-this.rQ:
-
 			this.listener.OnMessage(this, inPkg)
 			this.incReadPkgCount()
-
 		default:
 			log.Info("%s, [session.handleLoop] default", this.sessionToken())
 			break LAST
@@ -455,7 +456,7 @@ func (this *Session) handlePackage() {
 		}
 
 		this.stop()
-		close(this.readerDone)
+		// close(this.readerDone)
 		grNum = atomic.AddInt32(&(this.grNum), -1)
 		log.Info("%s, [session.handlePackage] gr will exit now, left gr num %d", this.sessionToken(), grNum)
 		if errFlag {

@@ -41,7 +41,10 @@ type CountWatch struct {
 }
 
 func (w *CountWatch) Start() {
-	w.start = time.Now()
+	var t time.Time
+	if t.Equal(w.start) {
+		w.start = time.Now()
+	}
 }
 
 func (w *CountWatch) Reset() {

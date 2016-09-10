@@ -10,7 +10,11 @@
 
 ## develop history ##
 ---
-
+- 2016/09/09
+	> 1 delete session.go:(Session)readerDone
+    >
+    > 3 version: 0.3.07
+    
 - 2016/09/08
 	> 1 rewrite session.go:(Session)handlePackage() error handle logic
     >
