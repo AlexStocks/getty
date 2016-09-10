@@ -30,21 +30,7 @@ import (
 )
 
 const (
-	tcpRBufSize        = 256 * 1024
-	tcpWBufSize        = 64 * 1024
-	pkgRQSize          = 1024
-	pkgWQSize          = 64
-	tcpReadTimeout     = 1e9
-	tcpWriteTimeout    = 5e9
-	waitTimeout        = 5e9 // 5s
-	echoSessionTimeout = 5e9
-	maxSessionNum      = 100
-	sessionName        = "echo-client"
-)
-
-const (
-	survivalTimeout = 3e9
-	pprofPath       = "/debug/pprof/"
+	pprofPath = "/debug/pprof/"
 )
 
 var (
@@ -89,20 +75,20 @@ func newSession(session *getty.Session) error {
 		panic(fmt.Sprintf("%s, session.conn{%#v} is not tcp connection\n", session.Stat(), session.Conn()))
 	}
 
-	tcpConn.SetNoDelay(true)
-	tcpConn.SetReadBuffer(tcpRBufSize)
-	tcpConn.SetWriteBuffer(tcpWBufSize)
-	tcpConn.SetKeepAlive(true)
+	tcpConn.SetNoDelay(conf.GettySessionParam.TcpNoDelay)
+	tcpConn.SetKeepAlive(conf.GettySessionParam.TcpKeepAlive)
+	tcpConn.SetReadBuffer(conf.GettySessionParam.TcpRBufSize)
+	tcpConn.SetWriteBuffer(conf.GettySessionParam.TcpWBufSize)
 
-	session.SetName(sessionName)
+	session.SetName(conf.GettySessionParam.SessionName)
 	session.SetPkgHandler(NewEchoPackageHandler())
 	session.SetEventListener(newEchoMessageHandler())
-	session.SetRQLen(pkgRQSize)
-	session.SetWQLen(pkgWQSize)
-	session.SetReadDeadline(tcpReadTimeout)
-	session.SetWriteDeadline(tcpWriteTimeout)
+	session.SetRQLen(conf.GettySessionParam.PkgRQSize)
+	session.SetWQLen(conf.GettySessionParam.PkgWQSize)
+	session.SetReadDeadline(conf.GettySessionParam.tcpReadTimeout)
+	session.SetWriteDeadline(conf.GettySessionParam.tcpWriteTimeout)
 	session.SetCronPeriod((int)(conf.heartbeatPeriod.Nanoseconds() / 1e6))
-	session.SetWaitTime(waitTimeout)
+	session.SetWaitTime(conf.GettySessionParam.waitTimeout)
 	log.Debug("client new session:%s\n", session.Stat())
 
 	return nil
@@ -132,7 +118,7 @@ func initSignal() {
 		case syscall.SIGHUP:
 		// reload()
 		default:
-			go time.AfterFunc(survivalTimeout, func() {
+			go time.AfterFunc(conf.failFastTimeout, func() {
 				log.Warn("app exit now by force...")
 				os.Exit(1)
 			})
@@ -152,7 +138,7 @@ func echo() {
 	pkg.H.Sequence = atomic.AddUint32(&reqID, 1)
 	// pkg.H.ServiceID = 0
 	pkg.H.Command = echoCmd
-	pkg.B = echoMessage
+	pkg.B = conf.EchoString
 	pkg.H.Len = (uint16)(len(pkg.B))
 
 	if session := client.selectSession(); session != nil {

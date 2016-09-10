@@ -87,7 +87,7 @@ func (this *EchoMessageHandler) OnOpen(session *getty.Session) error {
 	)
 
 	this.rwlock.RLock()
-	if maxSessionNum < len(this.sessionMap) {
+	if conf.SessionNumber < len(this.sessionMap) {
 		err = errTooManySessions
 	}
 	this.rwlock.RUnlock()

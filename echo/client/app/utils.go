@@ -51,7 +51,6 @@ const (
 
 	echoHeartbeatRequestString  = "ping"
 	echoHeartbeatResponseString = "pong"
-	echoMessage                 = "Hello, getty!"
 )
 
 var (

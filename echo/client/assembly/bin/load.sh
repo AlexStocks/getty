@@ -32,7 +32,7 @@ usage() {
 }
 
 start() {
-    APP_LOG_PATH="${PROJECT_HOME}logs/"
+    APP_LOG_PATH=${PROJECT_HOME}"logs/"
     mkdir -p ${APP_LOG_PATH}
     APP_BIN=${PROJECT_HOME}sbin/${APP_NAME}
     chmod u+x ${APP_BIN}

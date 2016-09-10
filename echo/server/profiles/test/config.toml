@@ -1,8 +1,28 @@
 # toml configure file
+# toml中key的首字母可以小写，但是对应的golang中的struct成员首字母必须大写
 
 # Host                    = "127.0.0.1"
 Host                    = "192.168.35.1"
 Ports                   = ["10000", "20000"]
 ProfilePort             = 10086
+
+# session
 # client与server之间连接的超时时间
 SessionTimeout          = "20s"
+SessionNumber           = 700
+
+# app
+FailFastTimeout         = "3s"
+
+# tcp
+[GettySessionParam]
+    TcpNoDelay          = true
+    TcpKeepAlive        = true
+    TcpRBufSize         = 262144
+    TcpWBufSize         = 524288
+    PkgRQSize           = 1024
+    PkgWQSize           = 512
+    TcpReadTimeout      = 1e9
+    TcpWriteTimeout     = 5e9
+    WaitTimeout         = 1e9 // 1s
+    SessionName         = "echo-server"
