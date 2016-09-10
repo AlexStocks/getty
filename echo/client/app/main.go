@@ -156,7 +156,7 @@ func test() {
 		if client.isAvailable() {
 			break
 		}
-		time.Sleep(1e9)
+		time.Sleep(1e6)
 	}
 
 	var (
