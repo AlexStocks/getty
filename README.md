@@ -15,7 +15,9 @@
     >
     > 2 delete session.go:(Session)handlePackage Last clause
     >
-    > 3 version: 0.3.07
+    > 3 set write timeout in session.go:(Session)WritePkg
+    >
+    > 4 version: 0.3.07
     
 - 2016/09/08
 	> 1 rewrite session.go:(Session)handlePackage() error handle logic
