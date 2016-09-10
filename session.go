@@ -175,6 +175,7 @@ func (this *Session) IsClosed() bool {
 	select {
 	case <-this.done:
 		return true
+
 	default:
 		return false
 	}
@@ -210,6 +211,7 @@ func (this *Session) SetRQLen(readQLen int) {
 
 	this.lock.Lock()
 	this.rQ = make(chan interface{}, readQLen)
+	log.Info("%s, [session.SetRQLen] rQ{len:%d, cap:%d}", this.Stat(), len(this.rQ), cap(this.rQ))
 	this.lock.Unlock()
 }
 
@@ -221,6 +223,7 @@ func (this *Session) SetWQLen(writeQLen int) {
 
 	this.lock.Lock()
 	this.wQ = make(chan interface{}, writeQLen)
+	log.Info("%s, [session.SetWQLen] wQ{len:%d, cap:%d}", this.Stat(), len(this.wQ), cap(this.wQ))
 	this.lock.Unlock()
 }
 
@@ -300,14 +303,16 @@ func (this *Session) WritePkg(pkg interface{}) error {
 			const size = 64 << 10
 			rBuf := make([]byte, size)
 			rBuf = rBuf[:runtime.Stack(rBuf, false)]
-			log.Error("[session.handleLoop] panic session %s: err=%#v\n%s", this.sessionToken(), r, rBuf)
+			log.Error("[session.WritePkg] panic session %s: err=%#v\n%s", this.sessionToken(), r, rBuf)
 		}
 	}()
 
 	select {
 	case this.wQ <- pkg:
 		break // for possible gen a new pkg
+
 	default:
+		log.Warn("%s, [session.WritePkg] wQ{len:%d, cap:%d}", this.Stat(), len(this.wQ), cap(this.wQ))
 		return ErrSessionBlocked
 	}
 
@@ -370,7 +375,7 @@ func (this *Session) handleLoop() {
 
 		grNum = atomic.AddInt32(&(this.grNum), -1)
 		this.listener.OnClose(this)
-		log.Info("statistic{%s}, [session.handleLoop] goroutine exit now, left gr num %d", this.Stat(), grNum)
+		log.Info("%s, [session.handleLoop] goroutine exit now, left gr num %d", this.Stat(), grNum)
 		this.gc()
 	}()
 
@@ -382,11 +387,15 @@ LOOP:
 		case <-this.done:
 			// 这个分支确保(Session)handleLoop gr在(Session)handlePackage gr之后退出
 			once.Do(func() { ticker.Stop() })
-			log.Info("%s, [session.handleLoop] got done signal ", this.Stat())
 			if atomic.LoadInt32(&(this.grNum)) == 1 { // make sure @(Session)handlePackage goroutine has been closed.
+				if len(this.rQ) == 0 && len(this.wQ) == 0 {
+					log.Info("%s, [session.handleLoop] got done signal. Both rQ and wQ are nil.", this.Stat())
+					break LOOP
+				}
 				counter.Start()
 				// if time.Since(start).Nanoseconds() >= this.wait.Nanoseconds() {
 				if counter.Count() > this.wait.Nanoseconds() {
+					log.Info("%s, [session.handleLoop] got done signal ", this.Stat())
 					break LOOP
 				}
 			}
@@ -516,6 +525,7 @@ func (this *Session) stop() {
 	select {
 	case <-this.done:
 		return
+
 	default:
 		this.once.Do(func() { close(this.done) })
 	}
