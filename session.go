@@ -396,6 +396,8 @@ LOOP:
 			if flag {
 				this.listener.OnMessage(this, inPkg)
 				this.incReadPkgCount()
+			} else {
+				log.Info("[session.handleLoop] drop readin package{%#v}", inPkg)
 			}
 
 		case outPkg = <-this.wQ:
@@ -407,6 +409,8 @@ LOOP:
 					// break LOOP
 				}
 				this.incWritePkgCount()
+			} else {
+				log.Info("[session.handleLoop] drop writeout package{%#v}", outPkg)
 			}
 
 		case <-ticker.C:
