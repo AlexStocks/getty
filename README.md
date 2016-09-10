@@ -13,6 +13,8 @@
 - 2016/09/09
 	> 1 delete session.go:(Session)readerDone
     >
+    > 2 delete session.go:(Session)handlePackage Last clause
+    >
     > 3 version: 0.3.07
     
 - 2016/09/08
