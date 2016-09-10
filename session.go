@@ -312,7 +312,7 @@ func (this *Session) WritePkg(pkg interface{}) error {
 		break // for possible gen a new pkg
 
 	// default:
-	case time.After(this.wDeadline):
+	case <-time.After(this.wDeadline):
 		log.Warn("%s, [session.WritePkg] wQ{len:%d, cap:%d}", this.Stat(), len(this.wQ), cap(this.wQ))
 		return ErrSessionBlocked
 	}
