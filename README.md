@@ -11,11 +11,10 @@
 ## develop history ##
 ---
 
-- 2016/09/09
+- 2016/09/12
 	> 1 add defeat self connection logic in client.go & server.go
     >
     > 2 version: 0.3.08
-
 
 - 2016/09/09
 	> 1 delete session.go:(Session)readerDone
