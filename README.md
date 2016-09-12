@@ -4,7 +4,7 @@
 
 ## introdction ##
 ---
-> DESC       : a asynchronous network I/O library in golang. In getty there are two goroutines in one connection(session), one handle network read buffer tcp stream, the other handle logic process and write response into network write buffer. If your logic process may take a long time, you should start a new logic process goroutine by yourself in (Codec):OnMessage.
+> DESC       : a asynchronous network I/O library in golang. In getty there are two goroutines in one connection(session), one handle network read buffer tcp stream, the other handle logic process and write response into network write buffer. If your logic process may take a long time, you should start a new logic process goroutine by yourself in (Codec):OnMessage. Getty is based on "ngo" whose author is sanbit(https://github.com/sanbit). I just rewrite it to fix bugs and make it more readable and efficient. All glory belongs to sanbit.
 >
 > LICENCE    : Apache License 2.0
 
@@ -18,7 +18,7 @@
     > 3 set write timeout in session.go:(Session)WritePkg
     >
     > 4 version: 0.3.07
-    
+
 - 2016/09/08
 	> 1 rewrite session.go:(Session)handlePackage() error handle logic
     >
@@ -34,7 +34,7 @@
     > 3 version: 0.3.05
 
 - 2016/09/06
-	> 1 codec.go:(Reader)Read(*Session, []byte) (interface{}, error)  -> codec.go:(Reader)Read(*Session, []byte) (interface{}, int, error) 
+	> 1 codec.go:(Reader)Read(*Session, []byte) (interface{}, error)  -> codec.go:(Reader)Read(*Session, []byte) (interface{}, int, error)
 	>
     > 2 codec.go:(EventListener)OnOpen(*Session) -> codec.go:(EventListener)OnOpen(*Session) error
 	>
@@ -51,7 +51,7 @@
 	> 1 add server.go:(Server)Listen
 	>
     > 2 version: 0.3.02
-    
+
 - 2016/09/03
 	> 1 modify return value of session.go:(Session)Close from void to error
 	>
@@ -66,7 +66,7 @@
     > 6 add elastic sleep time machanism in client.go:(Client)RunEventLoop
     >
     > 7 version: 0.3.01
-    
+
 - 2016/09/02
 	> 1 add session.go:(gettyConn)close and session.go:(Session)dispose
 	>
@@ -88,7 +88,7 @@
     > 5 use err instead of nerr in session.go:(Session)handlePackage:defer:OnError
 	>
    	> 6 version: 0.2.07
-    
+
 - 2016/08/25
 	> 1 move close done to once clause in server.go:(Server)stop
 	>
