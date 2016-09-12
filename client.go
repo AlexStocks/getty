@@ -73,6 +73,9 @@ func (this *Client) dial() net.Conn {
 			return nil
 		}
 		conn, err = net.DialTimeout("tcp", this.addr, connectTimeout)
+		if err == nil && conn.LocalAddr().String() == conn.RemoteAddr().String() {
+			err = errSelfConnect
+		}
 		if err == nil {
 			return conn
 		}

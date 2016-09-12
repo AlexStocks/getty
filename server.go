@@ -20,6 +20,10 @@ import (
 	log "github.com/AlexStocks/log4go"
 )
 
+var (
+	errSelfConnect = errors.New("connect self!")
+)
+
 type Server struct {
 	// net
 	addr     string
@@ -107,7 +111,7 @@ func (this *Server) RunEventloop(newSession NewSessionCallback) {
 					}
 					continue
 				}
-				log.Info("Server{%s}.Accept() = err {%#v}", this.addr, err)
+				log.Warn("Server{%s}.Accept() = err {%#v}", this.addr, err)
 				continue
 			}
 			delay = 0
@@ -124,6 +128,9 @@ func (this *Server) Accept(newSession NewSessionCallback) (*Session, error) {
 	conn, err := this.listener.Accept()
 	if err != nil {
 		return nil, err
+	}
+	if conn.RemoteAddr().String() == conn.LocalAddr().String() {
+		return nil, errSelfConnect
 	}
 
 	session := NewSession(conn)
