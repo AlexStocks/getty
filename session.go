@@ -354,8 +354,9 @@ func (this *Session) RunEventLoop() {
 
 func (this *Session) handleLoop() {
 	var (
-		err  error
-		flag bool
+		err    error
+		flag   bool
+		rQFlag bool
 		// start  time.Time
 		counter CountWatch
 		ticker  *time.Ticker
@@ -401,13 +402,15 @@ LOOP:
 				}
 			}
 
-		case inPkg = <-this.rQ:
+		case inPkg, rQFlag = <-this.rQ:
 			// 这个条件分支通过(Session)rQ排空确保(Session)handlePackage gr不会阻塞在(Session)rQ上
-			if flag {
-				this.listener.OnMessage(this, inPkg)
-				this.incReadPkgCount()
-			} else {
-				log.Info("[session.handleLoop] drop readin package{%#v}", inPkg)
+			if rQFlag {
+				if flag {
+					this.listener.OnMessage(this, inPkg)
+					this.incReadPkgCount()
+				} else {
+					log.Info("[session.handleLoop] drop readin package{%#v}", inPkg)
+				}
 			}
 
 		case outPkg = <-this.wQ:
@@ -459,11 +462,12 @@ func (this *Session) handlePackage() {
 		}
 
 		this.stop()
+		close(this.rQ)
 		// close(this.readerDone)
 		grNum = atomic.AddInt32(&(this.grNum), -1)
 		log.Info("%s, [session.handlePackage] gr will exit now, left gr num %d", this.sessionToken(), grNum)
 		if errFlag {
-			log.Info("%s, [session.handlePackage] errFlag", this.sessionToken())
+			log.Error("%s, [session.handlePackage] error{%#v}", this.sessionToken(), err)
 			this.listener.OnError(this, err)
 		}
 	}()
@@ -524,7 +528,7 @@ func (this *Session) handlePackage() {
 
 func (this *Session) stop() {
 	select {
-	case <-this.done:
+	case <-this.done: // this.done is a blocked channel. if it has not been closed, the default branch will be invoked.
 		return
 
 	default:
@@ -543,7 +547,7 @@ func (this *Session) gc() {
 		// }
 		close(this.wQ)
 		this.wQ = nil
-		close(this.rQ)
+		// close(this.rQ)
 		this.rQ = nil
 		this.gettyConn.close((int)((int64)(this.wait)))
 	}
@@ -554,6 +558,5 @@ func (this *Session) gc() {
 // It is goroutine-safe to be invoked many times.
 func (this *Session) Close() {
 	this.stop()
-	log.Info("%s closed now, its current gr num %d",
-		this.sessionToken(), atomic.LoadInt32(&(this.grNum)))
+	log.Info("%s closed now, its current gr num %d", this.sessionToken(), atomic.LoadInt32(&(this.grNum)))
 }

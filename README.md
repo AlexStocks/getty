@@ -11,6 +11,11 @@
 ## develop history ##
 ---
 
+- 2016/09/18
+	> 1 close Session{rQ} in session.go:(Session)handlePackage
+    >
+    > 2 version: 0.3.09
+
 - 2016/09/12
 	> 1 add defeat self connection logic in client.go & server.go
     >
