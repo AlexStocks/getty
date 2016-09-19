@@ -462,7 +462,6 @@ func (this *Session) handlePackage() {
 		}
 
 		this.stop()
-		close(this.rQ)
 		// close(this.readerDone)
 		grNum = atomic.AddInt32(&(this.grNum), -1)
 		log.Info("%s, [session.handlePackage] gr will exit now, left gr num %d", this.sessionToken(), grNum)
@@ -547,7 +546,7 @@ func (this *Session) gc() {
 		// }
 		close(this.wQ)
 		this.wQ = nil
-		// close(this.rQ)
+		close(this.rQ)
 		this.rQ = nil
 		this.gettyConn.close((int)((int64)(this.wait)))
 	}
