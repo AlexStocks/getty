@@ -20,8 +20,9 @@ import (
 )
 
 import (
-	log "github.com/AlexStocks/log4go"
 	"runtime"
+
+	log "github.com/AlexStocks/log4go"
 )
 
 const (
@@ -105,6 +106,8 @@ var (
 	ErrSessionBlocked = errors.New("Session full blocked")
 )
 
+type empty struct{}
+
 // getty base session
 type Session struct {
 	name string
@@ -113,7 +116,7 @@ type Session struct {
 	pkgHandler ReadWriter
 	listener   EventListener
 	once       sync.Once
-	done       chan struct{}
+	done       chan empty
 	// readerDone chan struct{} // end reader
 
 	peroid    time.Duration
@@ -134,7 +137,7 @@ func NewSession(conn net.Conn) *Session {
 	return &Session{
 		name:      defaultSessionName,
 		gettyConn: newGettyConn(conn),
-		done:      make(chan struct{}),
+		done:      make(chan empty),
 		// readerDone: make(chan struct{}),
 		peroid:    peroid,
 		rDeadline: netIOTimeout,
@@ -146,7 +149,7 @@ func NewSession(conn net.Conn) *Session {
 
 func (this *Session) Reset() {
 	this.name = defaultSessionName
-	this.done = make(chan struct{})
+	this.done = make(chan empty)
 	// this.readerDone = make(chan struct{})
 	this.peroid = peroid
 	this.rDeadline = netIOTimeout

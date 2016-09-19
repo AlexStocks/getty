@@ -30,12 +30,12 @@ type Server struct {
 	listener net.Listener
 
 	sync.Once
-	done chan struct{}
+	done chan empty
 	wg   sync.WaitGroup
 }
 
 func NewServer() *Server {
-	return &Server{done: make(chan struct{})}
+	return &Server{done: make(chan empty)}
 }
 
 func (this *Server) stop() {

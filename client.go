@@ -25,8 +25,6 @@ const (
 	maxTimes        = 10
 )
 
-type empty struct{}
-
 type Client struct {
 	// net
 	sync.Mutex
@@ -37,7 +35,7 @@ type Client struct {
 	sessionMap map[*Session]empty
 
 	sync.Once
-	done chan struct{}
+	done chan empty
 	wg   sync.WaitGroup
 }
 
@@ -58,7 +56,7 @@ func NewClient(connNum int, connInterval time.Duration, serverAddr string) *Clie
 		interval:   connInterval,
 		addr:       serverAddr,
 		sessionMap: make(map[*Session]empty, connNum),
-		done:       make(chan struct{}),
+		done:       make(chan empty),
 	}
 }
 

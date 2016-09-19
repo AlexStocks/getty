@@ -11,6 +11,11 @@
 ## develop history ##
 ---
 
+- 2016/09/19
+	> 1 move empty to empty from client.go to session.go
+    >
+    > 2 version: 0.3.09
+
 - 2016/09/12
 	> 1 add defeat self connection logic in client.go & server.go
     >
