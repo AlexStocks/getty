@@ -43,7 +43,6 @@ var (
 
 func main() {
 	initConf()
-	defer log.Close()
 
 	initProfiling()
 
@@ -123,13 +122,15 @@ func initSignal() {
 		// reload()
 		default:
 			go time.AfterFunc(conf.failFastTimeout, func() {
-				log.Warn("app exit now by force...")
-				os.Exit(1)
+				// log.Warn("app exit now by force...")
+				// os.Exit(1)
+				log.Exit("app exit now by force...")
 			})
 
 			// 要么survialTimeout时间内执行完毕下面的逻辑然后程序退出，要么执行上面的超时函数程序强行退出
 			uninitClient()
-			fmt.Println("app exit now...")
+			// fmt.Println("app exit now...")
+			log.Exit("app exit now...")
 			return
 		}
 	}
