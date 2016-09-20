@@ -43,6 +43,7 @@ var (
 
 func main() {
 	initConf()
+	defer log.Close()
 
 	initProfiling()
 
