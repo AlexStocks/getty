@@ -9,6 +9,9 @@
 
 package getty
 
-var (
-	Version = "0.3.10"
+const (
+	Version     = "0.3.10"
+	GETTY_MAJOR = 0
+	GETTY_MINOR = 3
+	GETTY_BUILD = 10
 )
