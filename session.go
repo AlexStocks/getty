@@ -116,8 +116,8 @@ type Session struct {
 	pkgHandler ReadWriter
 	listener   EventListener
 	once       sync.Once
+	rErr       error
 	done       chan empty
-	// readerDone chan struct{} // end reader
 
 	peroid    time.Duration
 	rDeadline time.Duration
@@ -138,7 +138,6 @@ func NewSession(conn net.Conn) *Session {
 		name:      defaultSessionName,
 		gettyConn: newGettyConn(conn),
 		done:      make(chan empty),
-		// readerDone: make(chan struct{}),
 		peroid:    peroid,
 		rDeadline: netIOTimeout,
 		wDeadline: netIOTimeout,
@@ -149,8 +148,9 @@ func NewSession(conn net.Conn) *Session {
 
 func (this *Session) Reset() {
 	this.name = defaultSessionName
+	this.once = sync.Once{}
+	this.rErr = nil
 	this.done = make(chan empty)
-	// this.readerDone = make(chan struct{})
 	this.peroid = peroid
 	this.rDeadline = netIOTimeout
 	this.wDeadline = netIOTimeout
@@ -315,7 +315,8 @@ func (this *Session) WritePkg(pkg interface{}) error {
 		break // for possible gen a new pkg
 
 	// default:
-	case <-time.After(this.wDeadline):
+	// case <-time.After(this.wDeadline):
+	case <-time.After(netIOTimeout):
 		log.Warn("%s, [session.WritePkg] wQ{len:%d, cap:%d}", this.Stat(), len(this.wQ), cap(this.wQ))
 		return ErrSessionBlocked
 	}
@@ -325,7 +326,8 @@ func (this *Session) WritePkg(pkg interface{}) error {
 
 // for codecs
 func (this *Session) WriteBytes(pkg []byte) error {
-	this.conn.SetWriteDeadline(time.Now().Add(this.rDeadline))
+	// this.conn.SetWriteDeadline(time.Now().Add(this.rDeadline))
+	this.conn.SetWriteDeadline(time.Now().Add(this.wDeadline))
 	_, err := this.write(pkg)
 	return err
 }
@@ -357,9 +359,8 @@ func (this *Session) RunEventLoop() {
 
 func (this *Session) handleLoop() {
 	var (
-		err    error
-		flag   bool
-		rQFlag bool
+		err  error
+		flag bool
 		// start  time.Time
 		counter CountWatch
 		ticker  *time.Ticker
@@ -379,7 +380,12 @@ func (this *Session) handleLoop() {
 		}
 
 		grNum = atomic.AddInt32(&(this.grNum), -1)
-		this.listener.OnClose(this)
+		if this.rErr != nil {
+			log.Error("%s, [session.handlePackage] error{%#v}", this.sessionToken(), this.rErr)
+			this.listener.OnError(this, this.rErr)
+		} else {
+			this.listener.OnClose(this)
+		}
 		log.Info("%s, [session.handleLoop] goroutine exit now, left gr num %d", this.Stat(), grNum)
 		this.gc()
 	}()
@@ -405,15 +411,13 @@ LOOP:
 				}
 			}
 
-		case inPkg, rQFlag = <-this.rQ:
+		case inPkg = <-this.rQ:
 			// 这个条件分支通过(Session)rQ排空确保(Session)handlePackage gr不会阻塞在(Session)rQ上
-			if rQFlag {
-				if flag {
-					this.listener.OnMessage(this, inPkg)
-					this.incReadPkgCount()
-				} else {
-					log.Info("[session.handleLoop] drop readin package{%#v}", inPkg)
-				}
+			if flag {
+				this.listener.OnMessage(this, inPkg)
+				this.incReadPkgCount()
+			} else {
+				log.Info("[session.handleLoop] drop readin package{%#v}", inPkg)
 			}
 
 		case outPkg = <-this.wQ:
@@ -442,16 +446,16 @@ LOOP:
 // get package from tcp stream(packet)
 func (this *Session) handlePackage() {
 	var (
-		err     error
-		nerr    net.Error
-		ok      bool
-		exit    bool
-		errFlag bool
-		bufLen  int
-		pkgLen  int
-		buf     []byte
-		pktBuf  *bytes.Buffer
-		pkg     interface{}
+		err  error
+		nerr net.Error
+		ok   bool
+		exit bool
+		// errFlag bool
+		bufLen int
+		pkgLen int
+		buf    []byte
+		pktBuf *bytes.Buffer
+		pkg    interface{}
 	)
 
 	defer func() {
@@ -465,13 +469,12 @@ func (this *Session) handlePackage() {
 		}
 
 		this.stop()
-		// close(this.readerDone)
 		grNum = atomic.AddInt32(&(this.grNum), -1)
 		log.Info("%s, [session.handlePackage] gr will exit now, left gr num %d", this.sessionToken(), grNum)
-		if errFlag {
-			log.Error("%s, [session.handlePackage] error{%#v}", this.sessionToken(), err)
-			this.listener.OnError(this, err)
-		}
+		// if errFlag {
+		// 	log.Error("%s, [session.handlePackage] error{%#v}", this.sessionToken(), err)
+		//	this.listener.OnError(this, err)
+		// }
 	}()
 
 	buf = make([]byte, maxReadBufLen)
@@ -491,7 +494,8 @@ func (this *Session) handlePackage() {
 				}
 				log.Error("%s, [session.conn.read] = error{%v}", this.sessionToken(), err)
 				// for (Codec)OnErr
-				errFlag = true
+				// errFlag = true
+				this.rErr = err
 				exit = true
 			}
 			break
@@ -512,7 +516,8 @@ func (this *Session) handlePackage() {
 			if err != nil {
 				log.Info("%s, [session.pkgHandler.Read] = error{%+v}", this.sessionToken(), err)
 				// for (Codec)OnErr
-				errFlag = true
+				// errFlag = true
+				this.rErr = err
 				exit = true
 				break
 			}
@@ -542,11 +547,6 @@ func (this *Session) gc() {
 	this.lock.Lock()
 	if this.attrs != nil {
 		this.attrs = nil
-		// select {
-		// case <-this.readerDone:
-		// default:
-		// 	close(this.readerDone)
-		// }
 		close(this.wQ)
 		this.wQ = nil
 		close(this.rQ)
@@ -560,5 +560,6 @@ func (this *Session) gc() {
 // It is goroutine-safe to be invoked many times.
 func (this *Session) Close() {
 	this.stop()
+	this.gettyConn.close((int)((int64)(this.wait)))
 	log.Info("%s closed now, its current gr num %d", this.sessionToken(), atomic.LoadInt32(&(this.grNum)))
 }

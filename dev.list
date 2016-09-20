@@ -11,8 +11,13 @@
 ## develop history ##
 ---
 
+- 2016/09/20
+	> 1 just invoke OnError when session got error
+    >
+    > 2 version: 0.3.10
+
 - 2016/09/19
-	> 1 move empty to empty from client.go to session.go
+	> 1 move empty to from client.go to session.go
     >
     > 2 version: 0.3.09
 
