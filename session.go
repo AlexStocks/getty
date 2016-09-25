@@ -14,14 +14,13 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
 )
 
 import (
-	"runtime"
-
 	log "github.com/AlexStocks/log4go"
 )
 
@@ -327,7 +326,6 @@ func (this *Session) WritePkg(pkg interface{}) error {
 
 // for codecs
 func (this *Session) WriteBytes(pkg []byte) error {
-	// this.conn.SetWriteDeadline(time.Now().Add(this.rDeadline))
 	this.conn.SetWriteDeadline(time.Now().Add(this.wDeadline))
 	_, err := this.write(pkg)
 	return err
