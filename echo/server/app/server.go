@@ -25,6 +25,7 @@ import (
 import (
 	"github.com/AlexStocks/getty"
 	"github.com/AlexStocks/gocolor"
+	"github.com/AlexStocks/goext/net"
 	log "github.com/AlexStocks/log4go"
 )
 
@@ -66,7 +67,7 @@ func initProfiling() {
 	)
 
 	// addr = *host + ":" + "10000"
-	addr = getty.HostAddress(conf.Host, conf.ProfilePort)
+	addr = gxnet.HostAddress(conf.Host, conf.ProfilePort)
 	log.Info("App Profiling startup on address{%v}", addr+pprofPath)
 	go func() {
 		log.Info(http.ListenAndServe(addr, nil))
@@ -127,7 +128,7 @@ func initServer() {
 		server = getty.NewServer()
 		// addr = *host + ":" + port
 		// addr = conf.Host + ":" + port
-		addr = getty.HostAddress2(conf.Host, port)
+		addr = gxnet.HostAddress2(conf.Host, port)
 		err = server.Listen("tcp", addr)
 		if err != nil {
 			panic(fmt.Sprintf("server.Listen(tcp, addr:%s) = error{%#v}", addr, err))

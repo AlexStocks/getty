@@ -26,6 +26,8 @@ import (
 import (
 	"github.com/AlexStocks/getty"
 	"github.com/AlexStocks/gocolor"
+	"github.com/AlexStocks/goext/net"
+	"github.com/AlexStocks/goext/time"
 	log "github.com/AlexStocks/log4go"
 )
 
@@ -60,7 +62,7 @@ func initProfiling() {
 		addr string
 	)
 
-	addr = getty.HostAddress(conf.LocalHost, conf.ProfilePort)
+	addr = gxnet.HostAddress(conf.LocalHost, conf.ProfilePort)
 	log.Info("App Profiling startup on address{%v}", addr+pprofPath)
 	go func() {
 		log.Info(http.ListenAndServe(addr, nil))
@@ -100,7 +102,7 @@ func initClient() {
 	client.gettyClient = getty.NewClient(
 		(int)(conf.ConnectionNum),
 		conf.connectInterval,
-		getty.HostAddress(conf.ServerHost, conf.ServerPort),
+		gxnet.HostAddress(conf.ServerHost, conf.ServerPort),
 	)
 	client.gettyClient.RunEventLoop(newSession)
 }
@@ -166,7 +168,7 @@ func test() {
 
 	var (
 		cost    int64
-		counter getty.CountWatch
+		counter gxtime.CountWatch
 	)
 	counter.Start()
 	for i := 0; i < conf.EchoTimes; i++ {
