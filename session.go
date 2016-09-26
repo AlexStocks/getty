@@ -44,6 +44,7 @@ var (
 
 var (
 	connID uint32
+	wheel  *gxtime.Wheel = gxtime.NewWheel(gxtime.TimeSecondDuration(1), 3600) // wheel longest span is 1 hour
 )
 
 type gettyConn struct {
@@ -317,7 +318,8 @@ func (this *Session) WritePkg(pkg interface{}) error {
 
 	// default:
 	// case <-time.After(this.wDeadline):
-	case <-time.After(netIOTimeout):
+	// case <-time.After(netIOTimeout):
+	case <-wheel.After(this.wDeadline):
 		log.Warn("%s, [session.WritePkg] wQ{len:%d, cap:%d}", this.Stat(), len(this.wQ), cap(this.wQ))
 		return ErrSessionBlocked
 	}
@@ -363,10 +365,10 @@ func (this *Session) handleLoop() {
 		flag bool
 		// start  time.Time
 		counter gxtime.CountWatch
-		ticker  *time.Ticker
-		inPkg   interface{}
-		outPkg  interface{}
-		once    sync.Once
+		// ticker  *time.Ticker // use wheel instead, 2016/09/26
+		inPkg  interface{}
+		outPkg interface{}
+		// once   sync.Once // use wheel instead, 2016/09/26
 	)
 
 	defer func() {
@@ -388,13 +390,13 @@ func (this *Session) handleLoop() {
 	}()
 
 	flag = true // do not do any read/write/cron operation while got write error
-	ticker = time.NewTicker(this.period)
+	// ticker = time.NewTicker(this.period) // use wheel instead, 2016/09/26
 LOOP:
 	for {
 		select {
 		case <-this.done:
 			// 这个分支确保(Session)handleLoop gr在(Session)handlePackage gr之后退出
-			once.Do(func() { ticker.Stop() })
+			// once.Do(func() { ticker.Stop() }) // use wheel instead, 2016/09/26
 			if atomic.LoadInt32(&(this.grNum)) == 1 { // make sure @(Session)handlePackage goroutine has been closed.
 				if len(this.rQ) == 0 && len(this.wQ) == 0 {
 					log.Info("%s, [session.handleLoop] got done signal. Both rQ and wQ are nil.", this.Stat())
@@ -430,14 +432,14 @@ LOOP:
 				log.Info("[session.handleLoop] drop writeout package{%#v}", outPkg)
 			}
 
-		case <-ticker.C:
+		// case <-ticker.C: // use wheel instead, 2016/09/26
+		case <-wheel.After(this.period):
 			if flag {
 				this.listener.OnCron(this)
 			}
 		}
 	}
-	once.Do(func() { ticker.Stop() })
-	// ticker.Stop()
+	// once.Do(func() { ticker.Stop() }) // use wheel instead, 2016/09/26
 }
 
 // get package from tcp stream(packet)

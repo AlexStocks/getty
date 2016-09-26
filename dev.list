@@ -13,6 +13,10 @@
 
 - 2016/09/26
 	> 1 move utils.go's function to github.com/AlexStocks/goext and delete it
+	>
+	> 2 use goext/time Wheel
+	>
+	> 3 version: 0.3.11
 
 - 2016/09/20
 	> 1 just invoke OnError when session got error
