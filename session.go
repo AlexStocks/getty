@@ -21,6 +21,7 @@ import (
 )
 
 import (
+	"github.com/AlexStocks/goext/time"
 	log "github.com/AlexStocks/log4go"
 )
 
@@ -361,7 +362,7 @@ func (this *Session) handleLoop() {
 		err  error
 		flag bool
 		// start  time.Time
-		counter CountWatch
+		counter gxtime.CountWatch
 		ticker  *time.Ticker
 		inPkg   interface{}
 		outPkg  interface{}

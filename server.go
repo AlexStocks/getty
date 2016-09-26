@@ -17,6 +17,7 @@ import (
 )
 
 import (
+	"github.com/AlexStocks/goext/net"
 	log "github.com/AlexStocks/log4go"
 )
 
@@ -67,7 +68,7 @@ func (this *Server) Bind(network string, host string, port int) error {
 		return errors.New("port<=0 illegal")
 	}
 
-	return this.Listen(network, HostAddress(host, port))
+	return this.Listen(network, gxnet.HostAddress(host, port))
 }
 
 func (this *Server) Listen(network string, addr string) error {
