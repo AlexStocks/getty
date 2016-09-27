@@ -54,10 +54,29 @@ type gettyConn struct {
 	writeCount    uint32 // write() count
 	readPkgCount  uint32 // send pkg count
 	writePkgCount uint32 // recv pkg count
+	local         string // local address
+	peer          string // peer address
 }
 
 func newGettyConn(conn net.Conn) gettyConn {
-	return gettyConn{conn: conn, ID: atomic.AddUint32(&connID, 1)}
+	if conn != nil {
+		panic("newGettyConn(conn):@conn is nil")
+	}
+	var localAddr, peerAddr string
+	//  check conn.LocalAddr or conn.RemoetAddr is nil to defeat panic on 2016/09/27
+	if conn.LocalAddr() != nil {
+		localAddr = conn.LocalAddr().String()
+	}
+	if conn.RemoteAddr() != nil {
+		peerAddr = conn.RemoteAddr().String()
+	}
+
+	return gettyConn{
+		conn:  conn,
+		ID:    atomic.AddUint32(&connID, 1),
+		local: localAddr,
+		peer:  peerAddr,
+	}
 }
 
 func (this *gettyConn) read(p []byte) (int, error) {
@@ -289,12 +308,7 @@ func (this *Session) RemoveAttribute(key string) {
 }
 
 func (this *Session) sessionToken() string {
-	var localAddr, peerAddr string
-	if this.conn != nil {
-		localAddr = this.conn.LocalAddr().String()
-		peerAddr = this.conn.RemoteAddr().String()
-	}
-	return fmt.Sprintf("{%s, %d, %s <-> %s}", this.name, this.ID, localAddr, peerAddr)
+	return fmt.Sprintf("{%s:%d:%s<->%s}", this.name, this.ID, this.local, this.peer)
 }
 
 // Queued write, for handler

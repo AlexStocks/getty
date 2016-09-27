@@ -71,6 +71,9 @@ func (this *Server) Bind(network string, host string, port int) error {
 	return this.Listen(network, gxnet.HostAddress(host, port))
 }
 
+// net.ipv4.tcp_max_syn_backlog
+// net.ipv4.tcp_timestamps
+// net.ipv4.tcp_tw_recycle
 func (this *Server) Listen(network string, addr string) error {
 	listener, err := net.Listen(network, addr)
 	if err != nil {
