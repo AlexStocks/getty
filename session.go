@@ -59,7 +59,7 @@ type gettyConn struct {
 }
 
 func newGettyConn(conn net.Conn) gettyConn {
-	if conn != nil {
+	if conn == nil {
 		panic("newGettyConn(conn):@conn is nil")
 	}
 	var localAddr, peerAddr string
