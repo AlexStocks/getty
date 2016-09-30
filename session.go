@@ -44,7 +44,7 @@ var (
 
 var (
 	connID uint32
-	wheel  = gxtime.NewWheel(gxtime.TimeMillisecondDuration(100), 6000) // wheel longest span is 10minute
+	wheel  = gxtime.NewWheel(gxtime.TimeMillisecondDuration(100), 1200) // wheel longest span is 2 minute
 )
 
 type gettyConn struct {
