@@ -44,7 +44,7 @@ var (
 
 var (
 	connID uint32
-	wheel  *gxtime.Wheel = gxtime.NewWheel(gxtime.TimeSecondDuration(1), 3600) // wheel longest span is 1 hour
+	wheel  = gxtime.NewWheel(gxtime.TimeMillisecondDuration(100), 6000) // wheel longest span is 10minute
 )
 
 type gettyConn struct {
@@ -326,6 +326,10 @@ func (this *Session) WritePkg(pkg interface{}) error {
 		}
 	}()
 
+	var d = this.wDeadline
+	if d > netIOTimeout {
+		d = netIOTimeout
+	}
 	select {
 	case this.wQ <- pkg:
 		break // for possible gen a new pkg
@@ -333,7 +337,7 @@ func (this *Session) WritePkg(pkg interface{}) error {
 	// default:
 	// case <-time.After(this.wDeadline):
 	// case <-time.After(netIOTimeout):
-	case <-wheel.After(this.wDeadline):
+	case <-wheel.After(d):
 		log.Warn("%s, [session.WritePkg] wQ{len:%d, cap:%d}", this.Stat(), len(this.wQ), cap(this.wQ))
 		return ErrSessionBlocked
 	}

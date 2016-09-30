@@ -11,6 +11,13 @@
 ## develop history ##
 ---
 
+- 2016/09/30
+    > 1 modify wheel time interval from 1 second to 100ms.
+    >
+    > 2 modify session.go:(Session)WritePkg timeout
+    >
+    > 2 version: 0.3.13
+
 - 2016/09/27
     > 1 fix bug: getty panic when conn.RemoteAddr() is nil in session.go:(Session)sessionToken()
     >
