@@ -347,7 +347,7 @@ func (this *Session) WritePkg(pkg interface{}) error {
 
 // for codecs
 func (this *Session) WriteBytes(pkg []byte) error {
-	this.conn.SetWriteDeadline(time.Now().Add(this.wDeadline))
+	// this.conn.SetWriteDeadline(time.Now().Add(this.wDeadline))
 	_, err := this.write(pkg)
 	return err
 }
@@ -504,7 +504,7 @@ func (this *Session) handlePackage() {
 
 		bufLen = 0
 		for { // for clause for the network timeout condition check
-			this.conn.SetReadDeadline(time.Now().Add(this.rDeadline))
+			// this.conn.SetReadDeadline(time.Now().Add(this.rDeadline))
 			bufLen, err = this.read(buf)
 			if err != nil {
 				if nerr, ok = err.(net.Error); ok && nerr.Timeout() {
