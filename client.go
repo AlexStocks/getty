@@ -11,12 +11,14 @@ package getty
 
 import (
 	"net"
+	"strings"
 	"sync"
 	"time"
 )
 
 import (
 	log "github.com/AlexStocks/log4go"
+	"github.com/gorilla/websocket"
 )
 
 const (
@@ -24,6 +26,10 @@ const (
 	connectTimeout  = 5e9
 	maxTimes        = 10
 )
+
+/////////////////////////////////////////
+// getty tcp client
+/////////////////////////////////////////
 
 type Client struct {
 	// net
@@ -60,7 +66,7 @@ func NewClient(connNum int, connInterval time.Duration, serverAddr string) *Clie
 	}
 }
 
-func (this *Client) dial() net.Conn {
+func (this *Client) dialTCP() *Session {
 	var (
 		err  error
 		conn net.Conn
@@ -75,13 +81,46 @@ func (this *Client) dial() net.Conn {
 			err = errSelfConnect
 		}
 		if err == nil {
-			return conn
+			return NewTCPSession(conn)
 		}
 
-		log.Info("net.Connect(addr:%s, timeout:%v) = error{%v}", this.addr, err)
+		log.Info("net.DialTimeout(addr:%s, timeout:%v) = error{%v}", this.addr, err)
 		time.Sleep(this.interval)
 		continue
 	}
+}
+
+func (this *Client) dialWS() *Session {
+	var (
+		err    error
+		conn   websocket.Conn
+		dialer websocket.Dialer
+	)
+
+	for {
+		if this.IsClosed() {
+			return nil
+		}
+		conn, _, err = dialer.Dial(this.addr, nil)
+		if err == nil && conn.LocalAddr().String() == conn.RemoteAddr().String() {
+			err = errSelfConnect
+		}
+		if err == nil {
+			return NewWSSession(conn)
+		}
+
+		log.Info("websocket.dialer.Dial(addr:%s) = error{%v}", this.addr, err)
+		time.Sleep(this.interval)
+		continue
+	}
+}
+
+func (this *Client) dial() *Session {
+	if strings.HasPrefix(this.addr, "ws") {
+		this.dialWS()
+	}
+
+	return this.dialTCP()
 }
 
 func (this *Client) sessionNum() int {
@@ -102,17 +141,15 @@ func (this *Client) sessionNum() int {
 func (this *Client) connect() {
 	var (
 		err     error
-		conn    net.Conn
 		session *Session
 	)
 
 	for {
-		conn = this.dial()
-		if conn == nil {
+		session = this.dial()
+		if session == nil {
 			// client has been closed
 			break
 		}
-		session = NewSession(conn)
 		err = this.newSession(session)
 		if err == nil {
 			session.RunEventLoop()
@@ -121,7 +158,9 @@ func (this *Client) connect() {
 			this.Unlock()
 			break
 		}
-		conn.Close()
+		// don't distinguish between tcp connection and websocket connection. Because
+		// gorilla/websocket/conn.go:(Conn)Close also invoke net.Conn.Close()
+		session.Conn().Close()
 	}
 }
 

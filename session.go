@@ -23,6 +23,7 @@ import (
 import (
 	"github.com/AlexStocks/goext/time"
 	log "github.com/AlexStocks/log4go"
+	"github.com/gorilla/websocket"
 )
 
 const (
@@ -34,89 +35,6 @@ const (
 	outputFormat       = "session %s, Read Count: %d, Write Count: %d, Read Pkg Count: %d, Write Pkg Count: %d"
 )
 
-var (
-	ErrInvalidConnection = errors.New("connection has been closed.")
-)
-
-/////////////////////////////////////////
-// getty connection
-/////////////////////////////////////////
-
-var (
-	connID uint32
-	wheel  = gxtime.NewWheel(gxtime.TimeMillisecondDuration(100), 1200) // wheel longest span is 2 minute
-)
-
-type gettyConn struct {
-	conn          net.Conn
-	ID            uint32
-	readCount     uint32 // read() count
-	writeCount    uint32 // write() count
-	readPkgCount  uint32 // send pkg count
-	writePkgCount uint32 // recv pkg count
-	local         string // local address
-	peer          string // peer address
-}
-
-func newGettyConn(conn net.Conn) gettyConn {
-	if conn == nil {
-		panic("newGettyConn(conn):@conn is nil")
-	}
-	var localAddr, peerAddr string
-	//  check conn.LocalAddr or conn.RemoetAddr is nil to defeat panic on 2016/09/27
-	if conn.LocalAddr() != nil {
-		localAddr = conn.LocalAddr().String()
-	}
-	if conn.RemoteAddr() != nil {
-		peerAddr = conn.RemoteAddr().String()
-	}
-
-	return gettyConn{
-		conn:  conn,
-		ID:    atomic.AddUint32(&connID, 1),
-		local: localAddr,
-		peer:  peerAddr,
-	}
-}
-
-func (this *gettyConn) read(p []byte) (int, error) {
-	// if this.conn == nil {
-	//	return 0, ErrInvalidConnection
-	// }
-	// atomic.AddUint32(&this.readCount, 1)
-	atomic.AddUint32(&this.readCount, (uint32)(len(p)))
-	return this.conn.Read(p)
-}
-
-func (this *gettyConn) write(p []byte) (int, error) {
-	// if this.conn == nil {
-	//	return 0, ErrInvalidConnection
-	// }
-
-	// atomic.AddUint32(&this.writeCount, 1)
-	atomic.AddUint32(&this.writeCount, (uint32)(len(p)))
-	return this.conn.Write(p)
-}
-
-func (this *gettyConn) close(waitSec int) {
-	// if tcpConn, ok := this.conn.(*net.TCPConn); ok {
-	// tcpConn.SetLinger(0)
-	// }
-	if this.conn != nil {
-		this.conn.(*net.TCPConn).SetLinger(waitSec)
-		this.conn.Close()
-		this.conn = nil
-	}
-}
-
-func (this *gettyConn) incReadPkgCount() {
-	atomic.AddUint32(&this.readPkgCount, 1)
-}
-
-func (this *gettyConn) incWritePkgCount() {
-	atomic.AddUint32(&this.writePkgCount, 1)
-}
-
 /////////////////////////////////////////
 // session
 /////////////////////////////////////////
@@ -126,21 +44,27 @@ var (
 	ErrSessionBlocked = errors.New("Session full blocked")
 )
 
+var (
+	wheel = gxtime.NewWheel(gxtime.TimeMillisecondDuration(100), 1200) // wheel longest span is 2 minute
+)
+
 type empty struct{}
 
 // getty base session
 type Session struct {
 	name string
 	// net read write
-	gettyConn
+	conn
 	pkgHandler ReadWriter
-	listener   EventListener
-	once       sync.Once
-	done       chan empty
-	errFlag    bool
+	// reader   Reader // @reader should be nil when @conn is a gettyWSConn object.
+	// writer   Writer
+	listener EventListener
+	once     sync.Once
+	done     chan empty
+	errFlag  bool
 
 	period    time.Duration
-	rDeadline time.Duration
+	rDeadline time.Duration // network current limiting
 	wDeadline time.Duration
 	wait      time.Duration
 	rQ        chan interface{}
@@ -153,10 +77,35 @@ type Session struct {
 	lock  sync.RWMutex
 }
 
-func NewSession(conn net.Conn) *Session {
+func NewSession() *Session {
 	return &Session{
 		name:      defaultSessionName,
-		gettyConn: newGettyConn(conn),
+		done:      make(chan empty),
+		period:    period,
+		rDeadline: netIOTimeout,
+		wDeadline: netIOTimeout,
+		wait:      pendingDuration,
+		attrs:     make(map[string]interface{}),
+	}
+}
+
+func NewTCPSession(conn net.Conn) *Session {
+	return &Session{
+		name:      defaultSessionName,
+		conn:      newGettyTCPConn(conn),
+		done:      make(chan empty),
+		period:    period,
+		rDeadline: netIOTimeout,
+		wDeadline: netIOTimeout,
+		wait:      pendingDuration,
+		attrs:     make(map[string]interface{}),
+	}
+}
+
+func NewWSSession(conn websocket.Conn) *Session {
+	return &Session{
+		name:      defaultSessionName,
+		conn:      newGettyWSConn(conn),
 		done:      make(chan empty),
 		period:    period,
 		rDeadline: netIOTimeout,
@@ -179,18 +128,28 @@ func (this *Session) Reset() {
 	this.grNum = 0
 }
 
-func (this *Session) SetConn(conn net.Conn) { this.gettyConn = newGettyConn(conn) }
-func (this *Session) Conn() net.Conn        { return this.conn }
+// func (this *Session) SetConn(conn net.Conn) { this.gettyConn = newGettyConn(conn) }
+func (this *Session) Conn() net.Conn {
+	if tc, ok := this.conn.(*gettyTCPConn); ok {
+		return tc.conn
+	}
+
+	if wc, ok := this.conn.(*gettyWSConn); ok {
+		return wc.conn.UnderlyingConn()
+	}
+
+	return nil
+}
 
 // return the connect statistic data
 func (this *Session) Stat() string {
 	return fmt.Sprintf(
 		outputFormat,
 		this.sessionToken(),
-		atomic.LoadUint32(&(this.readCount)),
-		atomic.LoadUint32(&(this.writeCount)),
-		atomic.LoadUint32(&(this.readPkgCount)),
-		atomic.LoadUint32(&(this.writePkgCount)),
+		atomic.LoadUint32(&(this.conn.(*gettyConn).readCount)),
+		atomic.LoadUint32(&(this.conn.(*gettyConn).writeCount)),
+		atomic.LoadUint32(&(this.conn.(*gettyConn).readPkgCount)),
+		atomic.LoadUint32(&(this.conn.(*gettyConn).writePkgCount)),
 	)
 }
 
@@ -215,6 +174,16 @@ func (this *Session) SetEventListener(listener EventListener) {
 func (this *Session) SetPkgHandler(handler ReadWriter) {
 	this.pkgHandler = handler
 }
+
+/*
+func (this *Session) SetReader(reader Reader) {
+	this.reader = reader
+}
+
+func (this *Session) SetWriter(writer Reader) {
+	this.writer = writer
+}
+*/
 
 // period is in millisecond
 func (this *Session) SetCronPeriod(period int) {
@@ -308,7 +277,8 @@ func (this *Session) RemoveAttribute(key string) {
 }
 
 func (this *Session) sessionToken() string {
-	return fmt.Sprintf("{%s:%d:%s<->%s}", this.name, this.ID, this.local, this.peer)
+	conn := this.conn.(*gettyConn)
+	return fmt.Sprintf("{%s:%d:%s<->%s}", this.name, conn.ID, conn.local, conn.peer)
 }
 
 // Queued write, for handler
@@ -348,8 +318,42 @@ func (this *Session) WritePkg(pkg interface{}) error {
 // for codecs
 func (this *Session) WriteBytes(pkg []byte) error {
 	// this.conn.SetWriteDeadline(time.Now().Add(this.wDeadline))
-	_, err := this.write(pkg)
-	return err
+	return this.conn.write(pkg)
+}
+
+func (this *Session) WriteBytesArray(pkgs ...[]byte) error {
+	// this.conn.SetWriteDeadline(time.Now().Add(this.wDeadline))
+
+	if len(pkgs) == 1 {
+		return this.conn.write(pkgs[0])
+	}
+
+	// get len
+	var (
+		l   int
+		len uint32
+		arr []byte
+	)
+	for i := 0; i < len(pkgs); i++ {
+		len += uint32(len(pkgs[i]))
+	}
+
+	// // check len
+	// if msgLen > wsConn.maxMsgLen {
+	// 	return errors.New("message too long")
+	// } else if msgLen < 1 {
+	// 	return errors.New("message too short")
+	// }
+
+	// merge the pkgs
+	arr = make([]byte, len)
+	l = 0
+	for i := 0; i < len(pkgs); i++ {
+		copy(arr[l:], pkgs[i])
+		l += len(pkgs[i])
+	}
+
+	return this.conn.write(arr)
 }
 
 func (this *Session) RunEventLoop() {
@@ -460,20 +464,8 @@ LOOP:
 	// once.Do(func() { ticker.Stop() }) // use wheel instead, 2016/09/26
 }
 
-// get package from tcp stream(packet)
 func (this *Session) handlePackage() {
-	var (
-		err     error
-		nerr    net.Error
-		ok      bool
-		exit    bool
-		errFlag bool
-		bufLen  int
-		pkgLen  int
-		buf     []byte
-		pktBuf  *bytes.Buffer
-		pkg     interface{}
-	)
+	var err error
 
 	defer func() {
 		var grNum int32
@@ -487,32 +479,58 @@ func (this *Session) handlePackage() {
 
 		grNum = atomic.AddInt32(&(this.grNum), -1)
 		log.Info("%s, [session.handlePackage] gr will exit now, left gr num %d", this.sessionToken(), grNum)
-		this.errFlag = errFlag
 		this.stop()
-		if errFlag {
+		if this.errFlag {
 			log.Error("%s, [session.handlePackage] error{%#v}", this.sessionToken(), err)
 			this.listener.OnError(this, err)
 		}
 	}()
 
+	if this.conn.(gettyTCPConn) {
+		err = this.handleTCPPackage()
+	} else {
+		err = this.handleWSPackage()
+	}
+}
+
+// get package from tcp stream(packet)
+func (this *Session) handleTCPPackage() error {
+	var (
+		err error
+		// nerr    net.Error
+		conn *gettyTCPConn
+		ok   bool
+		exit bool
+		// errFlag bool
+		bufLen int
+		pkgLen int
+		buf    []byte
+		pktBuf *bytes.Buffer
+		pkg    interface{}
+	)
+
+	if conn, ok = this.conn.(*gettyTCPConn); !ok {
+		panic(fmt.Errorf("@this.conn{%#v} is not a gettyTCPConn object.", this.conn))
+	}
 	buf = make([]byte, maxReadBufLen)
 	pktBuf = new(bytes.Buffer)
 	for {
 		if this.IsClosed() {
+			err = nil
 			break // 退出前不再读取任何packet，buf中剩余的stream bytes也不可能凑够一个package, 所以直接退出
 		}
 
 		bufLen = 0
 		for { // for clause for the network timeout condition check
 			// this.conn.SetReadDeadline(time.Now().Add(this.rDeadline))
-			bufLen, err = this.read(buf)
+			bufLen, err = conn.read(buf)
 			if err != nil {
-				if nerr, ok = err.(net.Error); ok && nerr.Timeout() {
-					break
-				}
+				// if nerr, ok = err.(net.Error); ok && nerr.Timeout() {
+				// 	break
+				// }
 				log.Error("%s, [session.conn.read] = error{%v}", this.sessionToken(), err)
 				// for (Codec)OnErr
-				errFlag = true
+				this.errFlag = true
 				exit = true
 			}
 			break
@@ -533,7 +551,8 @@ func (this *Session) handlePackage() {
 			if err != nil {
 				log.Info("%s, [session.pkgHandler.Read] = error{%+v}", this.sessionToken(), err)
 				// for (Codec)OnErr
-				errFlag = true
+				// errFlag = true
+				this.errFlag = true
 				exit = true
 				break
 			}
@@ -547,6 +566,37 @@ func (this *Session) handlePackage() {
 			break
 		}
 	}
+
+	return err
+}
+
+// get package from websocket stream
+func (this *Session) handleWSPackage() error {
+	var (
+		err  error
+		conn *gettyWSConn
+		ok   bool
+		pkg  []byte
+	)
+
+	if conn, ok = this.conn.(*gettyWSConn); !ok {
+		panic(fmt.Errorf("@this.conn{%#v} is not a gettyWSConn object.", this.conn))
+	}
+	for {
+		if this.IsClosed() {
+			break // 退出前不再读取任何packet，buf中剩余的stream bytes也不可能凑够一个package, 所以直接退出
+		}
+
+		pkg, err = conn.read()
+		if err != nil {
+			log.Info("%s, [session.handleWSPackage.Read] = error{%+v}", this.sessionToken(), err)
+			this.errFlag = true
+			return err
+		}
+		this.rQ <- pkg
+	}
+
+	return nil
 }
 
 func (this *Session) stop() {
@@ -567,7 +617,7 @@ func (this *Session) gc() {
 		this.wQ = nil
 		close(this.rQ)
 		this.rQ = nil
-		this.gettyConn.close((int)((int64)(this.wait)))
+		this.conn.close((int)((int64)(this.wait)))
 	}
 	this.lock.Unlock()
 }
