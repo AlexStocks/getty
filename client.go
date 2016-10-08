@@ -93,7 +93,7 @@ func (this *Client) dialTCP() *Session {
 func (this *Client) dialWS() *Session {
 	var (
 		err    error
-		conn   websocket.Conn
+		conn   *websocket.Conn
 		dialer websocket.Dialer
 	)
 

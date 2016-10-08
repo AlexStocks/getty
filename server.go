@@ -126,14 +126,14 @@ func (this *Server) RunEventloop(newSession NewSessionCallback) {
 	}()
 }
 
-type WSHandler struct {
+type wsHandler struct {
 	server     *Server
 	newSession NewSessionCallback
 	upgrader   websocket.Upgrader
 }
 
-func NewWSHandler(server *Server) *WSHandler {
-	return &WSHandler{
+func newWSHandler(server *Server) wsHandler {
+	return wsHandler{
 		server: server,
 		upgrader: websocket.Upgrader{
 			// HandshakeTimeout: server.HTTPTimeout,
@@ -142,7 +142,7 @@ func NewWSHandler(server *Server) *WSHandler {
 	}
 }
 
-func (this *WSHandler) ServeHTTPServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (this wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		http.Error(w, "Method not allowed", 405)
 		return
@@ -160,7 +160,6 @@ func (this *WSHandler) ServeHTTPServeHTTP(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if conn.RemoteAddr().String() == conn.LocalAddr().String() {
-		return nil, errSelfConnect
 		log.Warn("conn.localAddr{%s} == conn.RemoteAddr", conn.LocalAddr().String(), conn.RemoteAddr().String())
 		return
 	}
@@ -170,7 +169,7 @@ func (this *WSHandler) ServeHTTPServeHTTP(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		conn.Close()
 		log.Warn("Server{%s}.newSession(session{%#v}) = err {%#v}", this.server.addr, session, err)
-		return nil
+		return
 	}
 	session.RunEventLoop()
 }
@@ -179,12 +178,12 @@ func (this *Server) RunWSEventLoop(newSession NewSessionCallback) {
 	this.wg.Add(1)
 	go func() {
 		defer this.wg.Done()
-		http.Server{
+		(&http.Server{
 			Addr:    this.addr,
-			Handler: NewWSHandler(this),
+			Handler: newWSHandler(this),
 			// ReadTimeout:    server.HTTPTimeout,
 			// WriteTimeout:   server.HTTPTimeout,
-		}.Serve(this.listener)
+		}).Serve(this.listener)
 	}()
 }
 

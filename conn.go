@@ -72,7 +72,7 @@ type gettyTCPConn struct {
 }
 
 // create gettyTCPConn
-func newGettyTCPConn(conn net.Conn) *gettyConn {
+func newGettyTCPConn(conn net.Conn) *gettyTCPConn {
 	if conn == nil {
 		panic("newGettyTCPConn(conn):@conn is nil")
 	}
@@ -85,7 +85,7 @@ func newGettyTCPConn(conn net.Conn) *gettyConn {
 		peerAddr = conn.RemoteAddr().String()
 	}
 
-	return gettyTCPConn{
+	return &gettyTCPConn{
 		conn: conn,
 		gettyConn: gettyConn{
 			ID:    atomic.AddUint32(&connID, 1),
@@ -139,7 +139,7 @@ type gettyWSConn struct {
 }
 
 // create websocket connection
-func newGettyWSConn(conn websocket.Conn) *gettyWSConn {
+func newGettyWSConn(conn *websocket.Conn) *gettyWSConn {
 	if conn == nil {
 		panic("newGettyWSConn(conn):@conn is nil")
 	}
@@ -152,8 +152,8 @@ func newGettyWSConn(conn websocket.Conn) *gettyWSConn {
 		peerAddr = conn.RemoteAddr().String()
 	}
 
-	return gettyWSConn{
-		conn: conn,
+	return &gettyWSConn{
+		conn: *conn,
 		gettyConn: gettyConn{
 			ID:    atomic.AddUint32(&connID, 1),
 			local: localAddr,

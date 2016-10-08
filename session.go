@@ -102,7 +102,7 @@ func NewTCPSession(conn net.Conn) *Session {
 	}
 }
 
-func NewWSSession(conn websocket.Conn) *Session {
+func NewWSSession(conn *websocket.Conn) *Session {
 	return &Session{
 		name:      defaultSessionName,
 		conn:      newGettyWSConn(conn),
@@ -330,12 +330,13 @@ func (this *Session) WriteBytesArray(pkgs ...[]byte) error {
 
 	// get len
 	var (
-		l   int
-		len uint32
-		arr []byte
+		l      int
+		length uint32
+		arr    []byte
 	)
+	length = 0
 	for i := 0; i < len(pkgs); i++ {
-		len += uint32(len(pkgs[i]))
+		length += uint32(len(pkgs[i]))
 	}
 
 	// // check len
@@ -346,7 +347,7 @@ func (this *Session) WriteBytesArray(pkgs ...[]byte) error {
 	// }
 
 	// merge the pkgs
-	arr = make([]byte, len)
+	arr = make([]byte, length)
 	l = 0
 	for i := 0; i < len(pkgs); i++ {
 		copy(arr[l:], pkgs[i])
@@ -486,9 +487,9 @@ func (this *Session) handlePackage() {
 		}
 	}()
 
-	if this.conn.(gettyTCPConn) {
+	if _, ok := this.conn.(*gettyTCPConn); ok {
 		err = this.handleTCPPackage()
-	} else {
+	} else if _, ok := this.conn.(*gettyWSConn); ok {
 		err = this.handleWSPackage()
 	}
 }
