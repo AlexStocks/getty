@@ -11,6 +11,11 @@
 ## develop history ##
 ---
 
+- 2016/10/09
+    > 1 add client.go:NewWSSClient
+    >
+    > 2 add server.go:RunWSEventLoopWithTLS
+
 - 2016/10/08
     > 1 add websocket connection & client & server
     >

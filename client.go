@@ -10,6 +10,9 @@
 package getty
 
 import (
+	"crypto/tls"
+	"crypto/x509"
+	"io/ioutil"
 	"net"
 	"strings"
 	"sync"
@@ -17,6 +20,7 @@ import (
 )
 
 import (
+	"fmt"
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
 )
@@ -43,9 +47,12 @@ type Client struct {
 	sync.Once
 	done chan empty
 	wg   sync.WaitGroup
+
+	// for wss client
+	certFile string
 }
 
-// NewClient function builds a client.
+// NewClient function builds a tcp & ws client.
 // @connNum is connection number.
 // @connInterval is reconnect sleep interval when getty fails to connect the server.
 // @serverAddr is server address.
@@ -63,6 +70,29 @@ func NewClient(connNum int, connInterval time.Duration, serverAddr string) *Clie
 		addr:       serverAddr,
 		sessionMap: make(map[*Session]empty, connNum),
 		done:       make(chan empty),
+	}
+}
+
+// NewClient function builds a wss client.
+// @connNum is connection number.
+// @connInterval is reconnect sleep interval when getty fails to connect the server.
+// @serverAddr is server address.
+// @ cert is certificate file
+func NewWSSClient(connNum int, connInterval time.Duration, serverAddr string, cert string) *Client {
+	if connNum < 0 {
+		connNum = 1
+	}
+	if connInterval < defaultInterval {
+		connInterval = defaultInterval
+	}
+
+	return &Client{
+		number:     connNum,
+		interval:   connInterval,
+		addr:       serverAddr,
+		sessionMap: make(map[*Session]empty, connNum),
+		done:       make(chan empty),
+		certFile:   cert,
 	}
 }
 
@@ -115,9 +145,48 @@ func (this *Client) dialWS() *Session {
 	}
 }
 
+func (this *Client) dialWSS() *Session {
+	var (
+		err      error
+		certPem  []byte
+		certPool *x509.CertPool
+		conn     *websocket.Conn
+		dialer   websocket.Dialer
+	)
+
+	certPem, err = ioutil.ReadFile(this.certFile)
+	if err != nil {
+		panic(fmt.Errorf("ioutil.ReadFile(certFile{%s}) = err{%#v}", this.certFile, err))
+	}
+	certPool = x509.NewCertPool()
+	if ok := certPool.AppendCertsFromPEM(certPem); !ok {
+		panic("failed to parse root certificate")
+	}
+
+	dialer.TLSClientConfig = &tls.Config{RootCAs: certPool}
+	for {
+		if this.IsClosed() {
+			return nil
+		}
+		conn, _, err = dialer.Dial(this.addr, nil)
+		if err == nil && conn.LocalAddr().String() == conn.RemoteAddr().String() {
+			err = errSelfConnect
+		}
+		if err == nil {
+			return NewWSSession(conn)
+		}
+
+		log.Info("websocket.dialer.Dial(addr:%s) = error{%v}", this.addr, err)
+		time.Sleep(this.interval)
+		continue
+	}
+}
+
 func (this *Client) dial() *Session {
 	if strings.HasPrefix(this.addr, "ws") {
-		this.dialWS()
+		return this.dialWS()
+	} else if strings.HasPrefix(this.addr, "wss") {
+		return this.dialWSS()
 	}
 
 	return this.dialTCP()

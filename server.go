@@ -10,6 +10,7 @@
 package getty
 
 import (
+	"crypto/tls"
 	"errors"
 	"net"
 	"net/http"
@@ -127,23 +128,27 @@ func (this *Server) RunEventloop(newSession NewSessionCallback) {
 }
 
 type wsHandler struct {
+	http.ServeMux
 	server     *Server
 	newSession NewSessionCallback
 	upgrader   websocket.Upgrader
 }
 
-func newWSHandler(server *Server) wsHandler {
-	return wsHandler{
-		server: server,
+func newWSHandler(server *Server, newSession NewSessionCallback) *wsHandler {
+	return &wsHandler{
+		server:     server,
+		newSession: newSession,
 		upgrader: websocket.Upgrader{
+			// in default, ReadBufferSize & WriteBufferSize is 4k
 			// HandshakeTimeout: server.HTTPTimeout,
 			CheckOrigin: func(_ *http.Request) bool { return true },
 		},
 	}
 }
 
-func (this wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (this *wsHandler) ServeWSRequest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
+		// w.WriteHeader(http.StatusMethodNotAllowed)
 		http.Error(w, "Method not allowed", 405)
 		return
 	}
@@ -174,16 +179,67 @@ func (this wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	session.RunEventLoop()
 }
 
-func (this *Server) RunWSEventLoop(newSession NewSessionCallback) {
+// RunWSEventLoop serve websocket client request
+// @newSession: new websocket connection callback
+// @path: websocket request url path
+func (this *Server) RunWSEventLoop(newSession NewSessionCallback, path string) {
 	this.wg.Add(1)
 	go func() {
 		defer this.wg.Done()
-		(&http.Server{
+		var (
+			err     error
+			handler *wsHandler
+		)
+		handler = newWSHandler(this, newSession)
+		handler.HandleFunc(path, handler.ServeWSRequest)
+		err = (&http.Server{
 			Addr:    this.addr,
-			Handler: newWSHandler(this),
+			Handler: handler,
 			// ReadTimeout:    server.HTTPTimeout,
 			// WriteTimeout:   server.HTTPTimeout,
 		}).Serve(this.listener)
+		if err != nil {
+			log.Error("http.Server.Serve(addr{%s}) = err{%#v}", this.addr, err)
+			panic(err)
+		}
+	}()
+}
+
+// RunWSEventLoopWithTLS serve websocket client request
+// @newSession: new websocket connection callback
+// @path: websocket request url path
+func (this *Server) RunWSEventLoopWithTLS(newSession NewSessionCallback, path string, cert string, priv string) {
+	this.wg.Add(1)
+	go func() {
+		defer this.wg.Done()
+		var (
+			err     error
+			config  *tls.Config
+			handler *wsHandler
+			server  *http.Server
+		)
+
+		config = &tls.Config{}
+		config.Certificates = make([]tls.Certificate, 1)
+		if config.Certificates[0], err = tls.LoadX509KeyPair(cert, priv); err != nil {
+			log.Error("tls.LoadX509KeyPair(cert{%s}, priv{%s}) = err{%#v}", cert, priv, err)
+			return
+		}
+
+		handler = newWSHandler(this, newSession)
+		handler.HandleFunc(path, handler.ServeWSRequest)
+		server = &http.Server{
+			Addr:    this.addr,
+			Handler: handler,
+			// ReadTimeout:    server.HTTPTimeout,
+			// WriteTimeout:   server.HTTPTimeout,
+		}
+		server.SetKeepAlivesEnabled(true)
+		err = server.Serve(tls.NewListener(this.listener, config))
+		if err != nil {
+			log.Error("http.Server.Serve(addr{%s}) = err{%#v}", this.addr, err)
+			panic(err)
+		}
 	}()
 }
 
