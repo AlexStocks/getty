@@ -141,15 +141,31 @@ func (this *Session) Conn() net.Conn {
 	return nil
 }
 
+func (this *Session) gettyConn() *gettyConn {
+	if tc, ok := this.conn.(*gettyTCPConn); ok {
+		return &(tc.gettyConn)
+	}
+
+	if wc, ok := this.conn.(*gettyWSConn); ok {
+		return &(wc.gettyConn)
+	}
+
+	return nil
+}
+
 // return the connect statistic data
 func (this *Session) Stat() string {
+	var conn *gettyConn
+	if conn = this.gettyConn(); conn == nil {
+		return ""
+	}
 	return fmt.Sprintf(
 		outputFormat,
 		this.sessionToken(),
-		atomic.LoadUint32(&(this.conn.(*gettyConn).readCount)),
-		atomic.LoadUint32(&(this.conn.(*gettyConn).writeCount)),
-		atomic.LoadUint32(&(this.conn.(*gettyConn).readPkgCount)),
-		atomic.LoadUint32(&(this.conn.(*gettyConn).writePkgCount)),
+		atomic.LoadUint32(&(conn.readCount)),
+		atomic.LoadUint32(&(conn.writeCount)),
+		atomic.LoadUint32(&(conn.readPkgCount)),
+		atomic.LoadUint32(&(conn.writePkgCount)),
 	)
 }
 
@@ -277,7 +293,11 @@ func (this *Session) RemoveAttribute(key string) {
 }
 
 func (this *Session) sessionToken() string {
-	conn := this.conn.(*gettyConn)
+	var conn *gettyConn
+	if conn = this.gettyConn(); conn == nil {
+		return ""
+	}
+
 	return fmt.Sprintf("{%s:%d:%s<->%s}", this.name, conn.ID, conn.local, conn.peer)
 }
 
@@ -338,13 +358,6 @@ func (this *Session) WriteBytesArray(pkgs ...[]byte) error {
 	for i := 0; i < len(pkgs); i++ {
 		length += uint32(len(pkgs[i]))
 	}
-
-	// // check len
-	// if msgLen > wsConn.maxMsgLen {
-	// 	return errors.New("message too long")
-	// } else if msgLen < 1 {
-	// 	return errors.New("message too short")
-	// }
 
 	// merge the pkgs
 	arr = make([]byte, length)

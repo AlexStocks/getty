@@ -15,6 +15,8 @@
     > 1 add client.go:NewWSSClient
     >
     > 2 add server.go:RunWSEventLoopWithTLS
+    >
+    > 3 add session.go:(Session*)gettyConn
 
 - 2016/10/08
     > 1 add websocket connection & client & server
