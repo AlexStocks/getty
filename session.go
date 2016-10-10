@@ -61,7 +61,7 @@ type Session struct {
 	listener EventListener
 	once     sync.Once
 	done     chan empty
-	errFlag  bool
+	// errFlag  bool
 
 	period    time.Duration
 	rDeadline time.Duration // network current limiting
@@ -119,7 +119,7 @@ func (this *Session) Reset() {
 	this.name = defaultSessionName
 	this.once = sync.Once{}
 	this.done = make(chan empty)
-	this.errFlag = false
+	// this.errFlag = false
 	this.period = period
 	this.rDeadline = netIOTimeout
 	this.wDeadline = netIOTimeout
@@ -418,9 +418,9 @@ func (this *Session) handleLoop() {
 		}
 
 		grNum = atomic.AddInt32(&(this.grNum), -1)
-		if !this.errFlag {
-			this.listener.OnClose(this)
-		}
+		// if !this.errFlag {
+		this.listener.OnClose(this)
+		// }
 		log.Info("%s, [session.handleLoop] goroutine exit now, left gr num %d", this.Stat(), grNum)
 		this.gc()
 	}()
@@ -494,7 +494,8 @@ func (this *Session) handlePackage() {
 		grNum = atomic.AddInt32(&(this.grNum), -1)
 		log.Info("%s, [session.handlePackage] gr will exit now, left gr num %d", this.sessionToken(), grNum)
 		this.stop()
-		if this.errFlag {
+		// if this.errFlag {
+		if err != nil {
 			log.Error("%s, [session.handlePackage] error{%#v}", this.sessionToken(), err)
 			this.listener.OnError(this, err)
 		}
@@ -512,10 +513,9 @@ func (this *Session) handleTCPPackage() error {
 	var (
 		err error
 		// nerr    net.Error
-		conn *gettyTCPConn
-		ok   bool
-		exit bool
-		// errFlag bool
+		conn   *gettyTCPConn
+		ok     bool
+		exit   bool
 		bufLen int
 		pkgLen int
 		buf    []byte
@@ -544,7 +544,7 @@ func (this *Session) handleTCPPackage() error {
 				// }
 				log.Error("%s, [session.conn.read] = error{%v}", this.sessionToken(), err)
 				// for (Codec)OnErr
-				this.errFlag = true
+				// this.errFlag = true
 				exit = true
 			}
 			break
@@ -565,8 +565,7 @@ func (this *Session) handleTCPPackage() error {
 			if err != nil {
 				log.Info("%s, [session.pkgHandler.Read] = error{%+v}", this.sessionToken(), err)
 				// for (Codec)OnErr
-				// errFlag = true
-				this.errFlag = true
+				// this.errFlag = true
 				exit = true
 				break
 			}
@@ -604,7 +603,7 @@ func (this *Session) handleWSPackage() error {
 		pkg, err = conn.read()
 		if err != nil {
 			log.Info("%s, [session.handleWSPackage.Read] = error{%+v}", this.sessionToken(), err)
-			this.errFlag = true
+			// this.errFlag = true
 			return err
 		}
 		this.rQ <- pkg

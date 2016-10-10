@@ -11,6 +11,11 @@
 ## develop history ##
 ---
 
+- 2016/10/10
+    > 1 delete session.go:Session{errFlag} to invoke codec.go:EventListener{OnClose&OnError} both when got a error
+    >
+	> 2 version: 0.4.01
+
 - 2016/10/09
     > 1 add client.go:NewWSSClient
     >

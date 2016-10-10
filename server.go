@@ -147,6 +147,7 @@ func newWSHandler(server *Server, newSession NewSessionCallback) *wsHandler {
 }
 
 func (this *wsHandler) ServeWSRequest(w http.ResponseWriter, r *http.Request) {
+	log.Debug("get client request:%#v", r)
 	if r.Method != "GET" {
 		// w.WriteHeader(http.StatusMethodNotAllowed)
 		http.Error(w, "Method not allowed", 405)

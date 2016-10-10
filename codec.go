@@ -39,7 +39,7 @@ type EventListener interface {
 	// If the return error is not nil, @Session will be closed.
 	OnOpen(*Session) error
 
-	// invoked when session closed. when @Session got error, session will not invoke @OnClose but invoke @OnError.
+	// invoked when session closed.
 	OnClose(*Session)
 
 	// invoked when got error.
