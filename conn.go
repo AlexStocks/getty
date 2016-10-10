@@ -17,6 +17,7 @@ import (
 
 import (
 	"github.com/gorilla/websocket"
+	// log "github.com/AlexStocks/log4go"
 )
 
 var (
@@ -100,6 +101,7 @@ func (this *gettyTCPConn) read(p []byte) (int, error) {
 	// if this.conn == nil {
 	//	return 0, ErrInvalidConnection
 	// }
+
 	// atomic.AddUint32(&this.readCount, 1)
 	atomic.AddUint32(&this.readCount, (uint32)(len(p)))
 	return this.conn.Read(p)
@@ -122,6 +124,7 @@ func (this *gettyTCPConn) close(waitSec int) {
 	// if tcpConn, ok := this.conn.(*net.TCPConn); ok {
 	// tcpConn.SetLinger(0)
 	// }
+
 	if this.conn != nil {
 		this.conn.(*net.TCPConn).SetLinger(waitSec)
 		this.conn.Close()
@@ -164,7 +167,6 @@ func newGettyWSConn(conn *websocket.Conn) *gettyWSConn {
 
 // websocket connection read
 func (this *gettyWSConn) read() ([]byte, error) {
-	// l, b, e := this.conn.ReadMessage()
 	_, b, e := this.conn.ReadMessage()
 	if e == nil {
 		// atomic.AddUint32(&this.readCount, (uint32)(l))

@@ -535,6 +535,7 @@ func (this *Session) handleTCPPackage() error {
 
 	buf = make([]byte, maxReadBufLen)
 	pktBuf = new(bytes.Buffer)
+	conn = this.iConn.(*gettyTCPConn)
 	for {
 		if this.IsClosed() {
 			err = nil
@@ -603,6 +604,7 @@ func (this *Session) handleWSPackage() error {
 		unmarshalPkg interface{}
 	)
 
+	conn = this.iConn.(*gettyWSConn)
 	for {
 		if this.IsClosed() {
 			break // 退出前不再读取任何packet，buf中剩余的stream bytes也不可能凑够一个package, 所以直接退出
