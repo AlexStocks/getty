@@ -177,6 +177,9 @@ func (this *wsHandler) ServeWSRequest(w http.ResponseWriter, r *http.Request) {
 		log.Warn("Server{%s}.newSession(session{%#v}) = err {%#v}", this.server.addr, session, err)
 		return
 	}
+	if session.maxMsgLen > 0 {
+		conn.SetReadLimit(int64(session.maxMsgLen))
+	}
 	session.RunEventLoop()
 }
 

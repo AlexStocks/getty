@@ -16,7 +16,7 @@ type NewSessionCallback func(*Session) error
 
 // Reader is used to unmarshal a complete pkg from buffer
 type Reader interface {
-	// Parse pkg from buffer and if possible return a complete pkg
+	// Parse tcp pkg from buffer and if possible return a complete pkg
 	// If length of buf is not long enough, u should return {nil,0, nil}
 	// The second return value is the length of the pkg.
 	Read(*Session, []byte) (interface{}, int, error)
@@ -27,7 +27,7 @@ type Writer interface {
 	Write(*Session, interface{}) error
 }
 
-// packet handler interface
+// tcp packet handler interface
 type ReadWriter interface {
 	Reader
 	Writer

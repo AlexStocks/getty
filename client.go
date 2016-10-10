@@ -21,6 +21,7 @@ import (
 
 import (
 	"fmt"
+
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
 )
@@ -122,9 +123,10 @@ func (this *Client) dialTCP() *Session {
 
 func (this *Client) dialWS() *Session {
 	var (
-		err    error
-		conn   *websocket.Conn
-		dialer websocket.Dialer
+		err     error
+		dialer  websocket.Dialer
+		conn    *websocket.Conn
+		session *Session
 	)
 
 	for {
@@ -136,7 +138,12 @@ func (this *Client) dialWS() *Session {
 			err = errSelfConnect
 		}
 		if err == nil {
-			return NewWSSession(conn)
+			session = NewWSSession(conn)
+			if session.maxMsgLen > 0 {
+				conn.SetReadLimit(int64(session.maxMsgLen))
+			}
+
+			return session
 		}
 
 		log.Info("websocket.dialer.Dial(addr:%s) = error{%v}", this.addr, err)
@@ -150,8 +157,9 @@ func (this *Client) dialWSS() *Session {
 		err      error
 		certPem  []byte
 		certPool *x509.CertPool
-		conn     *websocket.Conn
 		dialer   websocket.Dialer
+		conn     *websocket.Conn
+		session  *Session
 	)
 
 	certPem, err = ioutil.ReadFile(this.certFile)
@@ -173,7 +181,12 @@ func (this *Client) dialWSS() *Session {
 			err = errSelfConnect
 		}
 		if err == nil {
-			return NewWSSession(conn)
+			session = NewWSSession(conn)
+			if session.maxMsgLen > 0 {
+				conn.SetReadLimit(int64(session.maxMsgLen))
+			}
+
+			return session
 		}
 
 		log.Info("websocket.dialer.Dial(addr:%s) = error{%v}", this.addr, err)

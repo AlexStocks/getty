@@ -23,7 +23,7 @@ var (
 // ErrInvalidConnection = errors.New("connection has been closed.")
 )
 
-type conn interface {
+type iConn interface {
 	incReadPkgCount()
 	incWritePkgCount()
 	write(p []byte) error
