@@ -11,6 +11,11 @@
 ## develop history ##
 ---
 
+- 2016/10/11
+    > 1 fix bug: use websocket.BinaryMessage in conn.go:(gettyWSConn)write
+    >
+	> 2 version: 0.4.02
+
 - 2016/10/10
     > 1 delete session.go:Session{errFlag} to invoke codec.go:EventListener{OnClose&OnError} both when got a error
     >

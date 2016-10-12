@@ -180,7 +180,7 @@ func (this *gettyWSConn) read() ([]byte, error) {
 func (this *gettyWSConn) write(p []byte) error {
 	// atomic.AddUint32(&this.writeCount, 1)
 	atomic.AddUint32(&this.writeCount, (uint32)(len(p)))
-	return this.conn.WriteMessage(len(p), p)
+	return this.conn.WriteMessage(websocket.BinaryMessage, p)
 }
 
 // close websocket connection
