@@ -1,5 +1,5 @@
 /******************************************************
-# DESC    : getty utility
+# DESC    : echo package
 # AUTHOR  : Alex Stocks
 # LICENCE : Apache License 2.0
 # EMAIL   : alexstocks@foxmail.com
