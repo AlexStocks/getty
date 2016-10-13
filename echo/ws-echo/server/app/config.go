@@ -58,9 +58,11 @@ type (
 		ProfilePort int      `default:"10086"`
 
 		// session
-		SessionTimeout string `default:"60s"`
-		sessionTimeout time.Duration
-		SessionNumber  int `default:"1000"`
+		HeartbeatPeriod string `default:"30s"`
+		heartbeatPeriod time.Duration
+		SessionTimeout  string `default:"60s"`
+		sessionTimeout  time.Duration
+		SessionNumber   int `default:"1000"`
 
 		// app
 		FailFastTimeout string `default:"5s"`
@@ -89,9 +91,18 @@ func initConf() {
 	}
 	conf = new(Config)
 	config.MustLoadWithPath(confFile, conf)
+	conf.heartbeatPeriod, err = time.ParseDuration(conf.HeartbeatPeriod)
+	if err != nil {
+		panic(fmt.Sprintf("time.ParseDuration(HeartbeatPeriod{%#v}) = error{%v}", conf.heartbeatPeriod, err))
+		return
+	}
 	conf.sessionTimeout, err = time.ParseDuration(conf.SessionTimeout)
 	if err != nil {
 		panic(fmt.Sprintf("time.ParseDuration(SessionTimeout{%#v}) = error{%v}", conf.SessionTimeout, err))
+		return
+	}
+	if conf.sessionTimeout <= conf.heartbeatPeriod {
+		panic(fmt.Sprintf("SessionTimeout{%#v} <= HeartbeatPeriod{%#v}", conf.SessionTimeout, conf.HeartbeatPeriod))
 		return
 	}
 	conf.failFastTimeout, err = time.ParseDuration(conf.FailFastTimeout)

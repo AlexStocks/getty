@@ -133,7 +133,7 @@ func (this *EchoPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
 		return 0, ErrNotEnoughSteam
 	}
 	// 防止恶意客户端把这个字段设置过大导致服务端死等或者服务端在准备对应的缓冲区时内存崩溃
-	if maxEchoStringLen < this.H.Len {
+	if maxEchoStringLen < this.H.Len-1 {
 		return 0, ErrTooLargePackage
 	}
 
@@ -143,5 +143,5 @@ func (this *EchoPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
 	}
 	this.B = (string)(buf.Next((int)(len)))
 
-	return (int)(this.H.Len) + 1 + echoPkgHeaderLen, nil
+	return (int)(this.H.Len) + echoPkgHeaderLen, nil
 }

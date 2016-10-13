@@ -32,14 +32,6 @@ $(function() {
         extra1:'uint16',
         extra2:'int32' // reserved, maybe used as package md5 checksum
     }, 0, true);
-    var echoPkgBody;
-
-    // echoPkgHeader.endianness = true; //  true is Little-endian
-    // var echoPkg = new Struct({
-    //   H:echoPkgHeader
-    //   B:string,
-    // }, 0, true);
-
 
     // Initialize varibles
     var $window = $(window);
@@ -52,7 +44,6 @@ $(function() {
     // // Setting binaryType to accept received binary as either 'blob' or 'arraybuffer'. In default it is 'blob'.
     // socket.binaryType = 'arraybuffer';
     // socket.binaryType = ''
-    // var decoder = new TextDecoder('utf-8')
 
     function socketSend (o, silence) {
         if (socket.readyState != socket.OPEN) {
@@ -72,7 +63,6 @@ $(function() {
 
         tmp[header.byteLength] = msg.length
         var ma = new TextEncoder("utf-8").encode(msg);
-        tmp[0] = msg.length;
         tmp.set(ma, header.byteLength + 1);
 
         return tmp;
@@ -81,36 +71,21 @@ $(function() {
 
     function AB2Str(buf) {
         var decoder = new TextDecoder('utf-8');
-        // var json = JSON.parse(decoder.decode(new DataView(buf)))
         var msg = decoder.decode(new DataView(buf));
-        // console.log('response text msg: ' + msg);
         return msg;
     }
 
     function unmarshalEchoPkg(data) {
         var dataAB = new Uint8Array(data);
-        var echoPkgHeader = new Struct ({
-            Magic:'uint32',
-            LogID:'uint32', // log id
-
-            Sequence: 'uint32', // request/response sequence
-            ServiceID:'uint32', // service id
-
-            Command:'uint32', // operation command code
-            Code   :'int32',  // error code
-
-            Len:'uint16', // body length
-            extra1:'uint16',
-            extra2:'int32' // reserved, maybe used as package md5 checksum
-        }, 0, true);
         var hLen = echoPkgHeader.byteLength;
         var rspHeaderData = dataAB.subarray(0, hLen);
         var rspHeader = echoPkgHeader.read(rspHeaderData.buffer);
         // console.log("echo rsp package header:" + rspHeader.Magic);
-        console.log('echo response{seq:' + rspHeader.Sequence + ', msg len:' + dataAB[hLen] + '}');
+        // console.log(rspHeader.Len)
+        // console.log('echo response{seq:' + rspHeader.Sequence + ', msg len:' + dataAB[hLen] + '}');
         addChatMessage({Message:
             'echo response{seq:' + rspHeader.Sequence +
-            ', msg len:' + dataAB[hLen] +
+            ', msg len:' + (dataAB[hLen]) +
             ', msg:' + AB2Str(new Uint8Array(dataAB.subarray(hLen + 1)).buffer) +
             '}'
             }
@@ -120,10 +95,8 @@ $(function() {
     // Sends a chat message
     function sendMessage () {
         var message = $inputMessage.val();
-        // console.log("input mesage:" + message)
         // Prevent markup from being injected into the message
         message = cleanInput(message);
-        // console.log("after cleanInput mesage:" + message)
         // Prevent markup from being injected into the message
         // if there is a non-empty message and a socket connection
         if (message) {
@@ -138,11 +111,10 @@ $(function() {
                 Command:echoCommand,
                 Sequence:seq++,
                 Code:0,
-                Len:message.length,
+                Len:message.length + 1,
                 extra1:0,
                 extra2:0
             });
-            // console.log(marshalEchoPkg(pkgHeaderArrayBuffer, message));
             socket.send(marshalEchoPkg(pkgHeaderArrayBuffer, message));
         }
     }
@@ -244,11 +216,7 @@ $(function() {
         var fileReader = new FileReader(); // 用filereader来转blob为arraybuffer
         fileReader.onload = function() {
             var arrayBuffer = this.result; // 得到arraybuffer
-            // var decoder = new TextDecoder('utf-8') // 上面回复中给的encoding.js、encoding-indexes.js
-            // console.log('decoder data:' + decoder.decode(new DataView(arrayBuffer)))
             var dv = new DataView(arrayBuffer);
-            // console.log('decoder data:' + dv.buffer)
-            var dva = new Uint8Array(dv.buffer);
             unmarshalEchoPkg(dv.buffer)
         };
         fileReader.readAsArrayBuffer(e.data); // 此处读取blob

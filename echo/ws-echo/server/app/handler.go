@@ -62,7 +62,6 @@ func (this *MessageHandler) Handle(session *getty.Session, pkg *EchoPackage) err
 
 type clientEchoSession struct {
 	session *getty.Session
-	active  time.Time
 	reqNum  int32
 }
 
@@ -97,7 +96,7 @@ func (this *EchoMessageHandler) OnOpen(session *getty.Session) error {
 
 	log.Info("got session:%s", session.Stat())
 	this.rwlock.Lock()
-	this.sessionMap[session] = &clientEchoSession{session: session, active: time.Now()}
+	this.sessionMap[session] = &clientEchoSession{session: session}
 	this.rwlock.Unlock()
 	return nil
 }
@@ -132,7 +131,6 @@ func (this *EchoMessageHandler) OnMessage(session *getty.Session, pkg interface{
 	if err != nil {
 		this.rwlock.Lock()
 		if _, ok := this.sessionMap[session]; ok {
-			this.sessionMap[session].active = time.Now()
 			this.sessionMap[session].reqNum++
 		}
 		this.rwlock.Unlock()
@@ -140,13 +138,17 @@ func (this *EchoMessageHandler) OnMessage(session *getty.Session, pkg interface{
 }
 
 func (this *EchoMessageHandler) OnCron(session *getty.Session) {
-	var flag bool
+	var (
+		flag   bool
+		active time.Time
+	)
 	this.rwlock.RLock()
 	if _, ok := this.sessionMap[session]; ok {
-		if conf.sessionTimeout.Nanoseconds() < time.Since(this.sessionMap[session].active).Nanoseconds() {
+		active = session.GetActive()
+		if conf.sessionTimeout.Nanoseconds() < time.Since(active).Nanoseconds() {
 			flag = true
 			log.Warn("session{%s} timeout{%s}, reqNum{%d}",
-				session.Stat(), time.Since(this.sessionMap[session].active).String(), this.sessionMap[session].reqNum)
+				session.Stat(), time.Since(active).String(), this.sessionMap[session].reqNum)
 		}
 	}
 	this.rwlock.RUnlock()

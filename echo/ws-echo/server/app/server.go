@@ -96,7 +96,7 @@ func newSession(session *getty.Session) error {
 	session.SetWQLen(conf.GettySessionParam.PkgWQSize)
 	session.SetReadDeadline(conf.GettySessionParam.tcpReadTimeout)
 	session.SetWriteDeadline(conf.GettySessionParam.tcpWriteTimeout)
-	session.SetCronPeriod((int)(conf.sessionTimeout.Nanoseconds() / 1e6))
+	session.SetCronPeriod((int)(conf.heartbeatPeriod.Nanoseconds() / 1e6))
 	session.SetWaitTime(conf.GettySessionParam.waitTimeout)
 	log.Debug("app accepts new session:%s\n", session.Stat())
 
