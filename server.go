@@ -146,7 +146,7 @@ func newWSHandler(server *Server, newSession NewSessionCallback) *wsHandler {
 	}
 }
 
-func (this *wsHandler) ServeWSRequest(w http.ResponseWriter, r *http.Request) {
+func (this *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 	log.Debug("get client request:%#v", r)
 	if r.Method != "GET" {
 		// w.WriteHeader(http.StatusMethodNotAllowed)
@@ -195,7 +195,7 @@ func (this *Server) RunWSEventLoop(newSession NewSessionCallback, path string) {
 			handler *wsHandler
 		)
 		handler = newWSHandler(this, newSession)
-		handler.HandleFunc(path, handler.ServeWSRequest)
+		handler.HandleFunc(path, handler.serveWSRequest)
 		err = (&http.Server{
 			Addr:    this.addr,
 			Handler: handler,
@@ -231,7 +231,7 @@ func (this *Server) RunWSEventLoopWithTLS(newSession NewSessionCallback, path st
 		}
 
 		handler = newWSHandler(this, newSession)
-		handler.HandleFunc(path, handler.ServeWSRequest)
+		handler.HandleFunc(path, handler.serveWSRequest)
 		server = &http.Server{
 			Addr:    this.addr,
 			Handler: handler,

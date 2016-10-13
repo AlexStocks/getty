@@ -12,11 +12,15 @@
 ---
 
 - 2016/10/13
-    > 1 add conn.go:(gettyWSConn)writePing
+    > 1 add conn.go:(gettyWSConn)writePing which is invoked automatically in session.go:(Session)handleLoop
     >
     > 2 modify session.go:(Session)handleLoop:Websocket session will send ping frame automatically every peroid.
     >
-    > 3 version: 0.4.03
+    > 3 add conn.go:(gettyConn)UpdateActive, which can used as (Session)UpdateActive which is invoked by Session automatically.
+    >
+    > 4 add conn.go:(gettyConn)GetActive, which can used as (Session)GetActive
+    >
+    > 5 version: 0.4.03
 
 - 2016/10/11
     > 1 fix bug: use websocket.BinaryMessage in conn.go:(gettyWSConn)write

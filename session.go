@@ -388,6 +388,7 @@ func (this *Session) RunEventLoop() {
 	}
 
 	// call session opened
+	this.UpdateActive()
 	if err := this.listener.OnOpen(this); err != nil {
 		this.Close()
 		return
@@ -479,6 +480,7 @@ LOOP:
 			if flag {
 				if wsFlag {
 					err = wsConn.writePing()
+					log.Debug("wsConn.writePing() = error{%#v}", err)
 					if err != nil {
 						log.Warn("wsConn.writePing() = error{%#v}", err)
 					}
@@ -592,6 +594,7 @@ func (this *Session) handleTCPPackage() error {
 			if pkg == nil {
 				break
 			}
+			this.UpdateActive()
 			this.rQ <- pkg
 			pktBuf.Next(pkgLen)
 		}
@@ -625,6 +628,7 @@ func (this *Session) handleWSPackage() error {
 			// this.errFlag = true
 			return err
 		}
+		this.UpdateActive()
 		if this.reader != nil {
 			unmarshalPkg, length, err = this.reader.Read(this, pkg)
 			if err == nil && this.maxMsgLen > 0 && length > this.maxMsgLen {

@@ -13,20 +13,33 @@ import (
 	// "errors"
 	"net"
 	"sync/atomic"
+	"time"
 )
 
 import (
+	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
-	// log "github.com/AlexStocks/log4go"
 )
 
 var (
+	launchTime time.Time
+
 // ErrInvalidConnection = errors.New("connection has been closed.")
 )
+
+func init() {
+	launchTime = time.Now()
+}
+
+/////////////////////////////////////////
+// connection interfacke
+/////////////////////////////////////////
 
 type iConn interface {
 	incReadPkgCount()
 	incWritePkgCount()
+	UpdateActive()
+	GetActive() time.Time
 	write(p []byte) error
 	close(int)
 }
@@ -41,10 +54,12 @@ var (
 
 type gettyConn struct {
 	ID            uint32
+	padding       uint32 // last active, in milliseconds
 	readCount     uint32 // read() count
 	writeCount    uint32 // write() count
 	readPkgCount  uint32 // send pkg count
 	writePkgCount uint32 // recv pkg count
+	active        int64  // active
 	local         string // local address
 	peer          string // peer address
 }
@@ -55,6 +70,14 @@ func (this *gettyConn) incReadPkgCount() {
 
 func (this *gettyConn) incWritePkgCount() {
 	atomic.AddUint32(&this.writePkgCount, 1)
+}
+
+func (this *gettyConn) UpdateActive() {
+	atomic.StoreInt64(&(this.active), int64(time.Since(launchTime)))
+}
+
+func (this *gettyConn) GetActive() time.Time {
+	return launchTime.Add(time.Duration(atomic.LoadInt64(&(this.active))))
 }
 
 func (this *gettyConn) write([]byte) error {
@@ -155,7 +178,7 @@ func newGettyWSConn(conn *websocket.Conn) *gettyWSConn {
 		peerAddr = conn.RemoteAddr().String()
 	}
 
-	return &gettyWSConn{
+	gettyWSConn := &gettyWSConn{
 		conn: *conn,
 		gettyConn: gettyConn{
 			ID:    atomic.AddUint32(&connID, 1),
@@ -163,6 +186,15 @@ func newGettyWSConn(conn *websocket.Conn) *gettyWSConn {
 			peer:  peerAddr,
 		},
 	}
+	conn.SetPongHandler(gettyWSConn.handlePong)
+
+	return gettyWSConn
+}
+
+func (this *gettyWSConn) handlePong(string) error {
+	log.Debug("get pong package")
+	this.UpdateActive()
+	return nil
 }
 
 // websocket connection read
