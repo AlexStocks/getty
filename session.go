@@ -204,7 +204,7 @@ func (this *Session) SetWriter(writer Writer) {
 	this.writer = writer
 }
 
-// period is in millisecond
+// period is in millisecond. Websocket session will send ping frame automatically every peroid.
 func (this *Session) SetCronPeriod(period int) {
 	if period < 1 {
 		panic("@period < 1")
@@ -400,8 +400,10 @@ func (this *Session) RunEventLoop() {
 
 func (this *Session) handleLoop() {
 	var (
-		err  error
-		flag bool
+		err    error
+		flag   bool
+		wsFlag bool
+		wsConn *gettyWSConn
 		// start  time.Time
 		counter gxtime.CountWatch
 		// ticker  *time.Ticker // use wheel instead, 2016/09/26
@@ -428,6 +430,7 @@ func (this *Session) handleLoop() {
 		this.gc()
 	}()
 
+	wsConn, wsFlag = this.iConn.(*gettyWSConn)
 	flag = true // do not do any read/write/cron operation while got write error
 	// ticker = time.NewTicker(this.period) // use wheel instead, 2016/09/26
 LOOP:
@@ -474,6 +477,12 @@ LOOP:
 		// case <-ticker.C: // use wheel instead, 2016/09/26
 		case <-wheel.After(this.period):
 			if flag {
+				if wsFlag {
+					err = wsConn.writePing()
+					if err != nil {
+						log.Warn("wsConn.writePing() = error{%#v}", err)
+					}
+				}
 				this.listener.OnCron(this)
 			}
 		}

@@ -141,7 +141,7 @@ func newWSHandler(server *Server, newSession NewSessionCallback) *wsHandler {
 		upgrader: websocket.Upgrader{
 			// in default, ReadBufferSize & WriteBufferSize is 4k
 			// HandshakeTimeout: server.HTTPTimeout,
-			CheckOrigin: func(_ *http.Request) bool { return true },
+			CheckOrigin: func(_ *http.Request) bool { return true }, // allow connections from any origin
 		},
 	}
 }

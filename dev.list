@@ -11,10 +11,17 @@
 ## develop history ##
 ---
 
+- 2016/10/13
+    > 1 add conn.go:(gettyWSConn)writePing
+    >
+    > 2 modify session.go:(Session)handleLoop:Websocket session will send ping frame automatically every peroid.
+    >
+    > 3 version: 0.4.03
+
 - 2016/10/11
     > 1 fix bug: use websocket.BinaryMessage in conn.go:(gettyWSConn)write
     >
-	> 2 version: 0.4.02
+    > 2 version: 0.4.02
 
 - 2016/10/10
     > 1 delete session.go:Session{errFlag} to invoke codec.go:EventListener{OnClose&OnError} both when got a error
@@ -25,7 +32,7 @@
     >
     > 4 add modify session.go:(Session)maxMsgLen for websocket session
     >
-	> 5 version: 0.4.01
+    > 5 version: 0.4.01
 
 - 2016/10/09
     > 1 add client.go:NewWSSClient

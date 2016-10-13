@@ -183,6 +183,10 @@ func (this *gettyWSConn) write(p []byte) error {
 	return this.conn.WriteMessage(websocket.BinaryMessage, p)
 }
 
+func (this *gettyWSConn) writePing() error {
+	return this.conn.WriteMessage(websocket.PingMessage, []byte{})
+}
+
 // close websocket connection
 func (this *gettyWSConn) close(waitSec int) {
 	this.conn.UnderlyingConn().(*net.TCPConn).SetLinger(waitSec)
