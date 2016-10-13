@@ -20,7 +20,9 @@
     >
     > 4 add conn.go:(gettyConn)GetActive, which can used as (Session)GetActive
     >
-    > 5 version: 0.4.03
+    > 5 modify conn.go:gettyWSConn{websocket.Conn} ->  conn.go:gettyWSConn{*websocket.Conn}
+    >
+    > 6 version: 0.4.03
 
 - 2016/10/11
     > 1 fix bug: use websocket.BinaryMessage in conn.go:(gettyWSConn)write

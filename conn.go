@@ -17,19 +17,15 @@ import (
 )
 
 import (
-	log "github.com/AlexStocks/log4go"
+	// log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
 )
 
 var (
-	launchTime time.Time
+	launchTime time.Time = time.Now()
 
 // ErrInvalidConnection = errors.New("connection has been closed.")
 )
-
-func init() {
-	launchTime = time.Now()
-}
 
 /////////////////////////////////////////
 // connection interfacke
@@ -41,6 +37,8 @@ type iConn interface {
 	UpdateActive()
 	GetActive() time.Time
 	write(p []byte) error
+	// don't distinguish between tcp connection and websocket connection. Because
+	// gorilla/websocket/conn.go:(Conn)Close also invoke net.Conn.Close
 	close(int)
 }
 
@@ -161,7 +159,7 @@ func (this *gettyTCPConn) close(waitSec int) {
 
 type gettyWSConn struct {
 	gettyConn
-	conn websocket.Conn
+	conn *websocket.Conn
 }
 
 // create websocket connection
@@ -179,7 +177,7 @@ func newGettyWSConn(conn *websocket.Conn) *gettyWSConn {
 	}
 
 	gettyWSConn := &gettyWSConn{
-		conn: *conn,
+		conn: conn,
 		gettyConn: gettyConn{
 			ID:    atomic.AddUint32(&connID, 1),
 			local: localAddr,
@@ -192,7 +190,6 @@ func newGettyWSConn(conn *websocket.Conn) *gettyWSConn {
 }
 
 func (this *gettyWSConn) handlePong(string) error {
-	log.Debug("get pong package")
 	this.UpdateActive()
 	return nil
 }
