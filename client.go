@@ -12,6 +12,7 @@ package getty
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"io/ioutil"
 	"net"
 	"strings"
@@ -20,8 +21,6 @@ import (
 )
 
 import (
-	"fmt"
-
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
 )
