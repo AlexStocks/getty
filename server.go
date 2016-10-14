@@ -203,7 +203,7 @@ func (this *Server) RunWSEventLoop(newSession NewSessionCallback, path string) {
 		}).Serve(this.listener)
 		if err != nil {
 			log.Error("http.Server.Serve(addr{%s}) = err{%#v}", this.addr, err)
-			panic(err)
+			// panic(err)
 		}
 	}()
 }

@@ -34,8 +34,12 @@ var (
 type iConn interface {
 	incReadPkgCount()
 	incWritePkgCount()
-	UpdateActive()
-	GetActive() time.Time
+	updateActive()
+	getActive() time.Time
+	readDeadline() time.Duration
+	setReadDeadline(time.Duration)
+	writeDeadline() time.Duration
+	setWriteDeadline(time.Duration)
 	write(p []byte) error
 	// don't distinguish between tcp connection and websocket connection. Because
 	// gorilla/websocket/conn.go:(Conn)Close also invoke net.Conn.Close
@@ -52,12 +56,14 @@ var (
 
 type gettyConn struct {
 	ID            uint32
-	padding       uint32 // last active, in milliseconds
-	readCount     uint32 // read() count
-	writeCount    uint32 // write() count
-	readPkgCount  uint32 // send pkg count
-	writePkgCount uint32 // recv pkg count
-	active        int64  // active
+	padding       uint32        // last active, in milliseconds
+	readCount     uint32        // read() count
+	writeCount    uint32        // write() count
+	readPkgCount  uint32        // send pkg count
+	writePkgCount uint32        // recv pkg count
+	active        int64         // active
+	rDeadline     time.Duration // network current limiting
+	wDeadline     time.Duration
 	local         string // local address
 	peer          string // peer address
 }
@@ -70,11 +76,11 @@ func (this *gettyConn) incWritePkgCount() {
 	atomic.AddUint32(&this.writePkgCount, 1)
 }
 
-func (this *gettyConn) UpdateActive() {
+func (this *gettyConn) updateActive() {
 	atomic.StoreInt64(&(this.active), int64(time.Since(launchTime)))
 }
 
-func (this *gettyConn) GetActive() time.Time {
+func (this *gettyConn) getActive() time.Time {
 	return launchTime.Add(time.Duration(atomic.LoadInt64(&(this.active))))
 }
 
@@ -83,6 +89,33 @@ func (this *gettyConn) write([]byte) error {
 }
 
 func (this *gettyConn) close(int) {}
+
+func (this gettyConn) readDeadline() time.Duration {
+	return this.rDeadline
+}
+
+func (this *gettyConn) setReadDeadline(rDeadline time.Duration) {
+	if rDeadline < 1 {
+		panic("@rDeadline < 1")
+	}
+
+	this.rDeadline = rDeadline
+	if this.wDeadline == 0 {
+		this.wDeadline = rDeadline
+	}
+}
+
+func (this gettyConn) writeDeadline() time.Duration {
+	return this.wDeadline
+}
+
+func (this *gettyConn) setWriteDeadline(wDeadline time.Duration) {
+	if wDeadline < 1 {
+		panic("@wDeadline < 1")
+	}
+
+	this.wDeadline = wDeadline
+}
 
 /////////////////////////////////////////
 // getty tcp connection
@@ -124,8 +157,9 @@ func (this *gettyTCPConn) read(p []byte) (int, error) {
 	// }
 
 	// atomic.AddUint32(&this.readCount, 1)
-	atomic.AddUint32(&this.readCount, (uint32)(len(p)))
-	return this.conn.Read(p)
+	l, e := this.conn.Read(p)
+	atomic.AddUint32(&this.readCount, uint32(l))
+	return l, e
 }
 
 // tcp connection write
@@ -198,19 +232,20 @@ func (this *gettyWSConn) handlePing(message string) error {
 		err = nil
 	}
 	if err == nil {
-		this.UpdateActive()
+		this.updateActive()
 	}
 
 	return err
 }
 
 func (this *gettyWSConn) handlePong(string) error {
-	this.UpdateActive()
+	this.updateActive()
 	return nil
 }
 
 // websocket connection read
 func (this *gettyWSConn) read() ([]byte, error) {
+	// this.conn.SetReadDeadline(time.Now().Add(this.rDeadline))
 	_, b, e := this.conn.ReadMessage()
 	if e == nil {
 		// atomic.AddUint32(&this.readCount, (uint32)(l))
@@ -224,6 +259,7 @@ func (this *gettyWSConn) read() ([]byte, error) {
 func (this *gettyWSConn) write(p []byte) error {
 	// atomic.AddUint32(&this.writeCount, 1)
 	atomic.AddUint32(&this.writeCount, (uint32)(len(p)))
+	// this.conn.SetWriteDeadline(time.Now().Add(this.wDeadline))
 	return this.conn.WriteMessage(websocket.BinaryMessage, p)
 }
 
@@ -233,6 +269,7 @@ func (this *gettyWSConn) writePing() error {
 
 // close websocket connection
 func (this *gettyWSConn) close(waitSec int) {
+	this.conn.WriteMessage(websocket.CloseMessage, []byte("bye-bye!!!"))
 	this.conn.UnderlyingConn().(*net.TCPConn).SetLinger(waitSec)
 	this.conn.Close()
 }

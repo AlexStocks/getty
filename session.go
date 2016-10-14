@@ -28,7 +28,7 @@ import (
 
 const (
 	maxReadBufLen      = 4 * 1024
-	netIOTimeout       = 100e6    // 100ms
+	netIOTimeout       = 1e9      // 1s
 	period             = 60 * 1e9 // 1 minute
 	pendingDuration    = 3e9
 	defaultSessionName = "Session"
@@ -65,12 +65,10 @@ type Session struct {
 	done     chan empty
 	// errFlag  bool
 
-	period    time.Duration
-	rDeadline time.Duration // network current limiting
-	wDeadline time.Duration
-	wait      time.Duration
-	rQ        chan interface{}
-	wQ        chan interface{}
+	period time.Duration
+	wait   time.Duration
+	rQ     chan interface{}
+	wQ     chan interface{}
 
 	// attribute
 	attrs map[string]interface{}
@@ -79,42 +77,54 @@ type Session struct {
 	lock  sync.RWMutex
 }
 
+// if nerr, ok = err.(net.Error); ok && nerr.Timeout() {
+// 	break
+// }
 func NewSession() *Session {
-	return &Session{
-		name:      defaultSessionName,
-		done:      make(chan empty),
-		period:    period,
-		rDeadline: netIOTimeout,
-		wDeadline: netIOTimeout,
-		wait:      pendingDuration,
-		attrs:     make(map[string]interface{}),
+	session := &Session{
+		name:   defaultSessionName,
+		done:   make(chan empty),
+		period: period,
+		wait:   pendingDuration,
+		attrs:  make(map[string]interface{}),
 	}
+
+	session.setWriteDeadline(netIOTimeout)
+	session.setReadDeadline(netIOTimeout)
+
+	return session
 }
 
 func NewTCPSession(conn net.Conn) *Session {
-	return &Session{
-		name:      defaultSessionName,
-		iConn:     newGettyTCPConn(conn),
-		done:      make(chan empty),
-		period:    period,
-		rDeadline: netIOTimeout,
-		wDeadline: netIOTimeout,
-		wait:      pendingDuration,
-		attrs:     make(map[string]interface{}),
+	session := &Session{
+		name:   defaultSessionName,
+		iConn:  newGettyTCPConn(conn),
+		done:   make(chan empty),
+		period: period,
+		wait:   pendingDuration,
+		attrs:  make(map[string]interface{}),
 	}
+
+	session.setWriteDeadline(netIOTimeout)
+	session.setReadDeadline(netIOTimeout)
+
+	return session
 }
 
 func NewWSSession(conn *websocket.Conn) *Session {
-	return &Session{
-		name:      defaultSessionName,
-		iConn:     newGettyWSConn(conn),
-		done:      make(chan empty),
-		period:    period,
-		rDeadline: netIOTimeout,
-		wDeadline: netIOTimeout,
-		wait:      pendingDuration,
-		attrs:     make(map[string]interface{}),
+	session := &Session{
+		name:   defaultSessionName,
+		iConn:  newGettyWSConn(conn),
+		done:   make(chan empty),
+		period: period,
+		wait:   pendingDuration,
+		attrs:  make(map[string]interface{}),
 	}
+
+	session.setWriteDeadline(netIOTimeout)
+	session.setReadDeadline(netIOTimeout)
+
+	return session
 }
 
 func (this *Session) Reset() {
@@ -123,11 +133,12 @@ func (this *Session) Reset() {
 	this.done = make(chan empty)
 	// this.errFlag = false
 	this.period = period
-	this.rDeadline = netIOTimeout
-	this.wDeadline = netIOTimeout
 	this.wait = pendingDuration
 	this.attrs = make(map[string]interface{})
 	this.grNum = 0
+
+	this.setWriteDeadline(netIOTimeout)
+	this.setReadDeadline(netIOTimeout)
 }
 
 // func (this *Session) SetConn(conn net.Conn) { this.gettyConn = newGettyConn(conn) }
@@ -241,26 +252,15 @@ func (this *Session) SetWQLen(writeQLen int) {
 
 // SetReadDeadline sets deadline for the future read calls.
 func (this *Session) SetReadDeadline(rDeadline time.Duration) {
-	if rDeadline < 1 {
-		panic("@rDeadline < 1")
-	}
-
 	this.lock.Lock()
-	this.rDeadline = rDeadline
-	if this.wDeadline == 0 {
-		this.wDeadline = rDeadline
-	}
+	this.setReadDeadline(rDeadline)
 	this.lock.Unlock()
 }
 
 // SetWriteDeadlile sets deadline for the future read calls.
 func (this *Session) SetWriteDeadline(wDeadline time.Duration) {
-	if wDeadline < 1 {
-		panic("@wDeadline < 1")
-	}
-
 	this.lock.Lock()
-	this.wDeadline = wDeadline
+	this.setWriteDeadline(wDeadline)
 	this.lock.Unlock()
 }
 
@@ -295,6 +295,14 @@ func (this *Session) RemoveAttribute(key string) {
 	this.lock.Unlock()
 }
 
+func (this *Session) UpdateActive() {
+	this.updateActive()
+}
+
+func (this *Session) GetActive() time.Time {
+	return this.getActive()
+}
+
 func (this *Session) sessionToken() string {
 	var conn *gettyConn
 	if conn = this.gettyConn(); conn == nil {
@@ -319,7 +327,7 @@ func (this *Session) WritePkg(pkg interface{}) error {
 		}
 	}()
 
-	var d = this.wDeadline
+	var d = this.writeDeadline()
 	if d > netIOTimeout {
 		d = netIOTimeout
 	}
@@ -388,7 +396,7 @@ func (this *Session) RunEventLoop() {
 	}
 
 	// call session opened
-	this.UpdateActive()
+	this.updateActive()
 	if err := this.listener.OnOpen(this); err != nil {
 		this.Close()
 		return
@@ -533,8 +541,9 @@ func (this *Session) handlePackage() {
 // get package from tcp stream(packet)
 func (this *Session) handleTCPPackage() error {
 	var (
-		err error
-		// nerr    net.Error
+		ok     bool
+		err    error
+		nerr   net.Error
 		conn   *gettyTCPConn
 		exit   bool
 		bufLen int
@@ -554,13 +563,14 @@ func (this *Session) handleTCPPackage() error {
 		}
 
 		bufLen = 0
-		for { // for clause for the network timeout condition check
+		for {
+			// for clause for the network timeout condition check
 			// this.conn.SetReadDeadline(time.Now().Add(this.rDeadline))
 			bufLen, err = conn.read(buf)
 			if err != nil {
-				// if nerr, ok = err.(net.Error); ok && nerr.Timeout() {
-				// 	break
-				// }
+				if nerr, ok = err.(net.Error); ok && nerr.Timeout() {
+					break
+				}
 				log.Error("%s, [session.conn.read] = error{%v}", this.sessionToken(), err)
 				// for (Codec)OnErr
 				// this.errFlag = true
@@ -594,7 +604,7 @@ func (this *Session) handleTCPPackage() error {
 			if pkg == nil {
 				break
 			}
-			this.UpdateActive()
+			this.updateActive()
 			this.rQ <- pkg
 			pktBuf.Next(pkgLen)
 		}
@@ -609,7 +619,9 @@ func (this *Session) handleTCPPackage() error {
 // get package from websocket stream
 func (this *Session) handleWSPackage() error {
 	var (
+		ok           bool
 		err          error
+		nerr         net.Error
 		length       int
 		conn         *gettyWSConn
 		pkg          []byte
@@ -619,16 +631,18 @@ func (this *Session) handleWSPackage() error {
 	conn = this.iConn.(*gettyWSConn)
 	for {
 		if this.IsClosed() {
-			break // 退出前不再读取任何packet，buf中剩余的stream bytes也不可能凑够一个package, 所以直接退出
+			break
 		}
-
 		pkg, err = conn.read()
+		if nerr, ok = err.(net.Error); ok && nerr.Timeout() {
+			continue
+		}
 		if err != nil {
 			log.Warn("%s, [session.handleWSPackage] = error{%+v}", this.sessionToken(), err)
 			// this.errFlag = true
 			return err
 		}
-		this.UpdateActive()
+		this.updateActive()
 		if this.reader != nil {
 			unmarshalPkg, length, err = this.reader.Read(this, pkg)
 			if err == nil && this.maxMsgLen > 0 && length > this.maxMsgLen {
@@ -636,9 +650,9 @@ func (this *Session) handleWSPackage() error {
 			}
 			if err != nil {
 				log.Warn("%s, [session.handleWSPackage] = len{%d}, error{%+v}", this.sessionToken(), length, err)
-			} else {
-				this.rQ <- unmarshalPkg
+				continue
 			}
+			this.rQ <- unmarshalPkg
 		} else {
 			this.rQ <- pkg
 		}
@@ -653,7 +667,14 @@ func (this *Session) stop() {
 		return
 
 	default:
-		this.once.Do(func() { close(this.done) })
+		this.once.Do(func() {
+			// let read/write timeout asap
+			if conn := this.Conn(); conn != nil {
+				conn.SetReadDeadline(time.Now().Add(this.readDeadline()))
+				conn.SetWriteDeadline(time.Now().Add(this.writeDeadline()))
+			}
+			close(this.done)
+		})
 	}
 }
 

@@ -15,6 +15,12 @@
     > 1 add conn.go:(gettyWSConn)handlePing
     >
     > 2 add conn.go:(gettyWSConn)handlePong
+    >
+    > 3 set read/write timeout in session.go:(Session)stop to let read/write timeout asap
+    >
+    > 4 fix bug: websocket block on session.go:(Session)handleWSPkg when got error. set read/write timeout asap to solve this problem.
+    >
+    > 5 version: 0.4.04
 
 - 2016/10/13
     > 1 add conn.go:(gettyWSConn)writePing which is invoked automatically in session.go:(Session)handleLoop
