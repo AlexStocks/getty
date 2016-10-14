@@ -11,6 +11,11 @@
 ## develop history ##
 ---
 
+- 2016/10/14
+    > 1 add conn.go:(gettyWSConn)handlePing
+    >
+    > 2 add conn.go:(gettyWSConn)handlePong
+
 - 2016/10/13
     > 1 add conn.go:(gettyWSConn)writePing which is invoked automatically in session.go:(Session)handleLoop
     >

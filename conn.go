@@ -184,9 +184,24 @@ func newGettyWSConn(conn *websocket.Conn) *gettyWSConn {
 			peer:  peerAddr,
 		},
 	}
+	conn.SetPingHandler(gettyWSConn.handlePing)
 	conn.SetPongHandler(gettyWSConn.handlePong)
 
 	return gettyWSConn
+}
+
+func (this *gettyWSConn) handlePing(message string) error {
+	err := this.conn.WriteMessage(websocket.PongMessage, []byte(message))
+	if err == websocket.ErrCloseSent {
+		err = nil
+	} else if e, ok := err.(net.Error); ok && e.Temporary() {
+		err = nil
+	}
+	if err == nil {
+		this.UpdateActive()
+	}
+
+	return err
 }
 
 func (this *gettyWSConn) handlePong(string) error {
