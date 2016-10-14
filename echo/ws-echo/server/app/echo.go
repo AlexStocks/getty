@@ -4,7 +4,7 @@
 # LICENCE : Apache License 2.0
 # EMAIL   : alexstocks@foxmail.com
 # MOD     : 2016-08-22 17:44
-# FILE    : utils.go
+# FILE    : echo.go
 ******************************************************/
 
 package main
@@ -28,12 +28,10 @@ import (
 type echoCommand uint32
 
 const (
-	heartbeatCmd = iota
-	echoCmd
+	echoCmd = iota
 )
 
 var echoCommandStrings = [...]string{
-	"heartbeat",
 	"echo",
 }
 
@@ -48,10 +46,6 @@ func (c echoCommand) String() string {
 const (
 	echoPkgMagic     = 0x20160905
 	maxEchoStringLen = 0xff
-
-	echoHeartbeatRequestString  = "ping"
-	echoHeartbeatResponseString = "pong"
-	echoMessage                 = "Hello, getty!"
 )
 
 var (

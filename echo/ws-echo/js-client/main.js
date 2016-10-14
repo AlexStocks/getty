@@ -8,8 +8,7 @@ $(function() {
     ];
 
     var seq = 0;
-    var echoCommand = 0x01;
-    var heartbeatCommand = 0x02;
+    var echoCommand = 0x00;
 
     /**
      * create struct
@@ -222,9 +221,11 @@ $(function() {
         fileReader.readAsArrayBuffer(e.data); // 此处读取blob
     }
 
-    socket.onclose = function() {
+    socket.onclose = function(e) {
+        // console.log("socket.onclose" + e.reason)
+        disconnect()
         addChatMessage({
-            Message: '!!SYSTEM-WS-Close, connection closed'
+            Message: e.reason + '!!SYSTEM-WS-Close, connection closed'
         });
     }
 

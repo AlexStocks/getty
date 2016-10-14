@@ -29,23 +29,6 @@ type PackageHandler interface {
 }
 
 ////////////////////////////////////////////
-// heartbeat handler
-////////////////////////////////////////////
-
-type HeartbeatHandler struct{}
-
-func (this *HeartbeatHandler) Handle(session *getty.Session, pkg *EchoPackage) error {
-	log.Debug("get echo heartbeat package{%s}", pkg)
-
-	var rspPkg EchoPackage
-	rspPkg.H = pkg.H
-	rspPkg.B = echoHeartbeatResponseString
-	rspPkg.H.Len = uint16(len(rspPkg.B))
-
-	return session.WritePkg(&rspPkg)
-}
-
-////////////////////////////////////////////
 // message handler
 ////////////////////////////////////////////
 
@@ -74,7 +57,6 @@ type EchoMessageHandler struct {
 
 func newEchoMessageHandler() *EchoMessageHandler {
 	handlers := make(map[uint32]PackageHandler)
-	handlers[heartbeatCmd] = &HeartbeatHandler{}
 	handlers[echoCmd] = &MessageHandler{}
 
 	return &EchoMessageHandler{sessionMap: make(map[*getty.Session]*clientEchoSession), handlers: handlers}

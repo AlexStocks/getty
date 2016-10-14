@@ -102,7 +102,7 @@ func initClient() {
 	client.gettyClient = getty.NewClient(
 		(int)(conf.ConnectionNum),
 		conf.connectInterval,
-		gxnet.HostAddress(conf.ServerHost, conf.ServerPort),
+		gxnet.WSHostAddress(conf.ServerHost, conf.ServerPort, conf.ServerPath),
 	)
 	client.gettyClient.RunEventLoop(newSession)
 }
@@ -146,7 +146,7 @@ func echo() {
 	// pkg.H.ServiceID = 0
 	pkg.H.Command = echoCmd
 	pkg.B = conf.EchoString
-	pkg.H.Len = (uint16)(len(pkg.B))
+	pkg.H.Len = (uint16)(len(pkg.B)) + 1
 
 	if session := client.selectSession(); session != nil {
 		err := session.WritePkg(&pkg)

@@ -7,8 +7,9 @@ AppName                 = "ECHO-CLIENT"
 LocalHost               = "127.0.0.1"
 
 # server
-ServerHost              = "192.168.35.1"
+ServerHost              = "192.168.35.3"
 ServerPort              = 10000
+ServerPath              = "/echo"
 ProfilePort             = 10080
 
 # connection pool

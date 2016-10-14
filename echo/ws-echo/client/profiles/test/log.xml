@@ -1,5 +1,5 @@
 <logging>
-  <filter enabled="false">
+  <filter enabled="true">
     <tag>stdout</tag>
     <type>console</type>
     <!-- level is (:?FINEST|FINE|DEBUG|TRACE|INFO|WARNING|ERROR) -->
