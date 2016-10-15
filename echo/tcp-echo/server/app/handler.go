@@ -40,7 +40,7 @@ func (this *HeartbeatHandler) Handle(session *getty.Session, pkg *EchoPackage) e
 	var rspPkg EchoPackage
 	rspPkg.H = pkg.H
 	rspPkg.B = echoHeartbeatResponseString
-	rspPkg.H.Len = uint16(len(rspPkg.B))
+	rspPkg.H.Len = uint16(len(rspPkg.B) + 1)
 
 	return session.WritePkg(&rspPkg)
 }
@@ -97,7 +97,7 @@ func (this *EchoMessageHandler) OnOpen(session *getty.Session) error {
 
 	log.Info("got session:%s", session.Stat())
 	this.rwlock.Lock()
-	this.sessionMap[session] = &clientEchoSession{session: session, active: time.Now()}
+	this.sessionMap[session] = &clientEchoSession{session: session}
 	this.rwlock.Unlock()
 	return nil
 }
@@ -140,13 +140,17 @@ func (this *EchoMessageHandler) OnMessage(session *getty.Session, pkg interface{
 }
 
 func (this *EchoMessageHandler) OnCron(session *getty.Session) {
-	var flag bool
+	var (
+		flag   bool
+		active time.Time
+	)
 	this.rwlock.RLock()
 	if _, ok := this.sessionMap[session]; ok {
-		if conf.sessionTimeout.Nanoseconds() < time.Since(this.sessionMap[session].active).Nanoseconds() {
+		active = session.GetActive()
+		if conf.sessionTimeout.Nanoseconds() < time.Since(active).Nanoseconds() {
 			flag = true
 			log.Warn("session{%s} timeout{%s}, reqNum{%d}",
-				session.Stat(), time.Since(this.sessionMap[session].active).String(), this.sessionMap[session].reqNum)
+				session.Stat(), time.Since(active).String(), this.sessionMap[session].reqNum)
 		}
 	}
 	this.rwlock.RUnlock()

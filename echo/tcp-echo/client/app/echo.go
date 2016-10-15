@@ -4,7 +4,7 @@
 # LICENCE : Apache License 2.0
 # EMAIL   : alexstocks@foxmail.com
 # MOD     : 2016-08-22 17:44
-# FILE    : utils.go
+# FILE    : echo.go
 ******************************************************/
 
 package main
@@ -131,7 +131,7 @@ func (this *EchoPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
 	if buf.Len() < (int)(this.H.Len) {
 		return 0, ErrNotEnoughSteam
 	}
-	if maxEchoStringLen < this.H.Len {
+	if maxEchoStringLen < this.H.Len-1 {
 		return 0, ErrTooLargePackage
 	}
 
@@ -141,5 +141,5 @@ func (this *EchoPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
 	}
 	this.B = (string)(buf.Next((int)(len)))
 
-	return (int)(this.H.Len) + 1 + echoPkgHeaderLen, nil
+	return (int)(this.H.Len) + echoPkgHeaderLen, nil
 }

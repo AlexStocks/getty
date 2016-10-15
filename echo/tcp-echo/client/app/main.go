@@ -146,7 +146,7 @@ func echo() {
 	// pkg.H.ServiceID = 0
 	pkg.H.Command = echoCmd
 	pkg.B = conf.EchoString
-	pkg.H.Len = (uint16)(len(pkg.B))
+	pkg.H.Len = (uint16)(len(pkg.B)) + 1
 
 	if session := client.selectSession(); session != nil {
 		err := session.WritePkg(&pkg)
