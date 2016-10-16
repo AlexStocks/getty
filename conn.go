@@ -17,7 +17,7 @@ import (
 )
 
 import (
-	// log "github.com/AlexStocks/log4go"
+	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
 )
 
@@ -246,10 +246,14 @@ func (this *gettyWSConn) handlePong(string) error {
 // websocket connection read
 func (this *gettyWSConn) read() ([]byte, error) {
 	// this.conn.SetReadDeadline(time.Now().Add(this.rDeadline))
-	_, b, e := this.conn.ReadMessage()
+	_, b, e := this.conn.ReadMessage() // the first return value is message type.
 	if e == nil {
 		// atomic.AddUint32(&this.readCount, (uint32)(l))
 		atomic.AddUint32(&this.readPkgCount, 1)
+	} else {
+		if websocket.IsUnexpectedCloseError(e, websocket.CloseGoingAway) {
+			log.Warn("websocket unexpected close error: %v", err)
+		}
 	}
 
 	return b, e
