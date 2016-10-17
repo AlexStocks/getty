@@ -13,6 +13,8 @@ You can also handle heartbeat logic in codec.go:(Codec):OnCron. If you use tcp, 
 
 Whatever if you use websocket, you do not need to care about hearbeat request/response because Getty do this task in session.go:(Session)handleLoop by sending/received websocket ping/pong frames. You just need to  check whether the websocket session has been timeout or not in codec.go:(Codec)OnCron by session.go:(Session)GetActive.
 
+You can get code example in https://github.com/AlexStocks/getty-examples.
+
 ## LICENCE ##
 ---
 Apache License 2.0
