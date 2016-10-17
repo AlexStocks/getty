@@ -252,7 +252,7 @@ func (this *gettyWSConn) read() ([]byte, error) {
 		atomic.AddUint32(&this.readPkgCount, 1)
 	} else {
 		if websocket.IsUnexpectedCloseError(e, websocket.CloseGoingAway) {
-			log.Warn("websocket unexpected close error: %v", err)
+			log.Warn("websocket unexpected close error: %v", e)
 		}
 	}
 
