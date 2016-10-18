@@ -95,9 +95,9 @@ list() {
 
         if [[ ${OS_NAME} == "Linux" ]]; then
             echo "index: user, pid, start, duration"
-	else
-            echo "index: PID, WINPID, UID, STIME, COMMAND"
-	fi
+    else
+        echo "index: PID, WINPID, UID, STIME, COMMAND"
+    fi
         idx=0
         for ps in ${PID}
         do
@@ -116,7 +116,7 @@ case C"$opt" in
         stop
         ;;
     Cterm)
-	term
+        term
         ;;
     Crestart)
         term
