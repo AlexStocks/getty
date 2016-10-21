@@ -122,7 +122,8 @@ func (this *Server) RunEventloop(newSession NewSessionCallback) {
 				continue
 			}
 			delay = 0
-			client.RunEventLoop()
+			// client.RunEventLoop()
+			client.run()
 		}
 	}()
 }
@@ -179,7 +180,8 @@ func (this *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 	if session.maxMsgLen > 0 {
 		conn.SetReadLimit(int64(session.maxMsgLen))
 	}
-	session.RunEventLoop()
+	// session.RunEventLoop()
+	session.run()
 }
 
 // RunWSEventLoop serve websocket client request

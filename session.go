@@ -381,7 +381,8 @@ func (this *Session) WriteBytesArray(pkgs ...[]byte) error {
 	return this.iConn.write(arr)
 }
 
-func (this *Session) RunEventLoop() {
+// func (this *Session) RunEventLoop() {
+func (this *Session) run() {
 	if this.rQ == nil || this.wQ == nil {
 		errStr := fmt.Sprintf("Session{name:%s, rQ:%#v, wQ:%#v}",
 			this.name, this.rQ, this.wQ)

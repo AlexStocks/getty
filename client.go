@@ -233,7 +233,8 @@ func (this *Client) connect() {
 		}
 		err = this.newSession(session)
 		if err == nil {
-			session.RunEventLoop()
+			// session.RunEventLoop()
+			session.run()
 			this.Lock()
 			this.sessionMap[session] = empty{}
 			this.Unlock()

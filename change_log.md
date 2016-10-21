@@ -11,6 +11,11 @@
 ## develop history ##
 ---
 
+- 2016/10/21
+    > 1 session.go:(Session)RunEventLoop -> session.go:(Session)run
+    >
+    > 2 version: 0.4.05
+
 - 2016/10/14
     > 1 add conn.go:(gettyWSConn)handlePing
     >
