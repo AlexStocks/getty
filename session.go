@@ -445,6 +445,8 @@ func (this *Session) handleLoop() {
 	// ticker = time.NewTicker(this.period) // use wheel instead, 2016/09/26
 LOOP:
 	for {
+		// A select blocks until one of its cases can run, then it executes that case.
+		// It choose one at random if multiple are ready. Otherwise it choose default branch if none is ready.
 		select {
 		case <-this.done:
 			// 这个分支确保(Session)handleLoop gr在(Session)handlePackage gr之后退出
