@@ -348,11 +348,18 @@ func (this *Session) WritePkg(pkg interface{}) error {
 
 // for codecs
 func (this *Session) WriteBytes(pkg []byte) error {
+	if this.IsClosed() {
+		return ErrSessionClosed
+	}
+
 	// this.conn.SetWriteDeadline(time.Now().Add(this.wDeadline))
 	return this.iConn.write(pkg)
 }
 
 func (this *Session) WriteBytesArray(pkgs ...[]byte) error {
+	if this.IsClosed() {
+		return ErrSessionClosed
+	}
 	// this.conn.SetWriteDeadline(time.Now().Add(this.wDeadline))
 
 	if len(pkgs) == 1 {
@@ -378,7 +385,8 @@ func (this *Session) WriteBytesArray(pkgs ...[]byte) error {
 		l += len(pkgs[i])
 	}
 
-	return this.iConn.write(arr)
+	// return this.iConn.write(arr)
+	return this.WriteBytes(arr)
 }
 
 // func (this *Session) RunEventLoop() {
