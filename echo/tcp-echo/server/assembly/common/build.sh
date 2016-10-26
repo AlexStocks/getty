@@ -46,11 +46,25 @@ mkdir -p ${CONF_DIR}
 mv ${TARGET_NAME} ${SBIN_DIR}
 cp -r assembly/bin ${BIN_DIR}
 # modify APPLICATION_NAME
-sed -i "s~APPLICATION_NAME~${TARGET_EXEC_NAME}~g" ${BIN_DIR}/bin/*
+if [[ ${GOOS} == "darwin" ]]; then
+    sed -i "" "s~APPLICATION_NAME~${TARGET_EXEC_NAME}~g" ${BIN_DIR}/bin/*
+else
+    sed -i "s~APPLICATION_NAME~${TARGET_EXEC_NAME}~g" ${BIN_DIR}/bin/*
+fi
+
 # modify TARGET_CONF_FILE
-sed -i "s~TARGET_CONF_FILE~${TARGET_CONF_FILE}~g" ${BIN_DIR}/bin/*
+if [[ ${GOOS} == "darwin" ]]; then
+    sed -i "" "s~TARGET_CONF_FILE~${TARGET_CONF_FILE}~g" ${BIN_DIR}/bin/*
+else
+    sed -i "s~TARGET_CONF_FILE~${TARGET_CONF_FILE}~g" ${BIN_DIR}/bin/*
+fi
 # modify TARGET_LOG_CONF_FILE
-sed -i "s~TARGET_LOG_CONF_FILE~${TARGET_LOG_CONF_FILE}~g" ${BIN_DIR}/bin/*
+
+if [[ ${GOOS} == "darwin" ]]; then
+    sed -i "" "s~TARGET_LOG_CONF_FILE~${TARGET_LOG_CONF_FILE}~g" ${BIN_DIR}/bin/*
+else
+    sed -i "s~TARGET_LOG_CONF_FILE~${TARGET_LOG_CONF_FILE}~g" ${BIN_DIR}/bin/*
+fi
 
 cp -r profiles/${PROFILE}/* ${CONF_DIR}
 
