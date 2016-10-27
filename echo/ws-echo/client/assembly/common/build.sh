@@ -46,21 +46,21 @@ mkdir -p ${CONF_DIR}
 mv ${TARGET_NAME} ${SBIN_DIR}
 cp -r assembly/bin ${BIN_DIR}
 # modify APPLICATION_NAME
-if [[ ${GOOS} == "darwin" ]]; then
+if [ "$(uname)" == "Darwin" ]; then
     sed -i "" "s~APPLICATION_NAME~${TARGET_EXEC_NAME}~g" ${BIN_DIR}/bin/*
 else
     sed -i "s~APPLICATION_NAME~${TARGET_EXEC_NAME}~g" ${BIN_DIR}/bin/*
 fi
 
 # modify TARGET_CONF_FILE
-if [[ ${GOOS} == "darwin" ]]; then
+if [ "$(uname)" == "Darwin" ]; then
     sed -i "" "s~TARGET_CONF_FILE~${TARGET_CONF_FILE}~g" ${BIN_DIR}/bin/*
 else
     sed -i "s~TARGET_CONF_FILE~${TARGET_CONF_FILE}~g" ${BIN_DIR}/bin/*
 fi
 
 # modify TARGET_LOG_CONF_FILE
-if [[ ${GOOS} == "darwin" ]]; then
+if [ "$(uname)" == "Darwin" ]; then
     sed -i "" "s~TARGET_LOG_CONF_FILE~${TARGET_LOG_CONF_FILE}~g" ${BIN_DIR}/bin/*
 else
     sed -i "s~TARGET_LOG_CONF_FILE~${TARGET_LOG_CONF_FILE}~g" ${BIN_DIR}/bin/*
