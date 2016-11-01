@@ -27,7 +27,7 @@ type Writer interface {
 	Write(*Session, interface{}) error
 }
 
-// tcp packet handler interface
+// tcp package handler interface
 type ReadWriter interface {
 	Reader
 	Writer
@@ -48,8 +48,8 @@ type EventListener interface {
 	// invoked periodically, its period can be set by (Session)SetCronPeriod
 	OnCron(*Session)
 
-	// invoked when receive packge. Pls attention that do not handle long time logic processing in this func.
+	// invoked when receive packges. Pls attention that do not handle long time logic processing in this func.
 	// Y'd better set the package's maximum length. If the message's length is greater than it, u should
-	// should return err and getty will close this connection soon.
-	OnMessage(*Session, interface{})
+	// should return err in Reader{Read} and getty will close this connection soon.
+	OnMessage(*Session, []interface{})
 }

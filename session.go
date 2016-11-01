@@ -54,7 +54,8 @@ type empty struct{}
 // getty base session
 type Session struct {
 	name      string
-	maxMsgLen int
+	maxMsgLen int32
+	maxPkgNum int32
 	// net read write
 	iConn
 	// pkgHandler ReadWriter
@@ -193,9 +194,16 @@ func (this *Session) IsClosed() bool {
 	}
 }
 
-func (this *Session) SetMaxMsgLen(len int) { this.maxMsgLen = len }
-func (this *Session) SetName(name string)  { this.name = name }
+// set maximum pacakge length of every pacakge in (EventListener)OnMessage(@pkgs)
+func (this *Session) SetMaxMsgLen(length int) { this.maxMsgLen = int32(length) }
 
+// set package array size of (EventListener)OnMessage(@pkgs)
+func (this *Session) SetMaxPkgeNum(num int) { this.maxPkgNum = int32(num) }
+
+// set session name
+func (this *Session) SetName(name string) { this.name = name }
+
+// set EventListener
 func (this *Session) SetEventListener(listener EventListener) {
 	this.listener = listener
 }
@@ -207,10 +215,12 @@ func (this *Session) SetPkgHandler(handler ReadWriter) {
 	// this.pkgHandler = handler
 }
 
+// set Reader
 func (this *Session) SetReader(reader Reader) {
 	this.reader = reader
 }
 
+// set Writer
 func (this *Session) SetWriter(writer Writer) {
 	this.writer = writer
 }
@@ -275,6 +285,7 @@ func (this *Session) SetWaitTime(waitTime time.Duration) {
 	this.lock.Unlock()
 }
 
+// set attribute of key @session:key
 func (this *Session) GetAttribute(key string) interface{} {
 	var ret interface{}
 	this.lock.RLock()
@@ -283,22 +294,26 @@ func (this *Session) GetAttribute(key string) interface{} {
 	return ret
 }
 
+// get attribute of key @session:key
 func (this *Session) SetAttribute(key string, value interface{}) {
 	this.lock.Lock()
 	this.attrs[key] = value
 	this.lock.Unlock()
 }
 
+// delete attribute of key @session:key
 func (this *Session) RemoveAttribute(key string) {
 	this.lock.Lock()
 	delete(this.attrs, key)
 	this.lock.Unlock()
 }
 
+// update session's active time
 func (this *Session) UpdateActive() {
 	this.updateActive()
 }
 
+// get session's active time
 func (this *Session) GetActive() time.Time {
 	return this.getActive()
 }
@@ -356,6 +371,7 @@ func (this *Session) WriteBytes(pkg []byte) error {
 	return this.iConn.write(pkg)
 }
 
+// write multiple packages at once
 func (this *Session) WriteBytesArray(pkgs ...[]byte) error {
 	if this.IsClosed() {
 		return ErrSessionClosed
@@ -418,6 +434,7 @@ func (this *Session) run() {
 
 func (this *Session) handleLoop() {
 	var (
+		i      int32
 		err    error
 		flag   bool
 		wsFlag bool
@@ -475,8 +492,21 @@ LOOP:
 		case inPkg = <-this.rQ:
 			// 这个条件分支通过(Session)rQ排空确保(Session)handlePackage gr不会阻塞在(Session)rQ上
 			if flag {
-				this.listener.OnMessage(this, inPkg)
-				this.incReadPkgCount()
+				var pkgArray []interface{}
+				pkgArray = append(pkgArray, inPkg)
+			Read:
+				for i = 1; i < this.maxPkgNum; i++ {
+					select {
+					case inPkg = <-this.rQ:
+						pkgArray = append(pkgArray, inPkg)
+						this.incReadPkgCount()
+					default:
+						break Read
+					}
+				}
+				this.listener.OnMessage(this, pkgArray)
+				// this.listener.OnMessage(this, inPkg)
+				// this.incReadPkgCount()
 			} else {
 				log.Info("[session.handleLoop] drop readin package{%#v}", inPkg)
 			}
@@ -602,7 +632,7 @@ func (this *Session) handleTCPPackage() error {
 			}
 			// pkg, err = this.pkgHandler.Read(this, pktBuf)
 			pkg, pkgLen, err = this.reader.Read(this, pktBuf.Bytes())
-			if err == nil && this.maxMsgLen > 0 && pkgLen > this.maxMsgLen {
+			if err == nil && this.maxMsgLen > 0 && pkgLen > int(this.maxMsgLen) {
 				err = ErrMsgTooLong
 			}
 			if err != nil {
@@ -656,7 +686,7 @@ func (this *Session) handleWSPackage() error {
 		this.updateActive()
 		if this.reader != nil {
 			unmarshalPkg, length, err = this.reader.Read(this, pkg)
-			if err == nil && this.maxMsgLen > 0 && length > this.maxMsgLen {
+			if err == nil && this.maxMsgLen > 0 && length > int(this.maxMsgLen) {
 				err = ErrMsgTooLong
 			}
 			if err != nil {

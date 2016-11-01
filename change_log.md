@@ -11,6 +11,12 @@
 ## develop history ##
 ---
 
+
+- 2016/11/01
+    > 1 codec.go:(EventListener)OnMessage(*Session, pkg interface{}) -> OnMessage(*Session, pkgs []interface{})"
+    >
+    > 2 version: 0.5.01
+
 - 2016/10/21
     > 1 session.go:(Session)RunEventLoop -> session.go:(Session)run
     >
