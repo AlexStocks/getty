@@ -11,13 +11,19 @@
 ## develop history ##
 ---
 
+- 2016/11/02
+    > 1 add session.go:Session{ID(), LocalAddr(), RemoteAddr()}
+    >
+    > 2 add conn.go:iConn{id(), localAddr(), remoteAddr()}
+    >
+    > 2 version: 0.4.08
 
 - 2016/11/01
     > 1 session.go:Session{maxPkgLen(int)} -> Session{maxPkgLen(int32)}
     >
     > 2 add remarks in session.go
     >
-    > 2 version: 0.4.07
+    > 2 version: 0.4.07(0.4.06 is a obsolete version)
 
 - 2016/10/21
     > 1 session.go:(Session)RunEventLoop -> session.go:(Session)run

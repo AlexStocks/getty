@@ -77,9 +77,6 @@ type Session struct {
 	lock  sync.RWMutex
 }
 
-// if nerr, ok = err.(net.Error); ok && nerr.Timeout() {
-// 	break
-// }
 func NewSession() *Session {
 	session := &Session{
 		name:   defaultSessionName,
@@ -164,6 +161,21 @@ func (this *Session) gettyConn() *gettyConn {
 	}
 
 	return nil
+}
+
+// get session ID
+func (this *Session) ID() uint32 {
+	return this.iConn.id()
+}
+
+// get local address
+func (this *Session) LocalAddr() string {
+	return this.iConn.localAddr()
+}
+
+// get peer address
+func (this *Session) RemoteAddr() string {
+	return this.iConn.remoteAddr()
 }
 
 // return the connect statistic data
@@ -315,12 +327,7 @@ func (this *Session) GetActive() time.Time {
 }
 
 func (this *Session) sessionToken() string {
-	var conn *gettyConn
-	if conn = this.gettyConn(); conn == nil {
-		return ""
-	}
-
-	return fmt.Sprintf("{%s:%d:%s<->%s}", this.name, conn.ID, conn.local, conn.peer)
+	return fmt.Sprintf("{%s:%d:%s<->%s}", this.name, this.iConn.id(), this.iConn.localAddr(), this.iConn.remoteAddr())
 }
 
 // Queued write, for handler

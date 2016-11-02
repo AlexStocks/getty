@@ -32,6 +32,9 @@ var (
 /////////////////////////////////////////
 
 type iConn interface {
+	id() uint32
+	localAddr() string
+	remoteAddr() string
 	incReadPkgCount()
 	incWritePkgCount()
 	updateActive()
@@ -66,6 +69,18 @@ type gettyConn struct {
 	wDeadline     time.Duration
 	local         string // local address
 	peer          string // peer address
+}
+
+func (this *gettyConn) id() uint32 {
+	return this.ID
+}
+
+func (this *gettyConn) localAddr() string {
+	return this.local
+}
+
+func (this *gettyConn) remoteAddr() string {
+	return this.peer
 }
 
 func (this *gettyConn) incReadPkgCount() {
