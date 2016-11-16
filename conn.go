@@ -11,6 +11,9 @@ package getty
 
 import (
 	// "errors"
+	"compress/flate"
+	"fmt"
+	"io"
 	"net"
 	"sync/atomic"
 	"time"
@@ -18,6 +21,8 @@ import (
 
 import (
 	log "github.com/AlexStocks/log4go"
+
+	"github.com/golang/snappy"
 	"github.com/gorilla/websocket"
 )
 
@@ -28,11 +33,24 @@ var (
 )
 
 /////////////////////////////////////////
+// compress
+/////////////////////////////////////////
+
+type CompressType byte
+
+const (
+	CompressNone   CompressType = 0x00
+	CompressZip                 = 0x01
+	CompressSnappy              = 0x02
+)
+
+/////////////////////////////////////////
 // connection interfacke
 /////////////////////////////////////////
 
 type iConn interface {
 	id() uint32
+	setCompressType(t CompressType)
 	localAddr() string
 	remoteAddr() string
 	incReadPkgCount()
@@ -59,12 +77,14 @@ var (
 
 type gettyConn struct {
 	ID            uint32
-	padding       uint32        // last active, in milliseconds
+	compress      CompressType
+	padding1      uint8
+	padding2      uint16
 	readCount     uint32        // read() count
 	writeCount    uint32        // write() count
 	readPkgCount  uint32        // send pkg count
 	writePkgCount uint32        // recv pkg count
-	active        int64         // active
+	active        int64         // last active, in milliseconds
 	rDeadline     time.Duration // network current limiting
 	wDeadline     time.Duration
 	local         string // local address
@@ -138,7 +158,9 @@ func (this *gettyConn) setWriteDeadline(wDeadline time.Duration) {
 
 type gettyTCPConn struct {
 	gettyConn
-	conn net.Conn
+	reader io.Reader
+	writer io.Writer
+	conn   net.Conn
 }
 
 // create gettyTCPConn
@@ -156,12 +178,55 @@ func newGettyTCPConn(conn net.Conn) *gettyTCPConn {
 	}
 
 	return &gettyTCPConn{
-		conn: conn,
+		conn:   conn,
+		reader: io.Reader(conn),
+		writer: io.Writer(conn),
 		gettyConn: gettyConn{
-			ID:    atomic.AddUint32(&connID, 1),
-			local: localAddr,
-			peer:  peerAddr,
+			ID:       atomic.AddUint32(&connID, 1),
+			local:    localAddr,
+			peer:     peerAddr,
+			compress: CompressNone,
 		},
+	}
+}
+
+// for zip compress
+type writeFlusher struct {
+	flusher *flate.Writer
+}
+
+func (this *writeFlusher) Write(p []byte) (int, error) {
+	var (
+		n   int
+		err error
+	)
+
+	n, err = this.flusher.Write(p)
+	if err != nil {
+		return n, err
+	}
+	if err := this.flusher.Flush(); err != nil {
+		return 0, err
+	}
+
+	return n, nil
+}
+
+// set compress type(tcp: zip/snappy, websocket:zip)
+func (this *gettyTCPConn) setCompressType(t CompressType) {
+	switch {
+	case t == CompressZip:
+		this.reader = flate.NewReader(this.conn)
+
+		w, err := flate.NewWriter(this.conn, flate.DefaultCompression)
+		if err != nil {
+			panic(fmt.Sprintf("flate.NewReader(flate.DefaultCompress) = err(%s)", err))
+		}
+		this.writer = &writeFlusher{flusher: w}
+
+	case t == CompressSnappy:
+		this.reader = snappy.NewReader(this.conn)
+		this.writer = snappy.NewWriter(this.conn)
 	}
 }
 
@@ -172,7 +237,8 @@ func (this *gettyTCPConn) read(p []byte) (int, error) {
 	// }
 
 	// atomic.AddUint32(&this.readCount, 1)
-	l, e := this.conn.Read(p)
+	// l, e := this.conn.Read(p)
+	l, e := this.reader.Read(p)
 	atomic.AddUint32(&this.readCount, uint32(l))
 	return l, e
 }
@@ -185,7 +251,9 @@ func (this *gettyTCPConn) write(p []byte) error {
 
 	// atomic.AddUint32(&this.writeCount, 1)
 	atomic.AddUint32(&this.writeCount, (uint32)(len(p)))
-	_, err := this.conn.Write(p)
+	// _, err := this.conn.Write(p)
+	_, err := this.writer.Write(p)
+
 	return err
 }
 
@@ -237,6 +305,16 @@ func newGettyWSConn(conn *websocket.Conn) *gettyWSConn {
 	conn.SetPongHandler(gettyWSConn.handlePong)
 
 	return gettyWSConn
+}
+
+// set compress type(tcp: zip/snappy, websocket:zip)
+func (this *gettyWSConn) setCompressType(t CompressType) {
+	switch {
+	case t == CompressZip:
+		this.conn.EnableWriteCompression(true)
+	case t == CompressSnappy:
+		this.conn.EnableWriteCompression(true)
+	}
 }
 
 func (this *gettyWSConn) handlePing(message string) error {

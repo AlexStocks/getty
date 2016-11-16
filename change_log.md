@@ -11,12 +11,17 @@
 ## develop history ##
 ---
 
+- 2016/11/16
+    > 1 add zip/snappy compress for tcp/ws connection
+    >
+    > 2 version: 0.6.01
+ 
 - 2016/11/02
     > 1 add session.go:Session{ID(), LocalAddr(), RemoteAddr()}
     >
     > 2 add conn.go:iConn{id(), localAddr(), remoteAddr()}
     >
-    > 2 version: 0.4.08
+    > 3 version: 0.4.08
 
 - 2016/11/01
     > 1 session.go:Session{maxPkgLen(int)} -> Session{maxPkgLen(int32)}

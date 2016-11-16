@@ -168,6 +168,10 @@ func (this *Session) ID() uint32 {
 	return this.iConn.id()
 }
 
+func (this *Session) SetCompressType(t CompressType) {
+	this.iConn.setCompressType(t)
+}
+
 // get local address
 func (this *Session) LocalAddr() string {
 	return this.iConn.localAddr()
