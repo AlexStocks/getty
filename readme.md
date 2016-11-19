@@ -24,7 +24,7 @@ Next, start the client:
 
     $ cd tcp-echo/client/ && sh assembly/linux/test.sh && cd target/linux/echo_client-0.3.07-20161009-1634-test/ && sh bin/load.sh start
 
-## getty example1: ws-echo ##
+## getty example2: ws-echo ##
 ---
 
 This example shows a simple websocket client(go client & javascript client) and server.
