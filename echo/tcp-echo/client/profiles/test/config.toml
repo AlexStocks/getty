@@ -7,7 +7,7 @@ AppName                 = "ECHO-CLIENT"
 LocalHost               = "127.0.0.1"
 
 # server
-ServerHost              = "192.168.35.1"
+ServerHost              = "192.168.8.3"
 ServerPort              = 10000
 ProfilePort             = 10080
 
@@ -34,6 +34,7 @@ FailFastTimeout         = "3s"
 
 # tcp
 [GettySessionParam]
+    CompressEncoding    = true
     TcpNoDelay          = true
     TcpKeepAlive        = true
     TcpRBufSize         = 262144

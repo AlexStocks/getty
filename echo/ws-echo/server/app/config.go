@@ -33,19 +33,20 @@ var (
 
 type (
 	GettySessionParam struct {
-		TcpNoDelay      bool   `default:"true"`
-		TcpKeepAlive    bool   `default:"true"`
-		TcpRBufSize     int    `default:"262144"`
-		TcpWBufSize     int    `default:"65536"`
-		PkgRQSize       int    `default:"1024"`
-		PkgWQSize       int    `default:"1024"`
-		TcpReadTimeout  string `default:"1s"`
-		tcpReadTimeout  time.Duration
-		TcpWriteTimeout string `default:"5s"`
-		tcpWriteTimeout time.Duration
-		WaitTimeout     string `default:"7s"`
-		waitTimeout     time.Duration
-		SessionName     string `default:"echo-client"`
+		CompressEncoding bool   `default:"false"` // Accept-Encoding: gzip, deflate, sdch
+		TcpNoDelay       bool   `default:"true"`
+		TcpKeepAlive     bool   `default:"true"`
+		TcpRBufSize      int    `default:"262144"`
+		TcpWBufSize      int    `default:"65536"`
+		PkgRQSize        int    `default:"1024"`
+		PkgWQSize        int    `default:"1024"`
+		TcpReadTimeout   string `default:"1s"`
+		tcpReadTimeout   time.Duration
+		TcpWriteTimeout  string `default:"5s"`
+		tcpWriteTimeout  time.Duration
+		WaitTimeout      string `default:"7s"`
+		waitTimeout      time.Duration
+		SessionName      string `default:"echo-client"`
 	}
 
 	// Config holds supported types by the multiconfig package

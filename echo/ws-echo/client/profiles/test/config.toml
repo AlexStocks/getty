@@ -7,7 +7,8 @@ AppName                 = "ECHO-CLIENT"
 LocalHost               = "127.0.0.1"
 
 # server
-ServerHost              = "192.168.35.1"
+# ServerHost              = "127.0.0.1"
+ServerHost              = "192.168.8.3"
 ServerPort              = 10000
 ServerPath              = "/echo"
 ProfilePort             = 10080
@@ -26,15 +27,18 @@ SessionTimeout          = "20s"
 
 # client
 # client echo request string
-EchoString              = "Hello, getty!"
+# EchoString              = "Hello, getty!"
+# for compress test
+EchoString              = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 # 发送echo请求次数
-EchoTimes               = 10000
+EchoTimes               = 1
 
 # app fail fast
 FailFastTimeout         = "3s"
 
 # tcp
 [GettySessionParam]
+    CompressEncoding    = true
     TcpNoDelay          = true
     TcpKeepAlive        = true
     TcpRBufSize         = 262144

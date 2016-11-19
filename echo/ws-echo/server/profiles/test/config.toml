@@ -3,8 +3,9 @@
 
 AppName                 = "ECHO-SERVER"
 
+Host                    = "0.0.0.0"
 # Host                    = "127.0.0.1"
-Host                    = "192.168.35.1"
+# Host                    = "192.168.35.1"
 Ports                   = ["10000", "20000"]
 Paths                   = ["/echo", "/echo"]
 ProfilePort             = 10086
@@ -22,6 +23,7 @@ FailFastTimeout         = "3s"
 
 # tcp
 [GettySessionParam]
+    CompressEncoding    = true
     TcpNoDelay          = true
     TcpKeepAlive        = true
     TcpRBufSize         = 262144

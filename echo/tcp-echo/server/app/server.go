@@ -80,6 +80,10 @@ func newSession(session *getty.Session) error {
 		tcpConn *net.TCPConn
 	)
 
+	if conf.GettySessionParam.CompressEncoding {
+		session.SetCompressType(getty.CompressZip)
+	}
+
 	if tcpConn, ok = session.Conn().(*net.TCPConn); !ok {
 		panic(fmt.Sprintf("%s, session.conn{%#v} is not tcp connection\n", session.Stat(), session.Conn()))
 	}

@@ -39,7 +39,8 @@ $(function() {
 
     var $chatPage = $('.chat.page'); // The chatroom page
 
-    var socket = new WebSocket('ws://192.168.35.1:10000/echo');
+    // var socket = new WebSocket('ws://192.168.35.1:10000/echo');
+    var socket = new WebSocket('ws://' + serverAddress + '/echo');
     // // Setting binaryType to accept received binary as either 'blob' or 'arraybuffer'. In default it is 'blob'.
     // socket.binaryType = 'arraybuffer';
     // socket.binaryType = ''
