@@ -301,6 +301,7 @@ func newGettyWSConn(conn *websocket.Conn) *gettyWSConn {
 			peer:  peerAddr,
 		},
 	}
+	conn.EnableWriteCompression(false)
 	conn.SetPingHandler(gettyWSConn.handlePing)
 	conn.SetPongHandler(gettyWSConn.handlePong)
 
@@ -314,6 +315,8 @@ func (this *gettyWSConn) setCompressType(t CompressType) {
 		this.conn.EnableWriteCompression(true)
 	case t == CompressSnappy:
 		this.conn.EnableWriteCompression(true)
+	default:
+		this.conn.EnableWriteCompression(false)
 	}
 }
 

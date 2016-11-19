@@ -128,6 +128,7 @@ func (this *Client) dialWS() *Session {
 		session *Session
 	)
 
+	dialer.EnableCompression = true
 	for {
 		if this.IsClosed() {
 			return nil
@@ -161,6 +162,7 @@ func (this *Client) dialWSS() *Session {
 		session  *Session
 	)
 
+	dialer.EnableCompression = true
 	certPem, err = ioutil.ReadFile(this.certFile)
 	if err != nil {
 		panic(fmt.Errorf("ioutil.ReadFile(certFile{%s}) = err{%#v}", this.certFile, err))
@@ -170,6 +172,7 @@ func (this *Client) dialWSS() *Session {
 		panic("failed to parse root certificate")
 	}
 
+	// dialer.EnableCompression = true
 	dialer.TLSClientConfig = &tls.Config{RootCAs: certPool}
 	for {
 		if this.IsClosed() {
@@ -273,7 +276,7 @@ func (this *Client) RunEventLoop(newSession NewSessionCallback) {
 				if maxTimes < times {
 					times = maxTimes
 				}
-				time.Sleep(time.Duration(times * defaultInterval))
+				time.Sleep(time.Duration(int64(times) * defaultInterval))
 				continue
 			}
 			times = 0

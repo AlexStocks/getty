@@ -11,11 +11,16 @@
 ## develop history ##
 ---
 
-- 2016/11/16
-    > 1 add zip/snappy compress for tcp/ws connection
+- 2016/11/19
+    > 1 add conn.go:(*gettyWSConn) setCompressType to add zip compress feature for ws connection
     >
-    > 2 version: 0.6.01
- 
+    > 2 version: 0.6.2
+
+- 2016/11/16
+    > 1 add zip/snappy compress for tcp connection
+    >
+    > 2 version: 0.6.1
+
 - 2016/11/02
     > 1 add session.go:Session{ID(), LocalAddr(), RemoteAddr()}
     >
