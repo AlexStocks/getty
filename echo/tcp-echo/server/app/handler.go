@@ -25,7 +25,7 @@ var (
 )
 
 type PackageHandler interface {
-	Handle(*getty.Session, *EchoPackage) error
+	Handle(getty.Session, *EchoPackage) error
 }
 
 ////////////////////////////////////////////
@@ -34,7 +34,7 @@ type PackageHandler interface {
 
 type HeartbeatHandler struct{}
 
-func (this *HeartbeatHandler) Handle(session *getty.Session, pkg *EchoPackage) error {
+func (this *HeartbeatHandler) Handle(session getty.Session, pkg *EchoPackage) error {
 	log.Debug("get echo heartbeat package{%s}", pkg)
 
 	var rspPkg EchoPackage
@@ -51,7 +51,7 @@ func (this *HeartbeatHandler) Handle(session *getty.Session, pkg *EchoPackage) e
 
 type MessageHandler struct{}
 
-func (this *MessageHandler) Handle(session *getty.Session, pkg *EchoPackage) error {
+func (this *MessageHandler) Handle(session getty.Session, pkg *EchoPackage) error {
 	log.Debug("get echo package{%s}", pkg)
 	return session.WritePkg(pkg)
 }
@@ -61,7 +61,7 @@ func (this *MessageHandler) Handle(session *getty.Session, pkg *EchoPackage) err
 ////////////////////////////////////////////
 
 type clientEchoSession struct {
-	session *getty.Session
+	session getty.Session
 	active  time.Time
 	reqNum  int32
 }
@@ -70,7 +70,7 @@ type EchoMessageHandler struct {
 	handlers map[uint32]PackageHandler
 
 	rwlock     sync.RWMutex
-	sessionMap map[*getty.Session]*clientEchoSession
+	sessionMap map[getty.Session]*clientEchoSession
 }
 
 func newEchoMessageHandler() *EchoMessageHandler {
@@ -78,10 +78,10 @@ func newEchoMessageHandler() *EchoMessageHandler {
 	handlers[heartbeatCmd] = &HeartbeatHandler{}
 	handlers[echoCmd] = &MessageHandler{}
 
-	return &EchoMessageHandler{sessionMap: make(map[*getty.Session]*clientEchoSession), handlers: handlers}
+	return &EchoMessageHandler{sessionMap: make(map[getty.Session]*clientEchoSession), handlers: handlers}
 }
 
-func (this *EchoMessageHandler) OnOpen(session *getty.Session) error {
+func (this *EchoMessageHandler) OnOpen(session getty.Session) error {
 	var (
 		err error
 	)
@@ -102,21 +102,21 @@ func (this *EchoMessageHandler) OnOpen(session *getty.Session) error {
 	return nil
 }
 
-func (this *EchoMessageHandler) OnError(session *getty.Session, err error) {
+func (this *EchoMessageHandler) OnError(session getty.Session, err error) {
 	log.Info("session{%s} got error{%v}, will be closed.", session.Stat(), err)
 	this.rwlock.Lock()
 	delete(this.sessionMap, session)
 	this.rwlock.Unlock()
 }
 
-func (this *EchoMessageHandler) OnClose(session *getty.Session) {
+func (this *EchoMessageHandler) OnClose(session getty.Session) {
 	log.Info("session{%s} is closing......", session.Stat())
 	this.rwlock.Lock()
 	delete(this.sessionMap, session)
 	this.rwlock.Unlock()
 }
 
-func (this *EchoMessageHandler) OnMessage(session *getty.Session, pkg interface{}) {
+func (this *EchoMessageHandler) OnMessage(session getty.Session, pkg interface{}) {
 	p, ok := pkg.(*EchoPackage)
 	if !ok {
 		log.Error("illegal packge{%#v}", pkg)
@@ -139,7 +139,7 @@ func (this *EchoMessageHandler) OnMessage(session *getty.Session, pkg interface{
 	}
 }
 
-func (this *EchoMessageHandler) OnCron(session *getty.Session) {
+func (this *EchoMessageHandler) OnCron(session getty.Session) {
 	var (
 		flag   bool
 		active time.Time

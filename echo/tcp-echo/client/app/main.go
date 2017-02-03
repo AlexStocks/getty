@@ -69,7 +69,7 @@ func initProfiling() {
 	}()
 }
 
-func newSession(session *getty.Session) error {
+func newSession(session getty.Session) error {
 	var (
 		ok      bool
 		tcpConn *net.TCPConn

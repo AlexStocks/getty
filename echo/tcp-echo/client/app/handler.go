@@ -28,7 +28,7 @@ var (
 ////////////////////////////////////////////
 
 type clientEchoSession struct {
-	session *getty.Session
+	session getty.Session
 	reqNum  int32
 }
 
@@ -39,23 +39,23 @@ func newEchoMessageHandler() *EchoMessageHandler {
 	return &EchoMessageHandler{}
 }
 
-func (this *EchoMessageHandler) OnOpen(session *getty.Session) error {
+func (this *EchoMessageHandler) OnOpen(session getty.Session) error {
 	client.addSession(session)
 
 	return nil
 }
 
-func (this *EchoMessageHandler) OnError(session *getty.Session, err error) {
+func (this *EchoMessageHandler) OnError(session getty.Session, err error) {
 	log.Info("session{%s} got error{%v}, will be closed.", session.Stat(), err)
 	client.removeSession(session)
 }
 
-func (this *EchoMessageHandler) OnClose(session *getty.Session) {
+func (this *EchoMessageHandler) OnClose(session getty.Session) {
 	log.Info("session{%s} is closing......", session.Stat())
 	client.removeSession(session)
 }
 
-func (this *EchoMessageHandler) OnMessage(session *getty.Session, pkg interface{}) {
+func (this *EchoMessageHandler) OnMessage(session getty.Session, pkg interface{}) {
 	p, ok := pkg.(*EchoPackage)
 	if !ok {
 		log.Error("illegal packge{%#v}", pkg)
@@ -66,7 +66,7 @@ func (this *EchoMessageHandler) OnMessage(session *getty.Session, pkg interface{
 	client.updateSession(session)
 }
 
-func (this *EchoMessageHandler) OnCron(session *getty.Session) {
+func (this *EchoMessageHandler) OnCron(session getty.Session) {
 	clientEchoSession, err := client.getClientEchoSession(session)
 	if err != nil {
 		log.Error("client.getClientSession(session{%s}) = error{%#v}", session.Stat(), err)

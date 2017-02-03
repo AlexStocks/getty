@@ -62,7 +62,7 @@ func (this *EchoClient) close() {
 	client.lock.Unlock()
 }
 
-func (this *EchoClient) selectSession() *getty.Session {
+func (this *EchoClient) selectSession() getty.Session {
 	// get route server session
 	this.lock.RLock()
 	defer this.lock.RUnlock()
@@ -75,7 +75,7 @@ func (this *EchoClient) selectSession() *getty.Session {
 	return this.sessions[rand.Int31n(int32(count))].session
 }
 
-func (this *EchoClient) addSession(session *getty.Session) {
+func (this *EchoClient) addSession(session getty.Session) {
 	log.Debug("add session{%s}", session.Stat())
 	if session == nil {
 		return
@@ -86,7 +86,7 @@ func (this *EchoClient) addSession(session *getty.Session) {
 	this.lock.Unlock()
 }
 
-func (this *EchoClient) removeSession(session *getty.Session) {
+func (this *EchoClient) removeSession(session getty.Session) {
 	if session == nil {
 		return
 	}
@@ -105,7 +105,7 @@ func (this *EchoClient) removeSession(session *getty.Session) {
 	this.lock.Unlock()
 }
 
-func (this *EchoClient) updateSession(session *getty.Session) {
+func (this *EchoClient) updateSession(session getty.Session) {
 	if session == nil {
 		return
 	}
@@ -122,7 +122,7 @@ func (this *EchoClient) updateSession(session *getty.Session) {
 	this.lock.Unlock()
 }
 
-func (this *EchoClient) getClientEchoSession(session *getty.Session) (clientEchoSession, error) {
+func (this *EchoClient) getClientEchoSession(session getty.Session) (clientEchoSession, error) {
 	var (
 		err         error
 		echoSession clientEchoSession
