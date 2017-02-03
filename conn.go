@@ -48,20 +48,24 @@ const (
 // connection interfacke
 /////////////////////////////////////////
 
-type iConn interface {
-	id() uint32
-	setCompressType(t CompressType)
-	localAddr() string
-	remoteAddr() string
+type Connection interface {
+	ID() uint32
+	SetCompressType(t CompressType)
+	LocalAddr() string
+	RemoteAddr() string
 	incReadPkgCount()
 	incWritePkgCount()
-	updateActive()
-	getActive() time.Time
+	// update session's active time
+	UpdateActive()
+	// get session's active time
+	GetActive() time.Time
 	readDeadline() time.Duration
-	setReadDeadline(time.Duration)
+	// SetReadDeadline sets deadline for the future read calls.
+	SetReadDeadline(time.Duration)
 	writeDeadline() time.Duration
-	setWriteDeadline(time.Duration)
-	write(p []byte) error
+	// SetWriteDeadlile sets deadline for the future read calls.
+	SetWriteDeadline(time.Duration)
+	Write(p []byte) error
 	// don't distinguish between tcp connection and websocket connection. Because
 	// gorilla/websocket/conn.go:(Conn)Close also invoke net.Conn.Close
 	close(int)
@@ -76,7 +80,7 @@ var (
 )
 
 type gettyConn struct {
-	ID            uint32
+	id            uint32
 	compress      CompressType
 	padding1      uint8
 	padding2      uint16
@@ -91,15 +95,15 @@ type gettyConn struct {
 	peer          string // peer address
 }
 
-func (this *gettyConn) id() uint32 {
-	return this.ID
+func (this *gettyConn) ID() uint32 {
+	return this.id
 }
 
-func (this *gettyConn) localAddr() string {
+func (this *gettyConn) LocalAddr() string {
 	return this.local
 }
 
-func (this *gettyConn) remoteAddr() string {
+func (this *gettyConn) RemoteAddr() string {
 	return this.peer
 }
 
@@ -111,15 +115,15 @@ func (this *gettyConn) incWritePkgCount() {
 	atomic.AddUint32(&this.writePkgCount, 1)
 }
 
-func (this *gettyConn) updateActive() {
+func (this *gettyConn) UpdateActive() {
 	atomic.StoreInt64(&(this.active), int64(time.Since(launchTime)))
 }
 
-func (this *gettyConn) getActive() time.Time {
+func (this *gettyConn) GetActive() time.Time {
 	return launchTime.Add(time.Duration(atomic.LoadInt64(&(this.active))))
 }
 
-func (this *gettyConn) write([]byte) error {
+func (this *gettyConn) Write([]byte) error {
 	return nil
 }
 
@@ -129,7 +133,7 @@ func (this gettyConn) readDeadline() time.Duration {
 	return this.rDeadline
 }
 
-func (this *gettyConn) setReadDeadline(rDeadline time.Duration) {
+func (this *gettyConn) SetReadDeadline(rDeadline time.Duration) {
 	if rDeadline < 1 {
 		panic("@rDeadline < 1")
 	}
@@ -144,7 +148,7 @@ func (this gettyConn) writeDeadline() time.Duration {
 	return this.wDeadline
 }
 
-func (this *gettyConn) setWriteDeadline(wDeadline time.Duration) {
+func (this *gettyConn) SetWriteDeadline(wDeadline time.Duration) {
 	if wDeadline < 1 {
 		panic("@wDeadline < 1")
 	}
@@ -182,7 +186,7 @@ func newGettyTCPConn(conn net.Conn) *gettyTCPConn {
 		reader: io.Reader(conn),
 		writer: io.Writer(conn),
 		gettyConn: gettyConn{
-			ID:       atomic.AddUint32(&connID, 1),
+			id:       atomic.AddUint32(&connID, 1),
 			local:    localAddr,
 			peer:     peerAddr,
 			compress: CompressNone,
@@ -213,7 +217,7 @@ func (this *writeFlusher) Write(p []byte) (int, error) {
 }
 
 // set compress type(tcp: zip/snappy, websocket:zip)
-func (this *gettyTCPConn) setCompressType(t CompressType) {
+func (this *gettyTCPConn) SetCompressType(t CompressType) {
 	switch {
 	case t == CompressZip:
 		this.reader = flate.NewReader(this.conn)
@@ -244,7 +248,7 @@ func (this *gettyTCPConn) read(p []byte) (int, error) {
 }
 
 // tcp connection write
-func (this *gettyTCPConn) write(p []byte) error {
+func (this *gettyTCPConn) Write(p []byte) error {
 	// if this.conn == nil {
 	//	return 0, ErrInvalidConnection
 	// }
@@ -296,7 +300,7 @@ func newGettyWSConn(conn *websocket.Conn) *gettyWSConn {
 	gettyWSConn := &gettyWSConn{
 		conn: conn,
 		gettyConn: gettyConn{
-			ID:    atomic.AddUint32(&connID, 1),
+			id:    atomic.AddUint32(&connID, 1),
 			local: localAddr,
 			peer:  peerAddr,
 		},
@@ -309,7 +313,7 @@ func newGettyWSConn(conn *websocket.Conn) *gettyWSConn {
 }
 
 // set compress type(tcp: zip/snappy, websocket:zip)
-func (this *gettyWSConn) setCompressType(t CompressType) {
+func (this *gettyWSConn) SetCompressType(t CompressType) {
 	switch {
 	case t == CompressZip:
 		this.conn.EnableWriteCompression(true)
@@ -328,14 +332,14 @@ func (this *gettyWSConn) handlePing(message string) error {
 		err = nil
 	}
 	if err == nil {
-		this.updateActive()
+		this.UpdateActive()
 	}
 
 	return err
 }
 
 func (this *gettyWSConn) handlePong(string) error {
-	this.updateActive()
+	this.UpdateActive()
 	return nil
 }
 
@@ -356,7 +360,7 @@ func (this *gettyWSConn) read() ([]byte, error) {
 }
 
 // websocket connection write
-func (this *gettyWSConn) write(p []byte) error {
+func (this *gettyWSConn) Write(p []byte) error {
 	// atomic.AddUint32(&this.writeCount, 1)
 	atomic.AddUint32(&this.writeCount, (uint32)(len(p)))
 	// this.conn.SetWriteDeadline(time.Now().Add(this.wDeadline))

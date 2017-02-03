@@ -21,6 +21,7 @@ import (
 )
 
 import (
+	"github.com/AlexStocks/goext/sync"
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
 )
@@ -42,10 +43,10 @@ type Client struct {
 	interval   time.Duration
 	addr       string
 	newSession NewSessionCallback
-	sessionMap map[*Session]empty
+	sessionMap map[Session]gxsync.Empty
 
 	sync.Once
-	done chan empty
+	done chan gxsync.Empty
 	wg   sync.WaitGroup
 
 	// for wss client
@@ -68,8 +69,8 @@ func NewClient(connNum int, connInterval time.Duration, serverAddr string) *Clie
 		number:     connNum,
 		interval:   connInterval,
 		addr:       serverAddr,
-		sessionMap: make(map[*Session]empty, connNum),
-		done:       make(chan empty),
+		sessionMap: make(map[Session]gxsync.Empty, connNum),
+		done:       make(chan gxsync.Empty),
 	}
 }
 
@@ -90,13 +91,13 @@ func NewWSSClient(connNum int, connInterval time.Duration, serverAddr string, ce
 		number:     connNum,
 		interval:   connInterval,
 		addr:       serverAddr,
-		sessionMap: make(map[*Session]empty, connNum),
-		done:       make(chan empty),
+		sessionMap: make(map[Session]gxsync.Empty, connNum),
+		done:       make(chan gxsync.Empty),
 		certFile:   cert,
 	}
 }
 
-func (this *Client) dialTCP() *Session {
+func (this *Client) dialTCP() Session {
 	var (
 		err  error
 		conn net.Conn
@@ -120,12 +121,12 @@ func (this *Client) dialTCP() *Session {
 	}
 }
 
-func (this *Client) dialWS() *Session {
+func (this *Client) dialWS() Session {
 	var (
 		err     error
 		dialer  websocket.Dialer
 		conn    *websocket.Conn
-		session *Session
+		session Session
 	)
 
 	dialer.EnableCompression = true
@@ -139,8 +140,8 @@ func (this *Client) dialWS() *Session {
 		}
 		if err == nil {
 			session = NewWSSession(conn)
-			if session.maxMsgLen > 0 {
-				conn.SetReadLimit(int64(session.maxMsgLen))
+			if session.(*session).maxMsgLen > 0 {
+				conn.SetReadLimit(int64(session.(*session).maxMsgLen))
 			}
 
 			return session
@@ -152,14 +153,14 @@ func (this *Client) dialWS() *Session {
 	}
 }
 
-func (this *Client) dialWSS() *Session {
+func (this *Client) dialWSS() Session {
 	var (
 		err      error
 		certPem  []byte
 		certPool *x509.CertPool
 		dialer   websocket.Dialer
 		conn     *websocket.Conn
-		session  *Session
+		session  Session
 	)
 
 	dialer.EnableCompression = true
@@ -184,8 +185,8 @@ func (this *Client) dialWSS() *Session {
 		}
 		if err == nil {
 			session = NewWSSession(conn)
-			if session.maxMsgLen > 0 {
-				conn.SetReadLimit(int64(session.maxMsgLen))
+			if session.(*session).maxMsgLen > 0 {
+				conn.SetReadLimit(int64(session.(*session).maxMsgLen))
 			}
 
 			return session
@@ -197,7 +198,7 @@ func (this *Client) dialWSS() *Session {
 	}
 }
 
-func (this *Client) dial() *Session {
+func (this *Client) dial() Session {
 	if strings.HasPrefix(this.addr, "ws") {
 		return this.dialWS()
 	} else if strings.HasPrefix(this.addr, "wss") {
@@ -225,7 +226,7 @@ func (this *Client) sessionNum() int {
 func (this *Client) connect() {
 	var (
 		err     error
-		session *Session
+		session Session
 	)
 
 	for {
@@ -237,9 +238,9 @@ func (this *Client) connect() {
 		err = this.newSession(session)
 		if err == nil {
 			// session.RunEventLoop()
-			session.run()
+			session.(*session).run()
 			this.Lock()
-			this.sessionMap[session] = empty{}
+			this.sessionMap[session] = gxsync.Empty{}
 			this.Unlock()
 			break
 		}

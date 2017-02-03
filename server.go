@@ -20,6 +20,7 @@ import (
 
 import (
 	"github.com/AlexStocks/goext/net"
+	"github.com/AlexStocks/goext/sync"
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
 )
@@ -34,12 +35,12 @@ type Server struct {
 	listener net.Listener
 
 	sync.Once
-	done chan empty
+	done chan gxsync.Empty
 	wg   sync.WaitGroup
 }
 
 func NewServer() *Server {
-	return &Server{done: make(chan empty)}
+	return &Server{done: make(chan gxsync.Empty)}
 }
 
 func (this *Server) stop() {
@@ -94,7 +95,7 @@ func (this *Server) RunEventloop(newSession NewSessionCallback) {
 		defer this.wg.Done()
 		var (
 			err    error
-			client *Session
+			client Session
 			delay  time.Duration
 		)
 		for {
@@ -123,7 +124,7 @@ func (this *Server) RunEventloop(newSession NewSessionCallback) {
 			}
 			delay = 0
 			// client.RunEventLoop()
-			client.run()
+			client.(*session).run()
 		}
 	}()
 }
@@ -178,11 +179,11 @@ func (this *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 		log.Warn("Server{%s}.newSession(session{%#v}) = err {%#v}", this.server.addr, session, err)
 		return
 	}
-	if session.maxMsgLen > 0 {
-		conn.SetReadLimit(int64(session.maxMsgLen))
+	if session.(*session).maxMsgLen > 0 {
+		conn.SetReadLimit(int64(session.(*session).maxMsgLen))
 	}
 	// session.RunEventLoop()
-	session.run()
+	session.(*session).run()
 }
 
 // RunWSEventLoop serve websocket client request
@@ -253,7 +254,7 @@ func (this *Server) Listener() net.Listener {
 	return this.listener
 }
 
-func (this *Server) accept(newSession NewSessionCallback) (*Session, error) {
+func (this *Server) accept(newSession NewSessionCallback) (Session, error) {
 	conn, err := this.listener.Accept()
 	if err != nil {
 		return nil, err
