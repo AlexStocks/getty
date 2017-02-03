@@ -14,7 +14,11 @@
 - 2017/02/03
     > 1 Session struct -> session struct and add Session interface
     >
-    > 2 version: 0.7.0
+    > 2 change receiver name from this to a alphabet letter
+    >
+    > 3 add compression type
+    >
+    > 4 version: 0.7.0
 
 - 2016/11/19
     > 1 add conn.go:(*gettyWSConn) setCompressType to add zip compress feature for ws connection

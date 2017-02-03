@@ -43,23 +43,23 @@ func NewServer() *Server {
 	return &Server{done: make(chan gxsync.Empty)}
 }
 
-func (this *Server) stop() {
+func (s *Server) stop() {
 	select {
-	case <-this.done:
+	case <-s.done:
 		return
 	default:
-		this.Once.Do(func() {
-			close(this.done)
+		s.Once.Do(func() {
+			close(s.done)
 			// 把listener.Close放在这里，既能防止多次关闭调用，
 			// 又能及时让Server因accept返回错误而从RunEventloop退出
-			this.listener.Close()
+			s.listener.Close()
 		})
 	}
 }
 
-func (this *Server) IsClosed() bool {
+func (s *Server) IsClosed() bool {
 	select {
-	case <-this.done:
+	case <-s.done:
 		return true
 	default:
 		return false
@@ -67,46 +67,46 @@ func (this *Server) IsClosed() bool {
 }
 
 // (Server)Bind's functionality is equal to (Server)Listen.
-func (this *Server) Bind(network string, host string, port int) error {
+func (s *Server) Bind(network string, host string, port int) error {
 	if port <= 0 {
 		return errors.New("port<=0 illegal")
 	}
 
-	return this.Listen(network, gxnet.HostAddress(host, port))
+	return s.Listen(network, gxnet.HostAddress(host, port))
 }
 
 // net.ipv4.tcp_max_syn_backlog
 // net.ipv4.tcp_timestamps
 // net.ipv4.tcp_tw_recycle
-func (this *Server) Listen(network string, addr string) error {
+func (s *Server) Listen(network string, addr string) error {
 	listener, err := net.Listen(network, addr)
 	if err != nil {
 		return err
 	}
-	this.addr = addr
-	this.listener = listener
+	s.addr = addr
+	s.listener = listener
 
 	return nil
 }
 
-func (this *Server) RunEventloop(newSession NewSessionCallback) {
-	this.wg.Add(1)
+func (s *Server) RunEventloop(newSession NewSessionCallback) {
+	s.wg.Add(1)
 	go func() {
-		defer this.wg.Done()
+		defer s.wg.Done()
 		var (
 			err    error
 			client Session
 			delay  time.Duration
 		)
 		for {
-			if this.IsClosed() {
-				log.Warn("Server{%s} stop acceptting client connect request.", this.addr)
+			if s.IsClosed() {
+				log.Warn("Server{%s} stop acceptting client connect request.", s.addr)
 				return
 			}
 			if delay != 0 {
 				time.Sleep(delay)
 			}
-			client, err = this.accept(newSession)
+			client, err = s.accept(newSession)
 			if err != nil {
 				if netErr, ok := err.(net.Error); ok && netErr.Temporary() {
 					if delay == 0 {
@@ -119,7 +119,7 @@ func (this *Server) RunEventloop(newSession NewSessionCallback) {
 					}
 					continue
 				}
-				log.Warn("Server{%s}.Accept() = err {%#v}", this.addr, err)
+				log.Warn("Server{%s}.Accept() = err {%#v}", s.addr, err)
 				continue
 			}
 			delay = 0
@@ -149,20 +149,20 @@ func newWSHandler(server *Server, newSession NewSessionCallback) *wsHandler {
 	}
 }
 
-func (this *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
+func (s *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		// w.WriteHeader(http.StatusMethodNotAllowed)
 		http.Error(w, "Method not allowed", 405)
 		return
 	}
 
-	if this.server.IsClosed() {
+	if s.server.IsClosed() {
 		http.Error(w, "HTTP server is closed(code:500-11).", 500)
-		log.Warn("Server{%s} stop acceptting client connect request.", this.server.addr)
+		log.Warn("Server{%s} stop acceptting client connect request.", s.server.addr)
 		return
 	}
 
-	conn, err := this.upgrader.Upgrade(w, r, nil)
+	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Warn("upgrader.Upgrader(http.Request{%#v}) = error{%#v}", r, err)
 		return
@@ -173,10 +173,10 @@ func (this *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	// conn.SetReadLimit(int64(handler.maxMsgLen))
 	session := NewWSSession(conn)
-	err = this.newSession(session)
+	err = s.newSession(session)
 	if err != nil {
 		conn.Close()
-		log.Warn("Server{%s}.newSession(session{%#v}) = err {%#v}", this.server.addr, session, err)
+		log.Warn("Server{%s}.newSession(session{%#v}) = err {%#v}", s.server.addr, session, err)
 		return
 	}
 	if session.(*session).maxMsgLen > 0 {
@@ -189,24 +189,24 @@ func (this *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 // RunWSEventLoop serve websocket client request
 // @newSession: new websocket connection callback
 // @path: websocket request url path
-func (this *Server) RunWSEventLoop(newSession NewSessionCallback, path string) {
-	this.wg.Add(1)
+func (s *Server) RunWSEventLoop(newSession NewSessionCallback, path string) {
+	s.wg.Add(1)
 	go func() {
-		defer this.wg.Done()
+		defer s.wg.Done()
 		var (
 			err     error
 			handler *wsHandler
 		)
-		handler = newWSHandler(this, newSession)
+		handler = newWSHandler(s, newSession)
 		handler.HandleFunc(path, handler.serveWSRequest)
 		err = (&http.Server{
-			Addr:    this.addr,
+			Addr:    s.addr,
 			Handler: handler,
 			// ReadTimeout:    server.HTTPTimeout,
 			// WriteTimeout:   server.HTTPTimeout,
-		}).Serve(this.listener)
+		}).Serve(s.listener)
 		if err != nil {
-			log.Error("http.Server.Serve(addr{%s}) = err{%#v}", this.addr, err)
+			log.Error("http.Server.Serve(addr{%s}) = err{%#v}", s.addr, err)
 			// panic(err)
 		}
 	}()
@@ -215,10 +215,10 @@ func (this *Server) RunWSEventLoop(newSession NewSessionCallback, path string) {
 // RunWSEventLoopWithTLS serve websocket client request
 // @newSession: new websocket connection callback
 // @path: websocket request url path
-func (this *Server) RunWSEventLoopWithTLS(newSession NewSessionCallback, path string, cert string, priv string) {
-	this.wg.Add(1)
+func (s *Server) RunWSEventLoopWithTLS(newSession NewSessionCallback, path string, cert string, priv string) {
+	s.wg.Add(1)
 	go func() {
-		defer this.wg.Done()
+		defer s.wg.Done()
 		var (
 			err     error
 			config  *tls.Config
@@ -233,29 +233,29 @@ func (this *Server) RunWSEventLoopWithTLS(newSession NewSessionCallback, path st
 			return
 		}
 
-		handler = newWSHandler(this, newSession)
+		handler = newWSHandler(s, newSession)
 		handler.HandleFunc(path, handler.serveWSRequest)
 		server = &http.Server{
-			Addr:    this.addr,
+			Addr:    s.addr,
 			Handler: handler,
 			// ReadTimeout:    server.HTTPTimeout,
 			// WriteTimeout:   server.HTTPTimeout,
 		}
 		server.SetKeepAlivesEnabled(true)
-		err = server.Serve(tls.NewListener(this.listener, config))
+		err = server.Serve(tls.NewListener(s.listener, config))
 		if err != nil {
-			log.Error("http.Server.Serve(addr{%s}) = err{%#v}", this.addr, err)
+			log.Error("http.Server.Serve(addr{%s}) = err{%#v}", s.addr, err)
 			panic(err)
 		}
 	}()
 }
 
-func (this *Server) Listener() net.Listener {
-	return this.listener
+func (s *Server) Listener() net.Listener {
+	return s.listener
 }
 
-func (this *Server) accept(newSession NewSessionCallback) (Session, error) {
-	conn, err := this.listener.Accept()
+func (s *Server) accept(newSession NewSessionCallback) (Session, error) {
+	conn, err := s.listener.Accept()
 	if err != nil {
 		return nil, err
 	}
@@ -274,7 +274,7 @@ func (this *Server) accept(newSession NewSessionCallback) (Session, error) {
 	return session, nil
 }
 
-func (this *Server) Close() {
-	this.stop()
-	this.wg.Wait()
+func (s *Server) Close() {
+	s.stop()
+	s.wg.Wait()
 }

@@ -36,12 +36,15 @@ var (
 // compress
 /////////////////////////////////////////
 
-type CompressType byte
+type CompressType int
 
 const (
-	CompressNone   CompressType = 0x00
-	CompressZip                 = 0x01
-	CompressSnappy              = 0x02
+	CompressNone            CompressType = flate.NoCompression      // 0
+	CompressZip                          = flate.DefaultCompression // -1
+	CompressBestSpeed                    = flate.BestSpeed          // 1
+	CompressBestCompression              = flate.BestCompression    // 9
+	CompressHuffman                      = flate.HuffmanOnly        // -2
+	CompressSnappy                       = 10
 )
 
 /////////////////////////////////////////
@@ -95,65 +98,65 @@ type gettyConn struct {
 	peer          string // peer address
 }
 
-func (this *gettyConn) ID() uint32 {
-	return this.id
+func (c *gettyConn) ID() uint32 {
+	return c.id
 }
 
-func (this *gettyConn) LocalAddr() string {
-	return this.local
+func (c *gettyConn) LocalAddr() string {
+	return c.local
 }
 
-func (this *gettyConn) RemoteAddr() string {
-	return this.peer
+func (c *gettyConn) RemoteAddr() string {
+	return c.peer
 }
 
-func (this *gettyConn) incReadPkgCount() {
-	atomic.AddUint32(&this.readPkgCount, 1)
+func (c *gettyConn) incReadPkgCount() {
+	atomic.AddUint32(&c.readPkgCount, 1)
 }
 
-func (this *gettyConn) incWritePkgCount() {
-	atomic.AddUint32(&this.writePkgCount, 1)
+func (c *gettyConn) incWritePkgCount() {
+	atomic.AddUint32(&c.writePkgCount, 1)
 }
 
-func (this *gettyConn) UpdateActive() {
-	atomic.StoreInt64(&(this.active), int64(time.Since(launchTime)))
+func (c *gettyConn) UpdateActive() {
+	atomic.StoreInt64(&(c.active), int64(time.Since(launchTime)))
 }
 
-func (this *gettyConn) GetActive() time.Time {
-	return launchTime.Add(time.Duration(atomic.LoadInt64(&(this.active))))
+func (c *gettyConn) GetActive() time.Time {
+	return launchTime.Add(time.Duration(atomic.LoadInt64(&(c.active))))
 }
 
-func (this *gettyConn) Write([]byte) error {
+func (c *gettyConn) Write([]byte) error {
 	return nil
 }
 
-func (this *gettyConn) close(int) {}
+func (c *gettyConn) close(int) {}
 
-func (this gettyConn) readDeadline() time.Duration {
-	return this.rDeadline
+func (c gettyConn) readDeadline() time.Duration {
+	return c.rDeadline
 }
 
-func (this *gettyConn) SetReadDeadline(rDeadline time.Duration) {
+func (c *gettyConn) SetReadDeadline(rDeadline time.Duration) {
 	if rDeadline < 1 {
 		panic("@rDeadline < 1")
 	}
 
-	this.rDeadline = rDeadline
-	if this.wDeadline == 0 {
-		this.wDeadline = rDeadline
+	c.rDeadline = rDeadline
+	if c.wDeadline == 0 {
+		c.wDeadline = rDeadline
 	}
 }
 
-func (this gettyConn) writeDeadline() time.Duration {
-	return this.wDeadline
+func (c gettyConn) writeDeadline() time.Duration {
+	return c.wDeadline
 }
 
-func (this *gettyConn) SetWriteDeadline(wDeadline time.Duration) {
+func (c *gettyConn) SetWriteDeadline(wDeadline time.Duration) {
 	if wDeadline < 1 {
 		panic("@wDeadline < 1")
 	}
 
-	this.wDeadline = wDeadline
+	c.wDeadline = wDeadline
 }
 
 /////////////////////////////////////////
@@ -199,17 +202,17 @@ type writeFlusher struct {
 	flusher *flate.Writer
 }
 
-func (this *writeFlusher) Write(p []byte) (int, error) {
+func (t *writeFlusher) Write(p []byte) (int, error) {
 	var (
 		n   int
 		err error
 	)
 
-	n, err = this.flusher.Write(p)
+	n, err = t.flusher.Write(p)
 	if err != nil {
 		return n, err
 	}
-	if err := this.flusher.Flush(); err != nil {
+	if err := t.flusher.Flush(); err != nil {
 		return 0, err
 	}
 
@@ -217,60 +220,69 @@ func (this *writeFlusher) Write(p []byte) (int, error) {
 }
 
 // set compress type(tcp: zip/snappy, websocket:zip)
-func (this *gettyTCPConn) SetCompressType(t CompressType) {
-	switch {
-	case t == CompressZip:
-		this.reader = flate.NewReader(this.conn)
+func (t *gettyTCPConn) SetCompressType(c CompressType) {
+	switch c {
+	case CompressNone, CompressZip, CompressBestSpeed, CompressBestCompression, CompressHuffman:
+		t.reader = flate.NewReader(t.conn)
 
-		w, err := flate.NewWriter(this.conn, flate.DefaultCompression)
+		w, err := flate.NewWriter(t.conn, int(c))
 		if err != nil {
 			panic(fmt.Sprintf("flate.NewReader(flate.DefaultCompress) = err(%s)", err))
 		}
-		this.writer = &writeFlusher{flusher: w}
+		t.writer = &writeFlusher{flusher: w}
 
-	case t == CompressSnappy:
-		this.reader = snappy.NewReader(this.conn)
-		this.writer = snappy.NewWriter(this.conn)
+	case CompressSnappy:
+		t.reader = snappy.NewReader(t.conn)
+		// t.writer = snappy.NewWriter(t.conn)
+		t.writer = snappy.NewBufferedWriter(t.conn)
+
+	default:
+		panic(fmt.Sprintf("illegal comparess type %d", c))
 	}
 }
 
 // tcp connection read
-func (this *gettyTCPConn) read(p []byte) (int, error) {
-	// if this.conn == nil {
+func (t *gettyTCPConn) read(p []byte) (int, error) {
+	// if t.conn == nil {
 	//	return 0, ErrInvalidConnection
 	// }
 
-	// atomic.AddUint32(&this.readCount, 1)
-	// l, e := this.conn.Read(p)
-	l, e := this.reader.Read(p)
-	atomic.AddUint32(&this.readCount, uint32(l))
+	// atomic.AddUint32(&t.readCount, 1)
+	// l, e := t.conn.Read(p)
+	l, e := t.reader.Read(p)
+	atomic.AddUint32(&t.readCount, uint32(l))
 	return l, e
 }
 
 // tcp connection write
-func (this *gettyTCPConn) Write(p []byte) error {
-	// if this.conn == nil {
+func (t *gettyTCPConn) Write(p []byte) error {
+	// if t.conn == nil {
 	//	return 0, ErrInvalidConnection
 	// }
 
-	// atomic.AddUint32(&this.writeCount, 1)
-	atomic.AddUint32(&this.writeCount, (uint32)(len(p)))
-	// _, err := this.conn.Write(p)
-	_, err := this.writer.Write(p)
+	// atomic.AddUint32(&t.writeCount, 1)
+	atomic.AddUint32(&t.writeCount, (uint32)(len(p)))
+	// _, err := t.conn.Write(p)
+	_, err := t.writer.Write(p)
 
 	return err
 }
 
 // close tcp connection
-func (this *gettyTCPConn) close(waitSec int) {
-	// if tcpConn, ok := this.conn.(*net.TCPConn); ok {
+func (t *gettyTCPConn) close(waitSec int) {
+	// if tcpConn, ok := t.conn.(*net.TCPConn); ok {
 	// tcpConn.SetLinger(0)
 	// }
 
-	if this.conn != nil {
-		this.conn.(*net.TCPConn).SetLinger(waitSec)
-		this.conn.Close()
-		this.conn = nil
+	if t.conn != nil {
+		if writer, ok := t.writer.(*snappy.Writer); ok {
+			if err := writer.Close(); err != nil {
+				log.Error("snappy.Writer.Close() = error{%v}", err)
+			}
+		}
+		t.conn.(*net.TCPConn).SetLinger(waitSec)
+		t.conn.Close()
+		t.conn = nil
 	}
 }
 
@@ -312,44 +324,44 @@ func newGettyWSConn(conn *websocket.Conn) *gettyWSConn {
 	return gettyWSConn
 }
 
-// set compress type(tcp: zip/snappy, websocket:zip)
-func (this *gettyWSConn) SetCompressType(t CompressType) {
-	switch {
-	case t == CompressZip:
-		this.conn.EnableWriteCompression(true)
-	case t == CompressSnappy:
-		this.conn.EnableWriteCompression(true)
+// set compress type
+func (w *gettyWSConn) SetCompressType(c CompressType) {
+	switch c {
+	case CompressNone, CompressZip, CompressBestSpeed, CompressBestCompression, CompressHuffman:
+		w.conn.EnableWriteCompression(true)
+		w.conn.SetCompressionLevel(int(c))
+
 	default:
-		this.conn.EnableWriteCompression(false)
+		panic(fmt.Sprintf("illegal comparess type %d", c))
 	}
 }
 
-func (this *gettyWSConn) handlePing(message string) error {
-	err := this.conn.WriteMessage(websocket.PongMessage, []byte(message))
+func (w *gettyWSConn) handlePing(message string) error {
+	err := w.conn.WriteMessage(websocket.PongMessage, []byte(message))
 	if err == websocket.ErrCloseSent {
 		err = nil
 	} else if e, ok := err.(net.Error); ok && e.Temporary() {
 		err = nil
 	}
 	if err == nil {
-		this.UpdateActive()
+		w.UpdateActive()
 	}
 
 	return err
 }
 
-func (this *gettyWSConn) handlePong(string) error {
-	this.UpdateActive()
+func (w *gettyWSConn) handlePong(string) error {
+	w.UpdateActive()
 	return nil
 }
 
 // websocket connection read
-func (this *gettyWSConn) read() ([]byte, error) {
-	// this.conn.SetReadDeadline(time.Now().Add(this.rDeadline))
-	_, b, e := this.conn.ReadMessage() // the first return value is message type.
+func (w *gettyWSConn) read() ([]byte, error) {
+	// w.conn.SetReadDeadline(time.Now().Add(w.rDeadline))
+	_, b, e := w.conn.ReadMessage() // the first return value is message type.
 	if e == nil {
-		// atomic.AddUint32(&this.readCount, (uint32)(l))
-		atomic.AddUint32(&this.readPkgCount, 1)
+		// atomic.AddUint32(&w.readCount, (uint32)(l))
+		atomic.AddUint32(&w.readPkgCount, 1)
 	} else {
 		if websocket.IsUnexpectedCloseError(e, websocket.CloseGoingAway) {
 			log.Warn("websocket unexpected close error: %v", e)
@@ -360,20 +372,20 @@ func (this *gettyWSConn) read() ([]byte, error) {
 }
 
 // websocket connection write
-func (this *gettyWSConn) Write(p []byte) error {
-	// atomic.AddUint32(&this.writeCount, 1)
-	atomic.AddUint32(&this.writeCount, (uint32)(len(p)))
-	// this.conn.SetWriteDeadline(time.Now().Add(this.wDeadline))
-	return this.conn.WriteMessage(websocket.BinaryMessage, p)
+func (w *gettyWSConn) Write(p []byte) error {
+	// atomic.AddUint32(&w.writeCount, 1)
+	atomic.AddUint32(&w.writeCount, (uint32)(len(p)))
+	// w.conn.SetWriteDeadline(time.Now().Add(w.wDeadline))
+	return w.conn.WriteMessage(websocket.BinaryMessage, p)
 }
 
-func (this *gettyWSConn) writePing() error {
-	return this.conn.WriteMessage(websocket.PingMessage, []byte{})
+func (w *gettyWSConn) writePing() error {
+	return w.conn.WriteMessage(websocket.PingMessage, []byte{})
 }
 
 // close websocket connection
-func (this *gettyWSConn) close(waitSec int) {
-	this.conn.WriteMessage(websocket.CloseMessage, []byte("bye-bye!!!"))
-	this.conn.UnderlyingConn().(*net.TCPConn).SetLinger(waitSec)
-	this.conn.Close()
+func (w *gettyWSConn) close(waitSec int) {
+	w.conn.WriteMessage(websocket.CloseMessage, []byte("bye-bye!!!"))
+	w.conn.UnderlyingConn().(*net.TCPConn).SetLinger(waitSec)
+	w.conn.Close()
 }

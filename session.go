@@ -151,39 +151,39 @@ func NewWSSession(conn *websocket.Conn) Session {
 	return session
 }
 
-func (this *session) Reset() {
-	this.name = defaultSessionName
-	this.once = sync.Once{}
-	this.done = make(chan gxsync.Empty)
-	// this.errFlag = false
-	this.period = period
-	this.wait = pendingDuration
-	this.attrs = make(map[string]interface{})
-	this.grNum = 0
+func (s *session) Reset() {
+	s.name = defaultSessionName
+	s.once = sync.Once{}
+	s.done = make(chan gxsync.Empty)
+	// s.errFlag = false
+	s.period = period
+	s.wait = pendingDuration
+	s.attrs = make(map[string]interface{})
+	s.grNum = 0
 
-	this.SetWriteDeadline(netIOTimeout)
-	this.SetReadDeadline(netIOTimeout)
+	s.SetWriteDeadline(netIOTimeout)
+	s.SetReadDeadline(netIOTimeout)
 }
 
-// func (this *session) SetConn(conn net.Conn) { this.gettyConn = newGettyConn(conn) }
-func (this *session) Conn() net.Conn {
-	if tc, ok := this.Connection.(*gettyTCPConn); ok {
+// func (s *session) SetConn(conn net.Conn) { s.gettyConn = newGettyConn(conn) }
+func (s *session) Conn() net.Conn {
+	if tc, ok := s.Connection.(*gettyTCPConn); ok {
 		return tc.conn
 	}
 
-	if wc, ok := this.Connection.(*gettyWSConn); ok {
+	if wc, ok := s.Connection.(*gettyWSConn); ok {
 		return wc.conn.UnderlyingConn()
 	}
 
 	return nil
 }
 
-func (this *session) gettyConn() *gettyConn {
-	if tc, ok := this.Connection.(*gettyTCPConn); ok {
+func (s *session) gettyConn() *gettyConn {
+	if tc, ok := s.Connection.(*gettyTCPConn); ok {
 		return &(tc.gettyConn)
 	}
 
-	if wc, ok := this.Connection.(*gettyWSConn); ok {
+	if wc, ok := s.Connection.(*gettyWSConn); ok {
 		return &(wc.gettyConn)
 	}
 
@@ -191,14 +191,14 @@ func (this *session) gettyConn() *gettyConn {
 }
 
 // return the connect statistic data
-func (this *session) Stat() string {
+func (s *session) Stat() string {
 	var conn *gettyConn
-	if conn = this.gettyConn(); conn == nil {
+	if conn = s.gettyConn(); conn == nil {
 		return ""
 	}
 	return fmt.Sprintf(
 		outputFormat,
-		this.sessionToken(),
+		s.sessionToken(),
 		atomic.LoadUint32(&(conn.readCount)),
 		atomic.LoadUint32(&(conn.writeCount)),
 		atomic.LoadUint32(&(conn.readPkgCount)),
@@ -207,9 +207,9 @@ func (this *session) Stat() string {
 }
 
 // check whether the session has been closed.
-func (this *session) IsClosed() bool {
+func (s *session) IsClosed() bool {
 	select {
-	case <-this.done:
+	case <-s.done:
 		return true
 
 	default:
@@ -218,109 +218,109 @@ func (this *session) IsClosed() bool {
 }
 
 // set maximum pacakge length of every pacakge in (EventListener)OnMessage(@pkgs)
-func (this *session) SetMaxMsgLen(length int) { this.maxMsgLen = int32(length) }
+func (s *session) SetMaxMsgLen(length int) { s.maxMsgLen = int32(length) }
 
 // set session name
-func (this *session) SetName(name string) { this.name = name }
+func (s *session) SetName(name string) { s.name = name }
 
 // set EventListener
-func (this *session) SetEventListener(listener EventListener) {
-	this.listener = listener
+func (s *session) SetEventListener(listener EventListener) {
+	s.listener = listener
 }
 
 // set package handler
-func (this *session) SetPkgHandler(handler ReadWriter) {
-	this.reader = handler
-	this.writer = handler
-	// this.pkgHandler = handler
+func (s *session) SetPkgHandler(handler ReadWriter) {
+	s.reader = handler
+	s.writer = handler
+	// s.pkgHandler = handler
 }
 
 // set Reader
-func (this *session) SetReader(reader Reader) {
-	this.reader = reader
+func (s *session) SetReader(reader Reader) {
+	s.reader = reader
 }
 
 // set Writer
-func (this *session) SetWriter(writer Writer) {
-	this.writer = writer
+func (s *session) SetWriter(writer Writer) {
+	s.writer = writer
 }
 
 // period is in millisecond. Websocket session will send ping frame automatically every peroid.
-func (this *session) SetCronPeriod(period int) {
+func (s *session) SetCronPeriod(period int) {
 	if period < 1 {
 		panic("@period < 1")
 	}
 
-	this.lock.Lock()
-	this.period = time.Duration(period) * time.Millisecond
-	this.lock.Unlock()
+	s.lock.Lock()
+	s.period = time.Duration(period) * time.Millisecond
+	s.lock.Unlock()
 }
 
 // set @session's read queue size
-func (this *session) SetRQLen(readQLen int) {
+func (s *session) SetRQLen(readQLen int) {
 	if readQLen < 1 {
 		panic("@readQLen < 1")
 	}
 
-	this.lock.Lock()
-	this.rQ = make(chan interface{}, readQLen)
-	log.Info("%s, [session.SetRQLen] rQ{len:%d, cap:%d}", this.Stat(), len(this.rQ), cap(this.rQ))
-	this.lock.Unlock()
+	s.lock.Lock()
+	s.rQ = make(chan interface{}, readQLen)
+	log.Info("%s, [session.SetRQLen] rQ{len:%d, cap:%d}", s.Stat(), len(s.rQ), cap(s.rQ))
+	s.lock.Unlock()
 }
 
 // set @session's Write queue size
-func (this *session) SetWQLen(writeQLen int) {
+func (s *session) SetWQLen(writeQLen int) {
 	if writeQLen < 1 {
 		panic("@writeQLen < 1")
 	}
 
-	this.lock.Lock()
-	this.wQ = make(chan interface{}, writeQLen)
-	log.Info("%s, [session.SetWQLen] wQ{len:%d, cap:%d}", this.Stat(), len(this.wQ), cap(this.wQ))
-	this.lock.Unlock()
+	s.lock.Lock()
+	s.wQ = make(chan interface{}, writeQLen)
+	log.Info("%s, [session.SetWQLen] wQ{len:%d, cap:%d}", s.Stat(), len(s.wQ), cap(s.wQ))
+	s.lock.Unlock()
 }
 
 // set maximum wait time when session got error or got exit signal
-func (this *session) SetWaitTime(waitTime time.Duration) {
+func (s *session) SetWaitTime(waitTime time.Duration) {
 	if waitTime < 1 {
 		panic("@wait < 1")
 	}
 
-	this.lock.Lock()
-	this.wait = waitTime
-	this.lock.Unlock()
+	s.lock.Lock()
+	s.wait = waitTime
+	s.lock.Unlock()
 }
 
 // set attribute of key @session:key
-func (this *session) GetAttribute(key string) interface{} {
+func (s *session) GetAttribute(key string) interface{} {
 	var ret interface{}
-	this.lock.RLock()
-	ret = this.attrs[key]
-	this.lock.RUnlock()
+	s.lock.RLock()
+	ret = s.attrs[key]
+	s.lock.RUnlock()
 	return ret
 }
 
 // get attribute of key @session:key
-func (this *session) SetAttribute(key string, value interface{}) {
-	this.lock.Lock()
-	this.attrs[key] = value
-	this.lock.Unlock()
+func (s *session) SetAttribute(key string, value interface{}) {
+	s.lock.Lock()
+	s.attrs[key] = value
+	s.lock.Unlock()
 }
 
 // delete attribute of key @session:key
-func (this *session) RemoveAttribute(key string) {
-	this.lock.Lock()
-	delete(this.attrs, key)
-	this.lock.Unlock()
+func (s *session) RemoveAttribute(key string) {
+	s.lock.Lock()
+	delete(s.attrs, key)
+	s.lock.Unlock()
 }
 
-func (this *session) sessionToken() string {
-	return fmt.Sprintf("{%s:%d:%s<->%s}", this.name, this.ID(), this.LocalAddr(), this.RemoteAddr())
+func (s *session) sessionToken() string {
+	return fmt.Sprintf("{%s:%d:%s<->%s}", s.name, s.ID(), s.LocalAddr(), s.RemoteAddr())
 }
 
 // Queued Write, for handler
-func (this *session) WritePkg(pkg interface{}) error {
-	if this.IsClosed() {
+func (s *session) WritePkg(pkg interface{}) error {
+	if s.IsClosed() {
 		return ErrSessionClosed
 	}
 
@@ -329,23 +329,23 @@ func (this *session) WritePkg(pkg interface{}) error {
 			const size = 64 << 10
 			rBuf := make([]byte, size)
 			rBuf = rBuf[:runtime.Stack(rBuf, false)]
-			log.Error("[session.WritePkg] panic session %s: err=%#v\n%s", this.sessionToken(), r, rBuf)
+			log.Error("[session.WritePkg] panic session %s: err=%#v\n%s", s.sessionToken(), r, rBuf)
 		}
 	}()
 
-	var d = this.writeDeadline()
+	var d = s.writeDeadline()
 	if d > netIOTimeout {
 		d = netIOTimeout
 	}
 	select {
-	case this.wQ <- pkg:
+	case s.wQ <- pkg:
 		break // for possible gen a new pkg
 
 	// default:
-	// case <-time.After(this.wDeadline):
+	// case <-time.After(s.wDeadline):
 	// case <-time.After(netIOTimeout):
 	case <-wheel.After(d):
-		log.Warn("%s, [session.WritePkg] wQ{len:%d, cap:%d}", this.Stat(), len(this.wQ), cap(this.wQ))
+		log.Warn("%s, [session.WritePkg] wQ{len:%d, cap:%d}", s.Stat(), len(s.wQ), cap(s.wQ))
 		return ErrSessionBlocked
 	}
 
@@ -353,24 +353,24 @@ func (this *session) WritePkg(pkg interface{}) error {
 }
 
 // for codecs
-func (this *session) WriteBytes(pkg []byte) error {
-	if this.IsClosed() {
+func (s *session) WriteBytes(pkg []byte) error {
+	if s.IsClosed() {
 		return ErrSessionClosed
 	}
 
-	// this.conn.SetWriteDeadline(time.Now().Add(this.wDeadline))
-	return this.Connection.Write(pkg)
+	// s.conn.SetWriteDeadline(time.Now().Add(s.wDeadline))
+	return s.Connection.Write(pkg)
 }
 
 // Write multiple packages at once
-func (this *session) WriteBytesArray(pkgs ...[]byte) error {
-	if this.IsClosed() {
+func (s *session) WriteBytesArray(pkgs ...[]byte) error {
+	if s.IsClosed() {
 		return ErrSessionClosed
 	}
-	// this.conn.SetWriteDeadline(time.Now().Add(this.wDeadline))
+	// s.conn.SetWriteDeadline(time.Now().Add(s.wDeadline))
 
 	if len(pkgs) == 1 {
-		return this.Connection.Write(pkgs[0])
+		return s.Connection.Write(pkgs[0])
 	}
 
 	// get len
@@ -392,38 +392,38 @@ func (this *session) WriteBytesArray(pkgs ...[]byte) error {
 		l += len(pkgs[i])
 	}
 
-	// return this.Connection.Write(arr)
-	return this.WriteBytes(arr)
+	// return s.Connection.Write(arr)
+	return s.WriteBytes(arr)
 }
 
-// func (this *session) RunEventLoop() {
-func (this *session) run() {
-	if this.rQ == nil || this.wQ == nil {
+// func (s *session) RunEventLoop() {
+func (s *session) run() {
+	if s.rQ == nil || s.wQ == nil {
 		errStr := fmt.Sprintf("session{name:%s, rQ:%#v, wQ:%#v}",
-			this.name, this.rQ, this.wQ)
+			s.name, s.rQ, s.wQ)
 		log.Error(errStr)
 		panic(errStr)
 	}
-	if this.Connection == nil || this.listener == nil || this.writer == nil {
+	if s.Connection == nil || s.listener == nil || s.writer == nil {
 		errStr := fmt.Sprintf("session{name:%s, conn:%#v, listener:%#v, writer:%#v}",
-			this.name, this.Connection, this.listener, this.writer)
+			s.name, s.Connection, s.listener, s.writer)
 		log.Error(errStr)
 		panic(errStr)
 	}
 
 	// call session opened
-	this.UpdateActive()
-	if err := this.listener.OnOpen(this); err != nil {
-		this.Close()
+	s.UpdateActive()
+	if err := s.listener.OnOpen(s); err != nil {
+		s.Close()
 		return
 	}
 
-	atomic.AddInt32(&(this.grNum), 2)
-	go this.handleLoop()
-	go this.handlePackage()
+	atomic.AddInt32(&(s.grNum), 2)
+	go s.handleLoop()
+	go s.handlePackage()
 }
 
-func (this *session) handleLoop() {
+func (s *session) handleLoop() {
 	var (
 		err    error
 		flag   bool
@@ -444,65 +444,65 @@ func (this *session) handleLoop() {
 			const size = 64 << 10
 			rBuf := make([]byte, size)
 			rBuf = rBuf[:runtime.Stack(rBuf, false)]
-			log.Error("[session.handleLoop] panic session %s: err=%#v\n%s", this.sessionToken(), r, rBuf)
+			log.Error("[session.handleLoop] panic session %s: err=%#v\n%s", s.sessionToken(), r, rBuf)
 		}
 
-		grNum = atomic.AddInt32(&(this.grNum), -1)
-		// if !this.errFlag {
-		this.listener.OnClose(this)
+		grNum = atomic.AddInt32(&(s.grNum), -1)
+		// if !s.errFlag {
+		s.listener.OnClose(s)
 		// }
-		log.Info("%s, [session.handleLoop] goroutine exit now, left gr num %d", this.Stat(), grNum)
-		this.gc()
+		log.Info("%s, [session.handleLoop] goroutine exit now, left gr num %d", s.Stat(), grNum)
+		s.gc()
 	}()
 
-	wsConn, wsFlag = this.Connection.(*gettyWSConn)
+	wsConn, wsFlag = s.Connection.(*gettyWSConn)
 	flag = true // do not do any read/Write/cron operation while got Write error
-	// ticker = time.NewTicker(this.period) // use wheel instead, 2016/09/26
+	// ticker = time.NewTicker(s.period) // use wheel instead, 2016/09/26
 LOOP:
 	for {
 		// A select blocks until one of its cases can run, then it executes that case.
 		// It choose one at random if multiple are ready. Otherwise it choose default branch if none is ready.
 		select {
-		case <-this.done:
+		case <-s.done:
 			// 这个分支确保(session)handleLoop gr在(session)handlePackage gr之后退出
 			// once.Do(func() { ticker.Stop() }) // use wheel instead, 2016/09/26
-			if atomic.LoadInt32(&(this.grNum)) == 1 { // make sure @(session)handlePackage goroutine has been closed.
-				if len(this.rQ) == 0 && len(this.wQ) == 0 {
-					log.Info("%s, [session.handleLoop] got done signal. Both rQ and wQ are nil.", this.Stat())
+			if atomic.LoadInt32(&(s.grNum)) == 1 { // make sure @(session)handlePackage goroutine has been closed.
+				if len(s.rQ) == 0 && len(s.wQ) == 0 {
+					log.Info("%s, [session.handleLoop] got done signal. Both rQ and wQ are nil.", s.Stat())
 					break LOOP
 				}
 				counter.Start()
-				// if time.Since(start).Nanoseconds() >= this.wait.Nanoseconds() {
-				if counter.Count() > this.wait.Nanoseconds() {
-					log.Info("%s, [session.handleLoop] got done signal ", this.Stat())
+				// if time.Since(start).Nanoseconds() >= s.wait.Nanoseconds() {
+				if counter.Count() > s.wait.Nanoseconds() {
+					log.Info("%s, [session.handleLoop] got done signal ", s.Stat())
 					break LOOP
 				}
 			}
 
-		case inPkg = <-this.rQ:
+		case inPkg = <-s.rQ:
 			// 这个条件分支通过(session)rQ排空确保(session)handlePackage gr不会阻塞在(session)rQ上
 			if flag {
-				this.listener.OnMessage(this, inPkg)
-				this.incReadPkgCount()
+				s.listener.OnMessage(s, inPkg)
+				s.incReadPkgCount()
 			} else {
 				log.Info("[session.handleLoop] drop readin package{%#v}", inPkg)
 			}
 
-		case outPkg = <-this.wQ:
+		case outPkg = <-s.wQ:
 			if flag {
-				if err = this.writer.Write(this, outPkg); err != nil {
-					log.Error("%s, [session.handleLoop] = error{%+v}", this.sessionToken(), err)
-					this.stop()
+				if err = s.writer.Write(s, outPkg); err != nil {
+					log.Error("%s, [session.handleLoop] = error{%+v}", s.sessionToken(), err)
+					s.stop()
 					flag = false
 					// break LOOP
 				}
-				this.incWritePkgCount()
+				s.incWritePkgCount()
 			} else {
 				log.Info("[session.handleLoop] drop writeout package{%#v}", outPkg)
 			}
 
 		// case <-ticker.C: // use wheel instead, 2016/09/26
-		case <-wheel.After(this.period):
+		case <-wheel.After(s.period):
 			if flag {
 				if wsFlag {
 					err = wsConn.writePing()
@@ -511,14 +511,14 @@ LOOP:
 						log.Warn("wsConn.writePing() = error{%#v}", err)
 					}
 				}
-				this.listener.OnCron(this)
+				s.listener.OnCron(s)
 			}
 		}
 	}
 	// once.Do(func() { ticker.Stop() }) // use wheel instead, 2016/09/26
 }
 
-func (this *session) handlePackage() {
+func (s *session) handlePackage() {
 	var (
 		err error
 	)
@@ -530,34 +530,34 @@ func (this *session) handlePackage() {
 			const size = 64 << 10
 			rBuf := make([]byte, size)
 			rBuf = rBuf[:runtime.Stack(rBuf, false)]
-			log.Error("[session.handlePackage] panic session %s: err=%#v\n%s", this.sessionToken(), r, rBuf)
+			log.Error("[session.handlePackage] panic session %s: err=%#v\n%s", s.sessionToken(), r, rBuf)
 		}
 
-		grNum = atomic.AddInt32(&(this.grNum), -1)
-		log.Info("%s, [session.handlePackage] gr will exit now, left gr num %d", this.sessionToken(), grNum)
-		this.stop()
-		// if this.errFlag {
+		grNum = atomic.AddInt32(&(s.grNum), -1)
+		log.Info("%s, [session.handlePackage] gr will exit now, left gr num %d", s.sessionToken(), grNum)
+		s.stop()
+		// if s.errFlag {
 		if err != nil {
-			log.Error("%s, [session.handlePackage] error{%#v}", this.sessionToken(), err)
-			this.listener.OnError(this, err)
+			log.Error("%s, [session.handlePackage] error{%#v}", s.sessionToken(), err)
+			s.listener.OnError(s, err)
 		}
 	}()
 
-	if _, ok := this.Connection.(*gettyTCPConn); ok {
-		if this.reader == nil {
-			errStr := fmt.Sprintf("session{name:%s, conn:%#v, reader:%#v}", this.name, this.Connection, this.reader)
+	if _, ok := s.Connection.(*gettyTCPConn); ok {
+		if s.reader == nil {
+			errStr := fmt.Sprintf("session{name:%s, conn:%#v, reader:%#v}", s.name, s.Connection, s.reader)
 			log.Error(errStr)
 			panic(errStr)
 		}
 
-		err = this.handleTCPPackage()
-	} else if _, ok := this.Connection.(*gettyWSConn); ok {
-		err = this.handleWSPackage()
+		err = s.handleTCPPackage()
+	} else if _, ok := s.Connection.(*gettyWSConn); ok {
+		err = s.handleWSPackage()
 	}
 }
 
 // get package from tcp stream(packet)
-func (this *session) handleTCPPackage() error {
+func (s *session) handleTCPPackage() error {
 	var (
 		ok     bool
 		err    error
@@ -573,9 +573,9 @@ func (this *session) handleTCPPackage() error {
 
 	buf = make([]byte, maxReadBufLen)
 	pktBuf = new(bytes.Buffer)
-	conn = this.Connection.(*gettyTCPConn)
+	conn = s.Connection.(*gettyTCPConn)
 	for {
-		if this.IsClosed() {
+		if s.IsClosed() {
 			err = nil
 			break // 退出前不再读取任何packet，buf中剩余的stream bytes也不可能凑够一个package, 所以直接退出
 		}
@@ -583,15 +583,15 @@ func (this *session) handleTCPPackage() error {
 		bufLen = 0
 		for {
 			// for clause for the network timeout condition check
-			// this.conn.SetReadDeadline(time.Now().Add(this.rDeadline))
+			// s.conn.SetReadDeadline(time.Now().Add(s.rDeadline))
 			bufLen, err = conn.read(buf)
 			if err != nil {
 				if nerr, ok = err.(net.Error); ok && nerr.Timeout() {
 					break
 				}
-				log.Error("%s, [session.conn.read] = error{%v}", this.sessionToken(), err)
+				log.Error("%s, [session.conn.read] = error{%v}", s.sessionToken(), err)
 				// for (Codec)OnErr
-				// this.errFlag = true
+				// s.errFlag = true
 				exit = true
 			}
 			break
@@ -607,23 +607,23 @@ func (this *session) handleTCPPackage() error {
 			if pktBuf.Len() <= 0 {
 				break
 			}
-			// pkg, err = this.pkgHandler.Read(this, pktBuf)
-			pkg, pkgLen, err = this.reader.Read(this, pktBuf.Bytes())
-			if err == nil && this.maxMsgLen > 0 && pkgLen > int(this.maxMsgLen) {
+			// pkg, err = s.pkgHandler.Read(s, pktBuf)
+			pkg, pkgLen, err = s.reader.Read(s, pktBuf.Bytes())
+			if err == nil && s.maxMsgLen > 0 && pkgLen > int(s.maxMsgLen) {
 				err = ErrMsgTooLong
 			}
 			if err != nil {
-				log.Warn("%s, [session.handleTCPPackage] = len{%d}, error{%+v}", this.sessionToken(), pkgLen, err)
+				log.Warn("%s, [session.handleTCPPackage] = len{%d}, error{%+v}", s.sessionToken(), pkgLen, err)
 				// for (Codec)OnErr
-				// this.errFlag = true
+				// s.errFlag = true
 				exit = true
 				break
 			}
 			if pkg == nil {
 				break
 			}
-			this.UpdateActive()
-			this.rQ <- pkg
+			s.UpdateActive()
+			s.rQ <- pkg
 			pktBuf.Next(pkgLen)
 		}
 		if exit {
@@ -635,7 +635,7 @@ func (this *session) handleTCPPackage() error {
 }
 
 // get package from websocket stream
-func (this *session) handleWSPackage() error {
+func (s *session) handleWSPackage() error {
 	var (
 		ok           bool
 		err          error
@@ -646,9 +646,9 @@ func (this *session) handleWSPackage() error {
 		unmarshalPkg interface{}
 	)
 
-	conn = this.Connection.(*gettyWSConn)
+	conn = s.Connection.(*gettyWSConn)
 	for {
-		if this.IsClosed() {
+		if s.IsClosed() {
 			break
 		}
 		pkg, err = conn.read()
@@ -656,62 +656,62 @@ func (this *session) handleWSPackage() error {
 			continue
 		}
 		if err != nil {
-			log.Warn("%s, [session.handleWSPackage] = error{%+v}", this.sessionToken(), err)
-			// this.errFlag = true
+			log.Warn("%s, [session.handleWSPackage] = error{%+v}", s.sessionToken(), err)
+			// s.errFlag = true
 			return err
 		}
-		this.UpdateActive()
-		if this.reader != nil {
-			unmarshalPkg, length, err = this.reader.Read(this, pkg)
-			if err == nil && this.maxMsgLen > 0 && length > int(this.maxMsgLen) {
+		s.UpdateActive()
+		if s.reader != nil {
+			unmarshalPkg, length, err = s.reader.Read(s, pkg)
+			if err == nil && s.maxMsgLen > 0 && length > int(s.maxMsgLen) {
 				err = ErrMsgTooLong
 			}
 			if err != nil {
-				log.Warn("%s, [session.handleWSPackage] = len{%d}, error{%+v}", this.sessionToken(), length, err)
+				log.Warn("%s, [session.handleWSPackage] = len{%d}, error{%+v}", s.sessionToken(), length, err)
 				continue
 			}
-			this.rQ <- unmarshalPkg
+			s.rQ <- unmarshalPkg
 		} else {
-			this.rQ <- pkg
+			s.rQ <- pkg
 		}
 	}
 
 	return nil
 }
 
-func (this *session) stop() {
+func (s *session) stop() {
 	select {
-	case <-this.done: // this.done is a blocked channel. if it has not been closed, the default branch will be invoked.
+	case <-s.done: // s.done is a blocked channel. if it has not been closed, the default branch will be invoked.
 		return
 
 	default:
-		this.once.Do(func() {
+		s.once.Do(func() {
 			// let read/Write timeout asap
-			if conn := this.Conn(); conn != nil {
-				conn.SetReadDeadline(time.Now().Add(this.readDeadline()))
-				conn.SetWriteDeadline(time.Now().Add(this.writeDeadline()))
+			if conn := s.Conn(); conn != nil {
+				conn.SetReadDeadline(time.Now().Add(s.readDeadline()))
+				conn.SetWriteDeadline(time.Now().Add(s.writeDeadline()))
 			}
-			close(this.done)
+			close(s.done)
 		})
 	}
 }
 
-func (this *session) gc() {
-	this.lock.Lock()
-	if this.attrs != nil {
-		this.attrs = nil
-		close(this.wQ)
-		this.wQ = nil
-		close(this.rQ)
-		this.rQ = nil
-		this.Connection.close((int)((int64)(this.wait)))
+func (s *session) gc() {
+	s.lock.Lock()
+	if s.attrs != nil {
+		s.attrs = nil
+		close(s.wQ)
+		s.wQ = nil
+		close(s.rQ)
+		s.rQ = nil
+		s.Connection.close((int)((int64)(s.wait)))
 	}
-	this.lock.Unlock()
+	s.lock.Unlock()
 }
 
-// this function will be invoked by NewSessionCallback(if return error is not nil) or (session)handleLoop automatically.
+// s function will be invoked by NewSessionCallback(if return error is not nil) or (session)handleLoop automatically.
 // It is goroutine-safe to be invoked many times.
-func (this *session) Close() {
-	this.stop()
-	log.Info("%s closed now, its current gr num %d", this.sessionToken(), atomic.LoadInt32(&(this.grNum)))
+func (s *session) Close() {
+	s.stop()
+	log.Info("%s closed now, its current gr num %d", s.sessionToken(), atomic.LoadInt32(&(s.grNum)))
 }
