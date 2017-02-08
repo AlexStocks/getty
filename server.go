@@ -10,6 +10,7 @@
 package getty
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"net"
@@ -21,18 +22,22 @@ import (
 import (
 	"github.com/AlexStocks/goext/net"
 	"github.com/AlexStocks/goext/sync"
+	"github.com/AlexStocks/goext/time"
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
 )
 
 var (
-	errSelfConnect = errors.New("connect self!")
+	errSelfConnect        = errors.New("connect self!")
+	serverFastFailTimeout = gxtime.TimeSecondDuration(2)
 )
 
 type Server struct {
 	// net
 	addr     string
 	listener net.Listener
+	lock     sync.Mutex   // for server
+	server   *http.Server // for ws or wss server
 
 	sync.Once
 	done chan gxsync.Empty
@@ -44,12 +49,26 @@ func NewServer() *Server {
 }
 
 func (s *Server) stop() {
+	var (
+		err error
+		ctx context.Context
+	)
 	select {
 	case <-s.done:
 		return
 	default:
 		s.Once.Do(func() {
 			close(s.done)
+			s.lock.Lock()
+			if s.server != nil {
+				ctx, _ = context.WithTimeout(context.Background(), serverFastFailTimeout)
+				if err = s.server.Shutdown(ctx); err != nil {
+					// 如果下面内容输出为：server shutdown ctx: context deadline exceeded，
+					// 则说明有未处理完的active connections。
+					log.Error("server shutdown ctx:%#v", err)
+				}
+			}
+			s.lock.Unlock()
 			// 把listener.Close放在这里，既能防止多次关闭调用，
 			// 又能及时让Server因accept返回错误而从RunEventloop退出
 			s.listener.Close()
@@ -196,15 +215,20 @@ func (s *Server) RunWSEventLoop(newSession NewSessionCallback, path string) {
 		var (
 			err     error
 			handler *wsHandler
+			server  *http.Server
 		)
 		handler = newWSHandler(s, newSession)
 		handler.HandleFunc(path, handler.serveWSRequest)
-		err = (&http.Server{
+		server = &http.Server{
 			Addr:    s.addr,
 			Handler: handler,
 			// ReadTimeout:    server.HTTPTimeout,
 			// WriteTimeout:   server.HTTPTimeout,
-		}).Serve(s.listener)
+		}
+		s.lock.Lock()
+		s.server = server
+		s.lock.Unlock()
+		err = server.Serve(s.listener)
 		if err != nil {
 			log.Error("http.Server.Serve(addr{%s}) = err{%#v}", s.addr, err)
 			// panic(err)
@@ -242,6 +266,9 @@ func (s *Server) RunWSEventLoopWithTLS(newSession NewSessionCallback, path strin
 			// WriteTimeout:   server.HTTPTimeout,
 		}
 		server.SetKeepAlivesEnabled(true)
+		s.lock.Lock()
+		s.server = server
+		s.lock.Unlock()
 		err = server.Serve(tls.NewListener(s.listener, config))
 		if err != nil {
 			log.Error("http.Server.Serve(addr{%s}) = err{%#v}", s.addr, err)

@@ -11,6 +11,13 @@
 ## develop history ##
 ---
 
+- 2017/02/08
+    > improvement
+    >
+    > 1 server shutdown in server.go:(Server) stop() 
+    >
+    > 2 version: 0.7.01
+
 - 2017/02/03
     > 1 Session struct -> session struct and add Session interface
     >
@@ -23,12 +30,12 @@
 - 2016/11/19
     > 1 add conn.go:(*gettyWSConn) setCompressType to add zip compress feature for ws connection
     >
-    > 2 version: 0.6.2
+    > 2 version: 0.6.02
 
 - 2016/11/16
     > 1 add zip/snappy compress for tcp connection
     >
-    > 2 version: 0.6.1
+    > 2 version: 0.6.01
 
 - 2016/11/02
     > 1 add session.go:Session{ID(), LocalAddr(), RemoteAddr()}
@@ -217,7 +224,7 @@
     >
     > 5 use err instead of nerr in session.go:(Session)handlePackage:defer:OnError
     >
-       > 6 version: 0.2.07
+    > 6 version: 0.2.07
 
 - 2016/08/25
     > 1 move close done to once clause in server.go:(Server)stop
