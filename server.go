@@ -236,10 +236,11 @@ func (s *Server) RunWSEventLoop(newSession NewSessionCallback, path string) {
 	}()
 }
 
-// RunWSEventLoopWithTLS serve websocket client request
+//  serve websocket client request
+// RunWSSEventLoop serve websocket client request
 // @newSession: new websocket connection callback
 // @path: websocket request url path
-func (s *Server) RunWSEventLoopWithTLS(newSession NewSessionCallback, path string, cert string, priv string) {
+func (s *Server) RunWSSEventLoop(newSession NewSessionCallback, path string, cert string, priv string) {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
