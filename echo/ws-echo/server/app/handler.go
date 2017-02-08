@@ -16,6 +16,7 @@ import (
 )
 
 import (
+	"fmt"
 	"github.com/AlexStocks/getty"
 	log "github.com/AlexStocks/log4go"
 )
@@ -36,6 +37,7 @@ type MessageHandler struct{}
 
 func (this *MessageHandler) Handle(session getty.Session, pkg *EchoPackage) error {
 	log.Debug("get echo package{%s}", pkg)
+	fmt.Printf("get echo package{%s}\n", pkg)
 	return session.WritePkg(pkg)
 }
 

@@ -69,6 +69,11 @@ type (
 		FailFastTimeout string `default:"5s"`
 		failFastTimeout time.Duration
 
+		// cert
+		// generate_cert -host ikuernto.com
+		CertFile string
+		KeyFile  string
+
 		// session tcp parameters
 		GettySessionParam GettySessionParam `required:"true"`
 	}

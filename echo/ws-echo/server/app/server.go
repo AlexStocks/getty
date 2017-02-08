@@ -149,8 +149,13 @@ func initServer() {
 		}
 
 		// run server
-		server.RunWSEventLoop(newSession, pathList[idx])
-		log.Debug("server bind addr{ws://%s/%s} ok!", addr, pathList[idx])
+		if conf.CertFile != "" && conf.KeyFile != "" {
+			server.RunWSSEventLoop(newSession, pathList[idx], conf.CertFile, conf.KeyFile)
+			log.Debug("server bind addr{wss://%s/%s} ok!", addr, pathList[idx])
+		} else {
+			server.RunWSEventLoop(newSession, pathList[idx])
+			log.Debug("server bind addr{ws://%s/%s} ok!", addr, pathList[idx])
+		}
 		serverList = append(serverList, server)
 	}
 }
