@@ -191,18 +191,18 @@ func (s *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// conn.SetReadLimit(int64(handler.maxMsgLen))
-	session := NewWSSession(conn)
-	err = s.newSession(session)
+	ss := NewWSSession(conn)
+	err = s.newSession(ss)
 	if err != nil {
 		conn.Close()
-		log.Warn("Server{%s}.newSession(session{%#v}) = err {%#v}", s.server.addr, session, err)
+		log.Warn("Server{%s}.newSession(ss{%#v}) = err {%#v}", s.server.addr, ss, err)
 		return
 	}
-	if session.(*session).maxMsgLen > 0 {
-		conn.SetReadLimit(int64(session.(*session).maxMsgLen))
+	if ss.(*session).maxMsgLen > 0 {
+		conn.SetReadLimit(int64(ss.(*session).maxMsgLen))
 	}
-	// session.RunEventLoop()
-	session.(*session).run()
+	// ss.RunEventLoop()
+	ss.(*session).run()
 }
 
 // RunWSEventLoop serve websocket client request
@@ -291,14 +291,14 @@ func (s *Server) accept(newSession NewSessionCallback) (Session, error) {
 		return nil, errSelfConnect
 	}
 
-	session := NewTCPSession(conn)
-	err = newSession(session)
+	ss := NewTCPSession(conn)
+	err = newSession(ss)
 	if err != nil {
 		conn.Close()
 		return nil, err
 	}
 
-	return session, nil
+	return ss, nil
 }
 
 func (s *Server) Close() {

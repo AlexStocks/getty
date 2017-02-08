@@ -43,7 +43,7 @@ type Client struct {
 	interval   time.Duration
 	addr       string
 	newSession NewSessionCallback
-	sessionMap map[Session]gxsync.Empty
+	ssMap      map[Session]gxsync.Empty
 
 	sync.Once
 	done chan gxsync.Empty
@@ -66,11 +66,11 @@ func NewClient(connNum int, connInterval time.Duration, serverAddr string) *Clie
 	}
 
 	return &Client{
-		number:     connNum,
-		interval:   connInterval,
-		addr:       serverAddr,
-		sessionMap: make(map[Session]gxsync.Empty, connNum),
-		done:       make(chan gxsync.Empty),
+		number:   connNum,
+		interval: connInterval,
+		addr:     serverAddr,
+		ssMap:    make(map[Session]gxsync.Empty, connNum),
+		done:     make(chan gxsync.Empty),
 	}
 }
 
@@ -88,12 +88,12 @@ func NewWSSClient(connNum int, connInterval time.Duration, serverAddr string, ce
 	}
 
 	return &Client{
-		number:     connNum,
-		interval:   connInterval,
-		addr:       serverAddr,
-		sessionMap: make(map[Session]gxsync.Empty, connNum),
-		done:       make(chan gxsync.Empty),
-		certFile:   cert,
+		number:   connNum,
+		interval: connInterval,
+		addr:     serverAddr,
+		ssMap:    make(map[Session]gxsync.Empty, connNum),
+		done:     make(chan gxsync.Empty),
+		certFile: cert,
 	}
 }
 
@@ -123,10 +123,10 @@ func (c *Client) dialTCP() Session {
 
 func (c *Client) dialWS() Session {
 	var (
-		err     error
-		dialer  websocket.Dialer
-		conn    *websocket.Conn
-		session Session
+		err    error
+		dialer websocket.Dialer
+		conn   *websocket.Conn
+		ss     Session
 	)
 
 	dialer.EnableCompression = true
@@ -139,12 +139,12 @@ func (c *Client) dialWS() Session {
 			err = errSelfConnect
 		}
 		if err == nil {
-			session = NewWSSession(conn)
-			if session.(*session).maxMsgLen > 0 {
-				conn.SetReadLimit(int64(session.(*session).maxMsgLen))
+			ss = NewWSSession(conn)
+			if ss.(*session).maxMsgLen > 0 {
+				conn.SetReadLimit(int64(ss.(*session).maxMsgLen))
 			}
 
-			return session
+			return ss
 		}
 
 		log.Info("websocket.dialer.Dial(addr:%s) = error{%v}", c.addr, err)
@@ -160,7 +160,7 @@ func (c *Client) dialWSS() Session {
 		certPool *x509.CertPool
 		dialer   websocket.Dialer
 		conn     *websocket.Conn
-		session  Session
+		ss       Session
 	)
 
 	dialer.EnableCompression = true
@@ -184,12 +184,12 @@ func (c *Client) dialWSS() Session {
 			err = errSelfConnect
 		}
 		if err == nil {
-			session = NewWSSession(conn)
-			if session.(*session).maxMsgLen > 0 {
-				conn.SetReadLimit(int64(session.(*session).maxMsgLen))
+			ss = NewWSSession(conn)
+			if ss.(*session).maxMsgLen > 0 {
+				conn.SetReadLimit(int64(ss.(*session).maxMsgLen))
 			}
 
-			return session
+			return ss
 		}
 
 		log.Info("websocket.dialer.Dial(addr:%s) = error{%v}", c.addr, err)
@@ -208,16 +208,16 @@ func (c *Client) dial() Session {
 	return c.dialTCP()
 }
 
-func (c *Client) sessionNum() int {
+func (c *Client) ssNum() int {
 	var num int
 
 	c.Lock()
-	for s := range c.sessionMap {
+	for s := range c.ssMap {
 		if s.IsClosed() {
-			delete(c.sessionMap, s)
+			delete(c.ssMap, s)
 		}
 	}
-	num = len(c.sessionMap)
+	num = len(c.ssMap)
 	c.Unlock()
 
 	return num
@@ -225,28 +225,28 @@ func (c *Client) sessionNum() int {
 
 func (c *Client) connect() {
 	var (
-		err     error
-		session Session
+		err error
+		ss  Session
 	)
 
 	for {
-		session = c.dial()
-		if session == nil {
+		ss = c.dial()
+		if ss == nil {
 			// client has been closed
 			break
 		}
-		err = c.newSession(session)
+		err = c.newSession(ss)
 		if err == nil {
-			// session.RunEventLoop()
-			session.(*session).run()
+			// ss.RunEventLoop()
+			ss.(*session).run()
 			c.Lock()
-			c.sessionMap[session] = gxsync.Empty{}
+			c.ssMap[ss] = gxsync.Empty{}
 			c.Unlock()
 			break
 		}
 		// don't distinguish between tcp connection and websocket connection. Because
 		// gorilla/websocket/conn.go:(Conn)Close also invoke net.Conn.Close()
-		session.Conn().Close()
+		ss.Conn().Close()
 	}
 }
 
@@ -270,7 +270,7 @@ func (c *Client) RunEventLoop(newSession NewSessionCallback) {
 				break
 			}
 
-			num = c.sessionNum()
+			num = c.ssNum()
 			// log.Info("current client connction number:%d", num)
 			if max <= num {
 				times++
@@ -295,10 +295,10 @@ func (c *Client) stop() {
 		c.Once.Do(func() {
 			close(c.done)
 			c.Lock()
-			for s := range c.sessionMap {
+			for s := range c.ssMap {
 				s.Close()
 			}
-			c.sessionMap = nil
+			c.ssMap = nil
 			c.Unlock()
 		})
 	}

@@ -14,9 +14,11 @@
 - 2017/02/08
     > improvement
     >
-    > 1 server shutdown in server.go:(Server) stop() 
+    > 1 server shutdown in server.go:(Server) stop()
     >
-    > 2 version: 0.7.01
+    > 2 session variable -> ss
+    >
+    > 3 version: 0.7.01
 
 - 2017/02/03
     > 1 Session struct -> session struct and add Session interface
