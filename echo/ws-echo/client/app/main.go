@@ -105,11 +105,23 @@ func newSession(session getty.Session) error {
 }
 
 func initClient() {
-	client.gettyClient = getty.NewClient(
-		(int)(conf.ConnectionNum),
-		conf.connectInterval,
-		gxnet.WSHostAddress(conf.ServerHost, conf.ServerPort, conf.ServerPath),
-	)
+	if conf.WSSEnable {
+		client.gettyClient = getty.NewWSSClient(
+			(int)(conf.ConnectionNum),
+			conf.connectInterval,
+			gxnet.WSSHostAddress(conf.ServerHost, conf.ServerPort, conf.ServerPath),
+			conf.CertFile,
+			conf.KeyFile,
+			conf.CACert,
+		)
+	} else {
+		client.gettyClient = getty.NewClient(
+			(int)(conf.ConnectionNum),
+			conf.connectInterval,
+			gxnet.WSHostAddress(conf.ServerHost, conf.ServerPort, conf.ServerPath),
+		)
+	}
+
 	client.gettyClient.RunEventLoop(newSession)
 }
 
@@ -133,12 +145,14 @@ func initSignal() {
 				// log.Warn("app exit now by force...")
 				// os.Exit(1)
 				log.Exit("app exit now by force...")
+				log.Close()
 			})
 
 			// 要么survialTimeout时间内执行完毕下面的逻辑然后程序退出，要么执行上面的超时函数程序强行退出
 			uninitClient()
 			// fmt.Println("app exit now...")
 			log.Exit("app exit now...")
+			log.Close()
 			return
 		}
 	}

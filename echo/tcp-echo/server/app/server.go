@@ -167,12 +167,14 @@ func initSignal() {
 				// log.Warn("app exit now by force...")
 				// os.Exit(1)
 				log.Exit("app exit now by force...")
+				log.Close()
 			})
 
 			// 要么survialTimeout时间内执行完毕下面的逻辑然后程序退出，要么执行上面的超时函数程序强行退出
 			uninitServer()
 			// fmt.Println("app exit now...")
 			log.Exit("app exit now...")
+			log.Close()
 			return
 		}
 	}

@@ -150,7 +150,7 @@ func initServer() {
 
 		// run server
 		if conf.CertFile != "" && conf.KeyFile != "" {
-			server.RunWSSEventLoop(newSession, pathList[idx], conf.CertFile, conf.KeyFile)
+			server.RunWSSEventLoop(newSession, pathList[idx], conf.CertFile, conf.KeyFile, conf.CACert)
 			log.Debug("server bind addr{wss://%s/%s} ok!", addr, pathList[idx])
 		} else {
 			server.RunWSEventLoop(newSession, pathList[idx])
@@ -182,12 +182,14 @@ func initSignal() {
 				// log.Warn("app exit now by force...")
 				// os.Exit(1)
 				log.Exit("app exit now by force...")
+				log.Close()
 			})
 
 			// 要么survialTimeout时间内执行完毕下面的逻辑然后程序退出，要么执行上面的超时函数程序强行退出
 			uninitServer()
 			// fmt.Println("app exit now...")
 			log.Exit("app exit now...")
+			log.Close()
 			return
 		}
 	}

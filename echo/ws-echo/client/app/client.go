@@ -68,7 +68,7 @@ func (this *EchoClient) selectSession() getty.Session {
 	defer this.lock.RUnlock()
 	count := len(this.sessions)
 	if count == 0 {
-		log.Info("client session array is nil...")
+		log.Debug("client session array is nil...")
 		return nil
 	}
 
