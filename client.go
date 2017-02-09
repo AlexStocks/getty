@@ -183,7 +183,7 @@ func (c *Client) dialWSS() Session {
 	dialer.EnableCompression = true
 
 	config = &tls.Config{
-	// InsecureSkipVerify: true,
+		InsecureSkipVerify: true,
 	}
 
 	gxlog.CInfo("client cert:%s, key:%s, caCert:%s", c.cert, c.privateKey, c.caCert)
