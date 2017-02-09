@@ -12,7 +12,10 @@ package getty
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
+	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"sync"
@@ -20,6 +23,7 @@ import (
 )
 
 import (
+	"github.com/AlexStocks/goext/log"
 	"github.com/AlexStocks/goext/net"
 	"github.com/AlexStocks/goext/sync"
 	"github.com/AlexStocks/goext/time"
@@ -29,7 +33,7 @@ import (
 
 var (
 	errSelfConnect        = errors.New("connect self!")
-	serverFastFailTimeout = gxtime.TimeSecondDuration(2)
+	serverFastFailTimeout = gxtime.TimeSecondDuration(1)
 )
 
 type Server struct {
@@ -236,26 +240,52 @@ func (s *Server) RunWSEventLoop(newSession NewSessionCallback, path string) {
 	}()
 }
 
-//  serve websocket client request
+// serve websocket client request
 // RunWSSEventLoop serve websocket client request
 // @newSession: new websocket connection callback
 // @path: websocket request url path
-func (s *Server) RunWSSEventLoop(newSession NewSessionCallback, path string, cert string, priv string) {
+// @cert: server certificate file
+// @privateKey: server private key(contains its public key)
+// @caCert: root certificate file. to verify the legitimacy of client. it can be nil.
+func (s *Server) RunWSSEventLoop(
+	newSession NewSessionCallback,
+	path string,
+	cert string,
+	privateKey string,
+	caCert string) {
+
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
 		var (
-			err     error
-			config  *tls.Config
-			handler *wsHandler
-			server  *http.Server
+			err      error
+			certPem  []byte
+			certPool *x509.CertPool
+			config   *tls.Config
+			handler  *wsHandler
+			server   *http.Server
 		)
 
-		config = &tls.Config{}
+		config = &tls.Config{InsecureSkipVerify: true}
 		config.Certificates = make([]tls.Certificate, 1)
-		if config.Certificates[0], err = tls.LoadX509KeyPair(cert, priv); err != nil {
-			log.Error("tls.LoadX509KeyPair(cert{%s}, priv{%s}) = err{%#v}", cert, priv, err)
+		gxlog.CInfo("server cert:%s, key:%s, caCert:%s", cert, privateKey, caCert)
+		if config.Certificates[0], err = tls.LoadX509KeyPair(cert, privateKey); err != nil {
+			log.Error("tls.LoadX509KeyPair(cert{%s}, privateKey{%s}) = err{%#v}", cert, privateKey, err)
 			return
+		}
+
+		if caCert != "" {
+			certPem, err = ioutil.ReadFile(caCert)
+			if err != nil {
+				panic(fmt.Errorf("ioutil.ReadFile(certFile{%s}) = err{%#v}", caCert, err))
+			}
+			certPool = x509.NewCertPool()
+			if ok := certPool.AppendCertsFromPEM(certPem); !ok {
+				panic("failed to parse root certificate file")
+			}
+			config.ClientCAs = certPool
+			config.ClientAuth = tls.RequireAndVerifyClientCert
+			config.InsecureSkipVerify = false
 		}
 
 		handler = newWSHandler(s, newSession)

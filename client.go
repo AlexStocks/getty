@@ -21,6 +21,7 @@ import (
 )
 
 import (
+	"github.com/AlexStocks/goext/log"
 	"github.com/AlexStocks/goext/sync"
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
@@ -50,7 +51,9 @@ type Client struct {
 	wg   sync.WaitGroup
 
 	// for wss client
-	certFile string
+	cert       string // 客户端的证书
+	privateKey string // 客户端的私钥(包含了它的public key)
+	caCert     string // 用于验证服务端的合法性
 }
 
 // NewClient function builds a tcp & ws client.
@@ -78,8 +81,18 @@ func NewClient(connNum int, connInterval time.Duration, serverAddr string) *Clie
 // @connNum is connection number.
 // @connInterval is reconnect sleep interval when getty fails to connect the server.
 // @serverAddr is server address.
-// @ cert is certificate file
-func NewWSSClient(connNum int, connInterval time.Duration, serverAddr string, cert string) *Client {
+// @cert is client certificate file. it can be emtpy.
+// @privateKey is client private key(contains its public key). it can be empty.
+// @caCert is the root certificate file to verify the legitimacy of server
+func NewWSSClient(
+	connNum int,
+	connInterval time.Duration,
+	serverAddr string,
+	cert string,
+	privateKey string,
+	caCert string,
+) *Client {
+
 	if connNum < 0 {
 		connNum = 1
 	}
@@ -88,12 +101,14 @@ func NewWSSClient(connNum int, connInterval time.Duration, serverAddr string, ce
 	}
 
 	return &Client{
-		number:   connNum,
-		interval: connInterval,
-		addr:     serverAddr,
-		ssMap:    make(map[Session]gxsync.Empty, connNum),
-		done:     make(chan gxsync.Empty),
-		certFile: cert,
+		number:     connNum,
+		interval:   connInterval,
+		addr:       serverAddr,
+		ssMap:      make(map[Session]gxsync.Empty, connNum),
+		done:       make(chan gxsync.Empty),
+		caCert:     caCert,
+		cert:       cert,
+		privateKey: privateKey,
 	}
 }
 
@@ -135,6 +150,7 @@ func (c *Client) dialWS() Session {
 			return nil
 		}
 		conn, _, err = dialer.Dial(c.addr, nil)
+		log.Info("websocket.dialer.Dial(addr:%s) = error{%v}", c.addr, err)
 		if err == nil && conn.LocalAddr().String() == conn.RemoteAddr().String() {
 			err = errSelfConnect
 		}
@@ -158,23 +174,41 @@ func (c *Client) dialWSS() Session {
 		err      error
 		certPem  []byte
 		certPool *x509.CertPool
+		config   *tls.Config
 		dialer   websocket.Dialer
 		conn     *websocket.Conn
 		ss       Session
 	)
 
 	dialer.EnableCompression = true
-	certPem, err = ioutil.ReadFile(c.certFile)
-	if err != nil {
-		panic(fmt.Errorf("ioutil.ReadFile(certFile{%s}) = err{%#v}", c.certFile, err))
+
+	config = &tls.Config{
+	// InsecureSkipVerify: true,
 	}
-	certPool = x509.NewCertPool()
-	if ok := certPool.AppendCertsFromPEM(certPem); !ok {
-		panic("failed to parse root certificate")
+
+	gxlog.CInfo("client cert:%s, key:%s, caCert:%s", c.cert, c.privateKey, c.caCert)
+	if c.caCert != "" {
+		certPem, err = ioutil.ReadFile(c.caCert)
+		if err != nil {
+			panic(fmt.Errorf("ioutil.ReadFile(caCert{%s}) = err{%#v}", c.caCert, err))
+		}
+		certPool = x509.NewCertPool()
+		if ok := certPool.AppendCertsFromPEM(certPem); !ok {
+			panic("failed to parse root certificate file.")
+		}
+		config.RootCAs = certPool
+		config.InsecureSkipVerify = false
+	}
+
+	if c.cert != "" && c.privateKey != "" {
+		config.Certificates = make([]tls.Certificate, 1)
+		if config.Certificates[0], err = tls.LoadX509KeyPair(c.cert, c.privateKey); err != nil {
+			panic(fmt.Sprintf("tls.LoadX509KeyPair(cert{%s}, privateKey{%s}) = err{%#v}", c.cert, c.privateKey, err))
+		}
 	}
 
 	// dialer.EnableCompression = true
-	dialer.TLSClientConfig = &tls.Config{RootCAs: certPool}
+	dialer.TLSClientConfig = config
 	for {
 		if c.IsClosed() {
 			return nil
@@ -208,7 +242,7 @@ func (c *Client) dial() Session {
 	return c.dialTCP()
 }
 
-func (c *Client) ssNum() int {
+func (c *Client) sessionNum() int {
 	var num int
 
 	c.Lock()
@@ -270,7 +304,7 @@ func (c *Client) RunEventLoop(newSession NewSessionCallback) {
 				break
 			}
 
-			num = c.ssNum()
+			num = c.sessionNum()
 			// log.Info("current client connction number:%d", num)
 			if max <= num {
 				times++
