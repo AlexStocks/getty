@@ -28,12 +28,15 @@ import (
 )
 
 const (
-	maxReadBufLen      = 4 * 1024
-	netIOTimeout       = 1e9      // 1s
-	period             = 60 * 1e9 // 1 minute
-	pendingDuration    = 3e9
-	defaultSessionName = "session"
-	outputFormat       = "session %s, Read Count: %d, Write Count: %d, Read Pkg Count: %d, Write Pkg Count: %d"
+	maxReadBufLen         = 4 * 1024
+	netIOTimeout          = 1e9      // 1s
+	period                = 60 * 1e9 // 1 minute
+	pendingDuration       = 3e9
+	defaultSessionName    = "session"
+	defaultTCPSessionName = "tcp-session"
+	defaultWSSessionName  = "ws-session"
+	defaultWSSSessionName = "wss-session"
+	outputFormat          = "session %s, Read Count: %d, Write Count: %d, Read Pkg Count: %d, Write Pkg Count: %d"
 )
 
 /////////////////////////////////////////
@@ -121,7 +124,7 @@ func NewSession() Session {
 
 func NewTCPSession(conn net.Conn) Session {
 	session := &session{
-		name:       defaultSessionName,
+		name:       defaultTCPSessionName,
 		Connection: newGettyTCPConn(conn),
 		done:       make(chan gxsync.Empty),
 		period:     period,
@@ -137,7 +140,7 @@ func NewTCPSession(conn net.Conn) Session {
 
 func NewWSSession(conn *websocket.Conn) Session {
 	session := &session{
-		name:       defaultSessionName,
+		name:       defaultWSSessionName,
 		Connection: newGettyWSConn(conn),
 		done:       make(chan gxsync.Empty),
 		period:     period,

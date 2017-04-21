@@ -11,6 +11,12 @@
 ## develop history ##
 ---
 
+- 2017/04/21
+    > bug fix
+    * 1 client can not connect wss server because of getty does not verify whether cert&key is nil or not in client.go:dialWSS
+    
+    > version: 0.7.02 
+
 - 2017/02/08
     > improvement
     >

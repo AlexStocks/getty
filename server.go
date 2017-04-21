@@ -10,7 +10,7 @@
 package getty
 
 import (
-	// "context"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -23,7 +23,6 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/goext/log"
 	"github.com/AlexStocks/goext/net"
 	"github.com/AlexStocks/goext/sync"
 	"github.com/AlexStocks/goext/time"
@@ -54,8 +53,8 @@ func NewServer() *Server {
 
 func (s *Server) stop() {
 	var (
-	// err error
-	// ctx context.Context
+		err error
+		ctx context.Context
 	)
 	select {
 	case <-s.done:
@@ -65,12 +64,12 @@ func (s *Server) stop() {
 			close(s.done)
 			s.lock.Lock()
 			if s.server != nil {
-				// ctx, _ = context.WithTimeout(context.Background(), serverFastFailTimeout)
-				// if err = s.server.Shutdown(ctx); err != nil {
-				// 	// 如果下面内容输出为：server shutdown ctx: context deadline exceeded，
-				// 	// 则说明有未处理完的active connections。
-				// 	log.Error("server shutdown ctx:%#v", err)
-				// }
+				ctx, _ = context.WithTimeout(context.Background(), serverFastFailTimeout)
+				if err = s.server.Shutdown(ctx); err != nil {
+					// 如果下面内容输出为：server shutdown ctx: context deadline exceeded，
+					// 则说明有未处理完的active connections。
+					log.Error("server shutdown ctx:%#v", err)
+				}
 			}
 			s.lock.Unlock()
 			// 把listener.Close放在这里，既能防止多次关闭调用，
@@ -252,29 +251,31 @@ func (s *Server) RunWSSEventLoop(
 	path string,
 	cert string,
 	privateKey string,
-	caCert string) {
+	caCert string,
+) {
 
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
 		var (
-			err      error
-			certPem  []byte
-			certPool *x509.CertPool
-			config   *tls.Config
-			handler  *wsHandler
-			server   *http.Server
+			err         error
+			certPem     []byte
+			certificate tls.Certificate
+			certPool    *x509.CertPool
+			config      *tls.Config
+			handler     *wsHandler
+			server      *http.Server
 		)
 
-		config = &tls.Config{
-			InsecureSkipVerify: true,
-			ClientAuth:         tls.NoClientCert,
-		}
-		config.Certificates = make([]tls.Certificate, 1)
-		gxlog.CInfo("server cert:%s, key:%s, caCert:%s", cert, privateKey, caCert)
-		if config.Certificates[0], err = tls.LoadX509KeyPair(cert, privateKey); err != nil {
+		if certificate, err = tls.LoadX509KeyPair(cert, privateKey); err != nil {
 			panic(fmt.Sprintf("tls.LoadX509KeyPair(cert{%s}, privateKey{%s}) = err{%#v}", cert, privateKey, err))
 			return
+		}
+		config = &tls.Config{
+			InsecureSkipVerify: true, // 不对对端的证书进行校验
+			ClientAuth:         tls.NoClientCert,
+			NextProtos:         []string{"http/1.1"},
+			Certificates:       []tls.Certificate{certificate},
 		}
 
 		if caCert != "" {

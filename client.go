@@ -173,6 +173,8 @@ func (c *Client) dialWSS() Session {
 	var (
 		err      error
 		certPem  []byte
+		root     *x509.Certificate
+		roots    []*x509.Certificate
 		certPool *x509.CertPool
 		config   *tls.Config
 		dialer   websocket.Dialer
@@ -186,26 +188,36 @@ func (c *Client) dialWSS() Session {
 		InsecureSkipVerify: true,
 	}
 
-	gxlog.CInfo("client cert:%s, key:%s, caCert:%s", c.cert, c.privateKey, c.caCert)
-	if c.caCert != "" {
-		certPem, err = ioutil.ReadFile(c.caCert)
-		if err != nil {
-			panic(fmt.Errorf("ioutil.ReadFile(caCert{%s}) = err{%#v}", c.caCert, err))
-		}
-		certPool = x509.NewCertPool()
-		if ok := certPool.AppendCertsFromPEM(certPem); !ok {
-			panic("failed to parse root certificate file.")
-		}
-		config.RootCAs = certPool
-		config.InsecureSkipVerify = false
-	}
-
 	if c.cert != "" && c.privateKey != "" {
 		config.Certificates = make([]tls.Certificate, 1)
 		if config.Certificates[0], err = tls.LoadX509KeyPair(c.cert, c.privateKey); err != nil {
 			panic(fmt.Sprintf("tls.LoadX509KeyPair(cert{%s}, privateKey{%s}) = err{%#v}", c.cert, c.privateKey, err))
 		}
 	}
+
+	certPool = x509.NewCertPool()
+	for _, c := range config.Certificates {
+		roots, err = x509.ParseCertificates(c.Certificate[len(c.Certificate)-1])
+		if err != nil {
+			panic(fmt.Sprintf("error parsing server's root cert: %v\n", err))
+		}
+		for _, root = range roots {
+			certPool.AddCert(root)
+		}
+	}
+
+	gxlog.CInfo("client cert:%s, key:%s, caCert:%s", c.cert, c.privateKey, c.caCert)
+	if c.caCert != "" {
+		certPem, err = ioutil.ReadFile(c.caCert)
+		if err != nil {
+			panic(fmt.Errorf("ioutil.ReadFile(caCert{%s}) = err{%#v}", c.caCert, err))
+		}
+		if ok := certPool.AppendCertsFromPEM(certPem); !ok {
+			panic("failed to parse root certificate file.")
+		}
+		config.InsecureSkipVerify = false
+	}
+	config.RootCAs = certPool
 
 	// dialer.EnableCompression = true
 	dialer.TLSClientConfig = config
@@ -222,6 +234,7 @@ func (c *Client) dialWSS() Session {
 			if ss.(*session).maxMsgLen > 0 {
 				conn.SetReadLimit(int64(ss.(*session).maxMsgLen))
 			}
+			ss.SetName(defaultWSSSessionName)
 
 			return ss
 		}
@@ -233,10 +246,12 @@ func (c *Client) dialWSS() Session {
 }
 
 func (c *Client) dial() Session {
+	if strings.HasPrefix(c.addr, "wss") {
+		return c.dialWSS()
+	}
+
 	if strings.HasPrefix(c.addr, "ws") {
 		return c.dialWS()
-	} else if strings.HasPrefix(c.addr, "wss") {
-		return c.dialWSS()
 	}
 
 	return c.dialTCP()
