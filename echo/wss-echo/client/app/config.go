@@ -56,10 +56,14 @@ type (
 		LocalHost string `default:"127.0.0.1"`
 
 		// server
+		WSSEnable   bool   `default:"False"`
 		ServerHost  string `default:"127.0.0.1"`
 		ServerPort  int    `default:"10000"`
 		ServerPath  string `default:"/echo"`
 		ProfilePort int    `default:"10086"`
+
+		// cert
+		CertFile string
 
 		// session pool
 		ConnectionNum   int    `default:"16"`

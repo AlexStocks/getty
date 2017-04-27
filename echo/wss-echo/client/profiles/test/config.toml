@@ -7,12 +7,16 @@ AppName                 = "ECHO-CLIENT"
 LocalHost               = "127.0.0.1"
 
 # server
+WSSEnable               = true
 # ServerHost              = "127.0.0.1"
 # ServerHost              = "192.168.8.3"
 ServerHost              = "localhost"
 ServerPort              = 10000
 ServerPath              = "/echo"
 ProfilePort             = 10080
+
+# cert
+CertFile                = "./conf/cert/client.crt"
 
 # connection pool
 # 连接池连接数目

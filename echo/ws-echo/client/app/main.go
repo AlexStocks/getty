@@ -111,20 +111,11 @@ func newSession(session getty.Session) error {
 }
 
 func initClient() {
-	if conf.WSSEnable {
-		client.gettyClient = getty.NewWSSClient(
-			(int)(conf.ConnectionNum),
-			conf.connectInterval,
-			gxnet.WSSHostAddress(conf.ServerHost, conf.ServerPort, conf.ServerPath),
-			conf.CertFile,
-		)
-	} else {
-		client.gettyClient = getty.NewClient(
-			(int)(conf.ConnectionNum),
-			conf.connectInterval,
-			gxnet.WSHostAddress(conf.ServerHost, conf.ServerPort, conf.ServerPath),
-		)
-	}
+	client.gettyClient = getty.NewClient(
+		(int)(conf.ConnectionNum),
+		conf.connectInterval,
+		gxnet.WSHostAddress(conf.ServerHost, conf.ServerPort, conf.ServerPath),
+	)
 
 	client.gettyClient.RunEventLoop(newSession)
 }

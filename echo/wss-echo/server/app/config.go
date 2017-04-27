@@ -33,7 +33,7 @@ var (
 
 type (
 	GettySessionParam struct {
-		CompressEncoding bool   `default:"false"`
+		CompressEncoding bool   `default:"false"` // Accept-Encoding: gzip, deflate, sdch
 		TcpNoDelay       bool   `default:"true"`
 		TcpKeepAlive     bool   `default:"true"`
 		TcpRBufSize      int    `default:"262144"`
@@ -51,36 +51,29 @@ type (
 
 	// Config holds supported types by the multiconfig package
 	Config struct {
-		// local
-		AppName   string `default:"echo-client"`
-		LocalHost string `default:"127.0.0.1"`
-
-		// server
-		ServerHost  string `default:"127.0.0.1"`
-		ServerPort  int    `default:"10000"`
-		ServerPath  string `default:"/echo"`
-		ProfilePort int    `default:"10086"`
-
-		// session pool
-		ConnectionNum   int    `default:"16"`
-		ConnectInterval string `default:"5s"`
-		connectInterval time.Duration
-
-		// heartbeat
-		HeartbeatPeriod string `default:"15s"`
-		heartbeatPeriod time.Duration
+		// local address
+		AppName     string   `default:"echo-server"`
+		Host        string   `default:"127.0.0.1"`
+		Ports       []string `default:["10000"]`
+		Paths       []string `default:["/echo"]`
+		ProfilePort int      `default:"10086"`
 
 		// session
-		SessionTimeout string `default:"60s"`
-		sessionTimeout time.Duration
-
-		// echo
-		EchoString string `default:"hello"`
-		EchoTimes  int    `default:"10"`
+		HeartbeatPeriod string `default:"30s"`
+		heartbeatPeriod time.Duration
+		SessionTimeout  string `default:"60s"`
+		sessionTimeout  time.Duration
+		SessionNumber   int `default:"1000"`
 
 		// app
 		FailFastTimeout string `default:"5s"`
 		failFastTimeout time.Duration
+
+		// cert
+		// generate_cert -host ikuernto.com
+		CertFile string
+		KeyFile  string
+		CACert   string
 
 		// session tcp parameters
 		GettySessionParam GettySessionParam `required:"true"`
@@ -105,19 +98,18 @@ func initConf() {
 	}
 	conf = new(Config)
 	config.MustLoadWithPath(confFile, conf)
-	conf.connectInterval, err = time.ParseDuration(conf.ConnectInterval)
-	if err != nil {
-		panic(fmt.Sprintf("time.ParseDuration(ConnectionInterval{%#v}) = error{%v}", conf.ConnectInterval, err))
-		return
-	}
 	conf.heartbeatPeriod, err = time.ParseDuration(conf.HeartbeatPeriod)
 	if err != nil {
-		panic(fmt.Sprintf("time.ParseDuration(HeartbeatPeroid{%#v}) = error{%v}", conf.HeartbeatPeriod, err))
+		panic(fmt.Sprintf("time.ParseDuration(HeartbeatPeriod{%#v}) = error{%v}", conf.heartbeatPeriod, err))
 		return
 	}
 	conf.sessionTimeout, err = time.ParseDuration(conf.SessionTimeout)
 	if err != nil {
 		panic(fmt.Sprintf("time.ParseDuration(SessionTimeout{%#v}) = error{%v}", conf.SessionTimeout, err))
+		return
+	}
+	if conf.sessionTimeout <= conf.heartbeatPeriod {
+		panic(fmt.Sprintf("SessionTimeout{%#v} <= HeartbeatPeriod{%#v}", conf.SessionTimeout, conf.HeartbeatPeriod))
 		return
 	}
 	conf.failFastTimeout, err = time.ParseDuration(conf.FailFastTimeout)

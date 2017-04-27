@@ -22,6 +22,11 @@ SessionNumber           = 700
 # app
 FailFastTimeout         = "3s"
 
+# cert
+CertFile                = "./conf/cert/server.crt"
+KeyFile                 = "./conf/cert/server.key"
+# CACert                  = "./conf/cert/ca.crt"
+
 # tcp
 [GettySessionParam]
     CompressEncoding    = true

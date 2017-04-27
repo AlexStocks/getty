@@ -1,10 +1,10 @@
 /******************************************************
-# DESC    : echo server
+# DESC    : echo client app
 # AUTHOR  : Alex Stocks
 # LICENCE : Apache License 2.0
 # EMAIL   : alexstocks@foxmail.com
-# MOD     : 2016-09-04 15:49
-# FILE    : server.go
+# MOD     : 2016-09-06 17:24
+# FILE    : main.go
 ******************************************************/
 
 package main
@@ -19,6 +19,7 @@ import (
 	"os/signal"
 	// "strings"
 	"crypto/tls"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -27,6 +28,7 @@ import (
 	"github.com/AlexStocks/getty"
 	"github.com/AlexStocks/gocolor"
 	"github.com/AlexStocks/goext/net"
+	"github.com/AlexStocks/goext/time"
 	log "github.com/AlexStocks/log4go"
 )
 
@@ -35,29 +37,23 @@ const (
 )
 
 var (
-// host  = flag.String("host", "127.0.0.1", "local host address that server app will use")
-// ports = flag.String("ports", "12345,12346,12347", "local host port list that the server app will bind")
+	client EchoClient
 )
 
-var (
-	serverList []*getty.Server
-)
+////////////////////////////////////////////////////////////////////
+// main
+////////////////////////////////////////////////////////////////////
 
 func main() {
-	// flag.Parse()
-	// if *host == "" || *ports == "" {
-	// 	panic(fmt.Sprintf("Please intput local host ip or port lists"))
-	// }
-
 	initConf()
 
 	initProfiling()
 
-	initServer()
-	gocolor.Info("%s starts successfull! its version=%s, its listen ends=%s:%s:%s\n",
-		conf.AppName, Version, conf.Host, conf.Ports, conf.Paths)
-	log.Info("%s starts successfull! its version=%s, its listen ends=%s:%s:%s\n",
-		conf.AppName, Version, conf.Host, conf.Ports, conf.Paths)
+	initClient()
+	gocolor.Info("%s starts successfull! its version=%s\n", conf.AppName, Version)
+	log.Info("%s starts successfull! its version=%s\n", conf.AppName, Version)
+
+	go test()
 
 	initSignal()
 }
@@ -67,8 +63,7 @@ func initProfiling() {
 		addr string
 	)
 
-	// addr = *host + ":" + "10000"
-	addr = gxnet.HostAddress(conf.Host, conf.ProfilePort)
+	addr = gxnet.HostAddress(conf.LocalHost, conf.ProfilePort)
 	log.Info("App Profiling startup on address{%v}", addr+pprofPath)
 	go func() {
 		log.Info(http.ListenAndServe(addr, nil))
@@ -91,8 +86,8 @@ func newSession(session getty.Session) error {
 		session.SetCompressType(getty.CompressZip)
 	}
 	// else {
-	// 		session.SetCompressType(getty.CompressNone)
-	//	}
+	//	session.SetCompressType(getty.CompressNone)
+	//}
 
 	if flag2 {
 		tcpConn.SetNoDelay(conf.GettySessionParam.TcpNoDelay)
@@ -110,60 +105,32 @@ func newSession(session getty.Session) error {
 	session.SetWriteDeadline(conf.GettySessionParam.tcpWriteTimeout)
 	session.SetCronPeriod((int)(conf.heartbeatPeriod.Nanoseconds() / 1e6))
 	session.SetWaitTime(conf.GettySessionParam.waitTimeout)
-	log.Debug("app accepts new session:%s\n", session.Stat())
+	log.Debug("client new session:%s\n", session.Stat())
 
 	return nil
 }
 
-func initServer() {
-	var (
-		err      error
-		addr     string
-		portList []string
-		pathList []string
-		server   *getty.Server
-	)
-
-	// if *host == "" {
-	// 	panic("host can not be nil")
-	// }
-	// if *ports == "" {
-	// 	panic("ports can not be nil")
-	// }
-
-	// portList = strings.Split(*ports, ",")
-
-	portList = conf.Ports
-	if len(portList) == 0 {
-		panic("portList is nil")
+func initClient() {
+	if conf.WSSEnable {
+		client.gettyClient = getty.NewWSSClient(
+			(int)(conf.ConnectionNum),
+			conf.connectInterval,
+			gxnet.WSSHostAddress(conf.ServerHost, conf.ServerPort, conf.ServerPath),
+			conf.CertFile,
+		)
+	} else {
+		client.gettyClient = getty.NewClient(
+			(int)(conf.ConnectionNum),
+			conf.connectInterval,
+			gxnet.WSHostAddress(conf.ServerHost, conf.ServerPort, conf.ServerPath),
+		)
 	}
-	pathList = conf.Paths
-	if len(pathList) == 0 {
-		panic("pathList is nil")
-	}
-	if len(portList) != len(pathList) {
-		panic("the @Ports's length is not equal to @Paths.")
-	}
-	for idx, port := range portList {
-		server = getty.NewServer()
-		// addr = *host + ":" + port
-		// addr = conf.Host + ":" + port
-		addr = gxnet.HostAddress2(conf.Host, port)
-		err = server.Listen("tcp", addr)
-		if err != nil {
-			panic(fmt.Sprintf("server.Listen(tcp, addr:%s) = error{%#v}", addr, err))
-		}
 
-		server.RunWSEventLoop(newSession, pathList[idx])
-		log.Debug("server bind addr{ws://%s/%s} ok!", addr, pathList[idx])
-		serverList = append(serverList, server)
-	}
+	client.gettyClient.RunEventLoop(newSession)
 }
 
-func uninitServer() {
-	for _, server := range serverList {
-		server.Close()
-	}
+func uninitClient() {
+	client.close()
 }
 
 func initSignal() {
@@ -186,11 +153,52 @@ func initSignal() {
 			})
 
 			// 要么survialTimeout时间内执行完毕下面的逻辑然后程序退出，要么执行上面的超时函数程序强行退出
-			uninitServer()
+			uninitClient()
 			// fmt.Println("app exit now...")
 			log.Exit("app exit now...")
 			log.Close()
 			return
 		}
 	}
+}
+
+func echo() {
+	var pkg EchoPackage
+	pkg.H.Magic = echoPkgMagic
+	pkg.H.LogID = (uint32)(src.Int63())
+	pkg.H.Sequence = atomic.AddUint32(&reqID, 1)
+	// pkg.H.ServiceID = 0
+	pkg.H.Command = echoCmd
+	pkg.B = conf.EchoString
+	pkg.H.Len = (uint16)(len(pkg.B)) + 1
+
+	if session := client.selectSession(); session != nil {
+		err := session.WritePkg(&pkg)
+		if err != nil {
+			log.Warn("session.WritePkg(session{%s}, pkg{%s}) = error{%v}", session.Stat(), pkg, err)
+			session.Close()
+			client.removeSession(session)
+		}
+	}
+}
+
+func test() {
+	for {
+		if client.isAvailable() {
+			break
+		}
+		time.Sleep(1e6)
+	}
+
+	var (
+		cost    int64
+		counter gxtime.CountWatch
+	)
+	counter.Start()
+	for i := 0; i < conf.EchoTimes; i++ {
+		echo()
+	}
+	cost = counter.Count()
+	log.Info("after loop %d times, echo cost %d ms", conf.EchoTimes, cost/1e6)
+	gocolor.Info("after loop %d times, echo cost %d ms", conf.EchoTimes, cost/1e6)
 }
