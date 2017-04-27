@@ -21,7 +21,7 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/goext/log"
+	"encoding/pem"
 	"github.com/AlexStocks/goext/sync"
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
@@ -51,9 +51,7 @@ type Client struct {
 	wg   sync.WaitGroup
 
 	// for wss client
-	cert       string // 客户端的证书
-	privateKey string // 客户端的私钥(包含了它的public key)
-	caCert     string // 用于验证服务端的合法性
+	cert string // 服务端的证书文件（包含了公钥以及服务端其他一些验证信息：服务端域名、服务端ip、起始有效日期、有效时长、hash算法、秘钥长度等）
 }
 
 // NewClient function builds a tcp & ws client.
@@ -89,8 +87,6 @@ func NewWSSClient(
 	connInterval time.Duration,
 	serverAddr string,
 	cert string,
-	privateKey string,
-	caCert string,
 ) *Client {
 
 	if connNum < 0 {
@@ -101,14 +97,12 @@ func NewWSSClient(
 	}
 
 	return &Client{
-		number:     connNum,
-		interval:   connInterval,
-		addr:       serverAddr,
-		ssMap:      make(map[Session]gxsync.Empty, connNum),
-		done:       make(chan gxsync.Empty),
-		caCert:     caCert,
-		cert:       cert,
-		privateKey: privateKey,
+		number:   connNum,
+		interval: connInterval,
+		addr:     serverAddr,
+		ssMap:    make(map[Session]gxsync.Empty, connNum),
+		done:     make(chan gxsync.Empty),
+		cert:     cert,
 	}
 }
 
@@ -172,7 +166,6 @@ func (c *Client) dialWS() Session {
 func (c *Client) dialWSS() Session {
 	var (
 		err      error
-		certPem  []byte
 		root     *x509.Certificate
 		roots    []*x509.Certificate
 		certPool *x509.CertPool
@@ -188,11 +181,25 @@ func (c *Client) dialWSS() Session {
 		InsecureSkipVerify: true,
 	}
 
-	if c.cert != "" && c.privateKey != "" {
-		config.Certificates = make([]tls.Certificate, 1)
-		if config.Certificates[0], err = tls.LoadX509KeyPair(c.cert, c.privateKey); err != nil {
-			panic(fmt.Sprintf("tls.LoadX509KeyPair(cert{%s}, privateKey{%s}) = err{%#v}", c.cert, c.privateKey, err))
+	if c.cert != "" {
+		certPEMBlock, err := ioutil.ReadFile(c.cert)
+		if err != nil {
+			panic(fmt.Sprintf("ioutil.ReadFile(cert:%s) = error{%#v}", c.cert, err))
 		}
+
+		var cert tls.Certificate
+		for {
+			var certDERBlock *pem.Block
+			certDERBlock, certPEMBlock = pem.Decode(certPEMBlock)
+			if certDERBlock == nil {
+				break
+			}
+			if certDERBlock.Type == "CERTIFICATE" {
+				cert.Certificate = append(cert.Certificate, certDERBlock.Bytes)
+			}
+		}
+		config.Certificates = make([]tls.Certificate, 1)
+		config.Certificates[0] = cert
 	}
 
 	certPool = x509.NewCertPool()
@@ -205,18 +212,7 @@ func (c *Client) dialWSS() Session {
 			certPool.AddCert(root)
 		}
 	}
-
-	gxlog.CInfo("client cert:%s, key:%s, caCert:%s", c.cert, c.privateKey, c.caCert)
-	if c.caCert != "" {
-		certPem, err = ioutil.ReadFile(c.caCert)
-		if err != nil {
-			panic(fmt.Errorf("ioutil.ReadFile(caCert{%s}) = err{%#v}", c.caCert, err))
-		}
-		if ok := certPool.AppendCertsFromPEM(certPem); !ok {
-			panic("failed to parse root certificate file.")
-		}
-		config.InsecureSkipVerify = false
-	}
+	config.InsecureSkipVerify = true
 	config.RootCAs = certPool
 
 	// dialer.EnableCompression = true

@@ -12,6 +12,7 @@ package getty
 import (
 	// "errors"
 	"compress/flate"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
@@ -21,7 +22,6 @@ import (
 
 import (
 	log "github.com/AlexStocks/log4go"
-
 	"github.com/golang/snappy"
 	"github.com/gorilla/websocket"
 )
@@ -386,6 +386,11 @@ func (w *gettyWSConn) writePing() error {
 // close websocket connection
 func (w *gettyWSConn) close(waitSec int) {
 	w.conn.WriteMessage(websocket.CloseMessage, []byte("bye-bye!!!"))
-	w.conn.UnderlyingConn().(*net.TCPConn).SetLinger(waitSec)
+	conn := w.conn.UnderlyingConn()
+	if tcpConn, ok := conn.(*net.TCPConn); ok {
+		tcpConn.SetLinger(waitSec)
+	} else if wsConn, ok := conn.(*tls.Conn); ok {
+		wsConn.CloseWrite()
+	}
 	w.conn.Close()
 }
