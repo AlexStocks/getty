@@ -10,6 +10,11 @@
 ## develop history ##
 ---
 
+- 2017/04/27
+    > improvement
+    * enable wss client just using cert file；
+    * js-client can connect wss server by allow-insecure-localhost (chrome://flags/#allow-insecure-localhost)
+
 - 2016/11/19
     > 1 add client/app/config.go:GettySessionParam{CompressEncoding} to test compress websocket compression extension.
     >

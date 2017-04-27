@@ -40,11 +40,15 @@ $(function() {
     var $chatPage = $('.chat.page'); // The chatroom page
 
     // var socket = new WebSocket('ws://192.168.35.1:10000/echo');
-    var socket = new WebSocket('wss://' + serverAddress + '/echo', {
-        protocolVersion: 8,
-        // origin: 'https://' + serverAddress,
-        rejectUnauthorized: false
-    });
+    // var socket = new WebSocket('wss://' + serverAddress + '/echo', {
+    //     // protocolVersion: 8,
+    //     // origin: 'https://' + serverAddress,
+    //     rejectUnauthorized: false,
+    // });
+
+    // http://stackoverflow.com/questions/7580508/getting-chrome-to-accept-self-signed-localhost-certificate#comment33762412_15076602
+    // chrome://flags/#allow-insecure-localhost
+    var socket = new WebSocket('wss://' + serverAddress + '/echo')
     // // Setting binaryType to accept received binary as either 'blob' or 'arraybuffer'. In default it is 'blob'.
     // socket.binaryType = 'arraybuffer';
     // socket.binaryType = ''
