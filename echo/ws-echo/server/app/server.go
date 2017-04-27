@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/signal"
 	// "strings"
+	"crypto/tls"
 	"syscall"
 	"time"
 )
@@ -76,12 +77,14 @@ func initProfiling() {
 
 func newSession(session getty.Session) error {
 	var (
-		ok      bool
-		tcpConn *net.TCPConn
+		flag1, flag2 bool
+		tcpConn      *net.TCPConn
 	)
 
-	if tcpConn, ok = session.Conn().(*net.TCPConn); !ok {
-		panic(fmt.Sprintf("%s, session.conn{%#v} is not tcp connection\n", session.Stat(), session.Conn()))
+	_, flag1 = session.Conn().(*tls.Conn)
+	tcpConn, flag2 = session.Conn().(*net.TCPConn)
+	if !flag1 && !flag2 {
+		panic(fmt.Sprintf("%s, session.conn{%#v} is not tcp/tls connection\n", session.Stat(), session.Conn()))
 	}
 
 	if conf.GettySessionParam.CompressEncoding {
@@ -90,10 +93,13 @@ func newSession(session getty.Session) error {
 	// else {
 	// 		session.SetCompressType(getty.CompressNone)
 	//	}
-	tcpConn.SetNoDelay(conf.GettySessionParam.TcpNoDelay)
-	tcpConn.SetKeepAlive(conf.GettySessionParam.TcpKeepAlive)
-	tcpConn.SetReadBuffer(conf.GettySessionParam.TcpRBufSize)
-	tcpConn.SetWriteBuffer(conf.GettySessionParam.TcpWBufSize)
+
+	if flag2 {
+		tcpConn.SetNoDelay(conf.GettySessionParam.TcpNoDelay)
+		tcpConn.SetKeepAlive(conf.GettySessionParam.TcpKeepAlive)
+		tcpConn.SetReadBuffer(conf.GettySessionParam.TcpRBufSize)
+		tcpConn.SetWriteBuffer(conf.GettySessionParam.TcpWBufSize)
+	}
 
 	session.SetName(conf.GettySessionParam.SessionName)
 	session.SetPkgHandler(NewEchoPackageHandler())

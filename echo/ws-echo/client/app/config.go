@@ -64,8 +64,6 @@ type (
 
 		// cert
 		CertFile string
-		KeyFile  string
-		CACert   string
 
 		// session pool
 		ConnectionNum   int    `default:"16"`
