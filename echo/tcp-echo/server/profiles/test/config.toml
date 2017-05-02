@@ -3,9 +3,9 @@
 
 AppName                 = "ECHO-SERVER"
 
-# Host                    = "127.0.0.1"
+Host                    = "127.0.0.1"
 # Host                    = "192.168.35.1"
-Host                    = "192.168.8.3"
+# Host                    = "192.168.8.3"
 Ports                   = ["10000", "20000"]
 ProfilePort             = 10086
 
