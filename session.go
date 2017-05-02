@@ -373,7 +373,8 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 	// s.conn.SetWriteDeadline(time.Now().Add(s.wDeadline))
 
 	if len(pkgs) == 1 {
-		return s.Connection.Write(pkgs[0])
+		// return s.Connection.Write(pkgs[0])
+		return s.WriteBytes(pkgs[0])
 	}
 
 	// get len
@@ -458,8 +459,8 @@ func (s *session) handleLoop() {
 		s.gc()
 	}()
 
-	wsConn, wsFlag = s.Connection.(*gettyWSConn)
 	flag = true // do not do any read/Write/cron operation while got Write error
+	wsConn, wsFlag = s.Connection.(*gettyWSConn)
 	// ticker = time.NewTicker(s.period) // use wheel instead, 2016/09/26
 LOOP:
 	for {
@@ -690,9 +691,10 @@ func (s *session) stop() {
 	default:
 		s.once.Do(func() {
 			// let read/Write timeout asap
+			now := wheel.Now()
 			if conn := s.Conn(); conn != nil {
-				conn.SetReadDeadline(time.Now().Add(s.readDeadline()))
-				conn.SetWriteDeadline(time.Now().Add(s.writeDeadline()))
+				conn.SetReadDeadline(now.Add(s.readDeadline()))
+				conn.SetWriteDeadline(now.Add(s.writeDeadline()))
 			}
 			close(s.done)
 		})

@@ -11,6 +11,12 @@
 ## develop history ##
 ---
 
+- 2017/05/02
+    > feature
+    * 1 set read/write deadline for every read/write action refers to fasthttp
+
+    > version: 0.7.04
+
 - 2017/04/27
     > bug fix
     * 1 client connect wss server just using the cert file.
