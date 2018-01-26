@@ -25,7 +25,7 @@ import (
 
 import (
 	"github.com/AlexStocks/getty"
-	"github.com/AlexStocks/gocolor"
+	"github.com/AlexStocks/goext/log"
 	"github.com/AlexStocks/goext/net"
 	"github.com/AlexStocks/goext/time"
 	log "github.com/AlexStocks/log4go"
@@ -49,7 +49,7 @@ func main() {
 	initProfiling()
 
 	initClient()
-	gocolor.Info("%s starts successfull! its version=%s\n", conf.AppName, Version)
+	gxlog.CInfo("%s starts successfull! its version=%s\n", conf.AppName, Version)
 	log.Info("%s starts successfull! its version=%s\n", conf.AppName, Version)
 
 	go test()
@@ -182,5 +182,5 @@ func test() {
 	}
 	cost = counter.Count()
 	log.Info("after loop %d times, echo cost %d ms", conf.EchoTimes, cost/1e6)
-	gocolor.Info("after loop %d times, echo cost %d ms", conf.EchoTimes, cost/1e6)
+	gxlog.CInfo("after loop %d times, echo cost %d ms", conf.EchoTimes, cost/1e6)
 }

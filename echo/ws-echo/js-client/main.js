@@ -40,7 +40,7 @@ $(function() {
     var $chatPage = $('.chat.page'); // The chatroom page
 
     // var socket = new WebSocket('ws://192.168.35.1:10000/echo');
-    var socket = new WebSocket('ws://' + serverAddress + '/echo')
+    var socket = new WebSocket('ws://' + serverAddress + '/echo');
     // // Setting binaryType to accept received binary as either 'blob' or 'arraybuffer'. In default it is 'blob'.
     // socket.binaryType = 'arraybuffer';
     // socket.binaryType = ''
@@ -61,7 +61,7 @@ $(function() {
         var tmp = new Uint8Array(header.byteLength + 1 + msg.length);
         tmp.set(new Uint8Array(header), 0);
 
-        tmp[header.byteLength] = msg.length
+        tmp[header.byteLength] = msg.length;
         var ma = new TextEncoder("utf-8").encode(msg);
         tmp.set(ma, header.byteLength + 1);
 
@@ -136,12 +136,12 @@ $(function() {
         addMessageElement($el, options);
     }
 
-    var imgReg = /:img\s+(\S+)/
+    var imgReg = /:img\s+(\S+)/;
     // Adds the visual chat message to the message list
     function addChatMessage (data, options) {
         // Don't fade the message in if there is an 'X was typing'
         options = options || {};
-        var regRes = imgReg.exec(data.Message)
+        var regRes = imgReg.exec(data.Message);
         if (regRes != null) {
             var $messageBodyDiv = $('<img src="' + regRes[1] + '">');
         } else {
@@ -209,7 +209,7 @@ $(function() {
 
     socket.onopen = function() {
         console.log('websocket extensions:' + socket.extensions);
-    }
+    };
     // Socket events
     socket.onmessage = function(e) {
         // e.data is blob
@@ -220,15 +220,15 @@ $(function() {
             unmarshalEchoPkg(dv.buffer)
         };
         fileReader.readAsArrayBuffer(e.data); // 此处读取blob
-    }
+    };
 
     socket.onclose = function(e) {
         // console.log("socket.onclose" + e.reason)
-        disconnect()
+        disconnect();
         addChatMessage({
             Message: e.reason + '!!SYSTEM-WS-Close, connection closed'
         });
-    }
+    };
 
     socket.onerror = function() {
         addChatMessage({

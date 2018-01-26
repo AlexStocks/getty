@@ -17,7 +17,6 @@ import (
 )
 
 import (
-	// "github.com/AlexStocks/gocolor"
 	log "github.com/AlexStocks/log4go"
 	config "github.com/koding/multiconfig"
 )
@@ -139,7 +138,7 @@ func initConf() {
 		panic(fmt.Sprintf("time.ParseDuration(WaitTimeout{%#v}) = error{%v}", conf.GettySessionParam.WaitTimeout, err))
 		return
 	}
-	// gocolor.Info("config{%#v}\n", conf)
+	// gxlog.Info("config{%#v}\n", conf)
 
 	// log
 	confFile = os.Getenv(APP_LOG_CONF_FILE)
