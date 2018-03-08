@@ -117,7 +117,6 @@ func newSession(session getty.Session) error {
 
 func initServer() {
 	var (
-		err      error
 		addr     string
 		portList []string
 		pathList []string
@@ -145,16 +144,11 @@ func initServer() {
 		panic("the @Ports's length is not equal to @Paths.")
 	}
 	for idx, port := range portList {
-		server = getty.NewServer()
 		// addr = *host + ":" + port
 		// addr = conf.Host + ":" + port
 		addr = gxnet.HostAddress2(conf.Host, port)
-		err = server.Listen("tcp", addr)
-		if err != nil {
-			panic(fmt.Sprintf("server.Listen(tcp, addr:%s) = error{%#v}", addr, err))
-		}
-
-		server.RunWSEventLoop(newSession, pathList[idx])
+		server = getty.NewWSServer(addr, pathList[idx])
+		server.RunEventloop(newSession)
 		log.Debug("server bind addr{ws://%s/%s} ok!", addr, pathList[idx])
 		serverList = append(serverList, server)
 	}

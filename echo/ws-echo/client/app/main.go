@@ -111,7 +111,7 @@ func newSession(session getty.Session) error {
 }
 
 func initClient() {
-	client.gettyClient = getty.NewClient(
+	client.gettyClient = getty.NewWSClient(
 		(int)(conf.ConnectionNum),
 		conf.connectInterval,
 		gxnet.WSHostAddress(conf.ServerHost, conf.ServerPort, conf.ServerPath),

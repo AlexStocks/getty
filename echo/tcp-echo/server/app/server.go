@@ -109,7 +109,6 @@ func newSession(session getty.Session) error {
 
 func initServer() {
 	var (
-		err      error
 		addr     string
 		portList []string
 		server   *getty.Server
@@ -129,15 +128,8 @@ func initServer() {
 		panic("portList is nil")
 	}
 	for _, port := range portList {
-		server = getty.NewServer()
-		// addr = *host + ":" + port
-		// addr = conf.Host + ":" + port
 		addr = gxnet.HostAddress2(conf.Host, port)
-		err = server.Listen("tcp", addr)
-		if err != nil {
-			panic(fmt.Sprintf("server.Listen(tcp, addr:%s) = error{%#v}", addr, err))
-		}
-
+		server = getty.NewTCPServer(addr)
 		// run server
 		server.RunEventloop(newSession)
 		log.Debug("server bind addr{%s} ok!", addr)
