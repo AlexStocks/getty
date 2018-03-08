@@ -24,6 +24,8 @@ import (
 	log "github.com/AlexStocks/log4go"
 	"github.com/golang/snappy"
 	"github.com/gorilla/websocket"
+	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 )
 
 var (
@@ -53,7 +55,7 @@ const (
 
 type Connection interface {
 	ID() uint32
-	SetCompressType(t CompressType)
+	SetCompressType(CompressType)
 	LocalAddr() string
 	RemoteAddr() string
 	incReadPkgCount()
@@ -68,7 +70,7 @@ type Connection interface {
 	writeDeadline() time.Duration
 	// SetWriteDeadlile sets deadline for the future read calls.
 	SetWriteDeadline(time.Duration)
-	Write(p []byte) error
+	Write(interface{}) (int, error)
 	// don't distinguish between tcp connection and websocket connection. Because
 	// gorilla/websocket/conn.go:(Conn)Close also invoke net.Conn.Close
 	close(int)
@@ -87,8 +89,8 @@ type gettyConn struct {
 	compress      CompressType
 	padding1      uint8
 	padding2      uint16
-	readCount     uint32        // read() count
-	writeCount    uint32        // write() count
+	readCount     uint32        // read count
+	writeCount    uint32        // write count
 	readPkgCount  uint32        // send pkg count
 	writePkgCount uint32        // recv pkg count
 	active        int64         // last active, in milliseconds
@@ -128,8 +130,8 @@ func (c *gettyConn) GetActive() time.Time {
 	return launchTime.Add(time.Duration(atomic.LoadInt64(&(c.active))))
 }
 
-func (c *gettyConn) Write([]byte) error {
-	return nil
+func (c *gettyConn) Write(interface{}) (int, error) {
+	return 0, nil
 }
 
 func (c *gettyConn) close(int) {}
@@ -273,11 +275,17 @@ func (t *gettyTCPConn) read(p []byte) (int, error) {
 }
 
 // tcp connection write
-func (t *gettyTCPConn) Write(p []byte) error {
+func (t *gettyTCPConn) Write(pkg interface{}) (int, error) {
 	var (
 		err         error
 		currentTime time.Time
+		ok          bool
+		p           []byte
 	)
+
+	if p, ok = pkg.([]byte); !ok {
+		return 0, fmt.Errorf("illegal @pkg{%#v} type", pkg)
+	}
 	if t.wDeadline > 0 {
 		// Optimization: update write deadline only if more than 25%
 		// of the last write deadline exceeded.
@@ -285,15 +293,14 @@ func (t *gettyTCPConn) Write(p []byte) error {
 		currentTime = wheel.Now()
 		if currentTime.Sub(t.wLastDeadline) > (t.wDeadline >> 2) {
 			if err = t.conn.SetWriteDeadline(currentTime.Add(t.wDeadline)); err != nil {
-				return err
+				return 0, err
 			}
 			t.wLastDeadline = currentTime
 		}
 	}
 
 	atomic.AddUint32(&t.writeCount, (uint32)(len(p)))
-	_, err = t.writer.Write(p)
-	return err
+	return t.writer.Write(p)
 }
 
 // close tcp connection
@@ -434,11 +441,17 @@ func (w *gettyWSConn) read() ([]byte, error) {
 }
 
 // websocket connection write
-func (w *gettyWSConn) Write(p []byte) error {
+func (w *gettyWSConn) Write(pkg interface{}) (int, error) {
 	var (
 		err         error
 		currentTime time.Time
+		ok          bool
+		p           []byte
 	)
+
+	if p, ok = pkg.([]byte); !ok {
+		return 0, fmt.Errorf("illegal @pkg{%#v} type", pkg)
+	}
 	if w.wDeadline > 0 {
 		// Optimization: update write deadline only if more than 25%
 		// of the last write deadline exceeded.
@@ -446,7 +459,7 @@ func (w *gettyWSConn) Write(p []byte) error {
 		currentTime = wheel.Now()
 		if currentTime.Sub(w.wLastDeadline) > (w.wDeadline >> 2) {
 			if err = w.conn.SetWriteDeadline(currentTime.Add(w.wDeadline)); err != nil {
-				return err
+				return 0, err
 			}
 			w.wLastDeadline = currentTime
 		}
@@ -455,7 +468,7 @@ func (w *gettyWSConn) Write(p []byte) error {
 	// atomic.AddUint32(&w.writeCount, 1)
 	atomic.AddUint32(&w.writeCount, (uint32)(len(p)))
 	// w.conn.SetWriteDeadline(time.Now().Add(w.wDeadline))
-	return w.conn.WriteMessage(websocket.BinaryMessage, p)
+	return len(p), w.conn.WriteMessage(websocket.BinaryMessage, p)
 }
 
 func (w *gettyWSConn) writePing() error {
@@ -472,4 +485,151 @@ func (w *gettyWSConn) close(waitSec int) {
 		wsConn.CloseWrite()
 	}
 	w.conn.Close()
+}
+
+/////////////////////////////////////////
+// getty udp connection
+/////////////////////////////////////////
+
+type UDPContext struct {
+	Pkg      []byte
+	PeerAddr *net.UDPAddr
+}
+
+type gettyUDPConn struct {
+	gettyConn
+	peerAddr     *net.UDPAddr // for client
+	compressType CompressType
+	conn         *net.UDPConn // for server
+}
+
+func setUDPSocketOptions(conn *net.UDPConn) error {
+	// Try setting the flags for both families and ignore the errors unless they
+	// both error.
+	err6 := ipv6.NewPacketConn(conn).SetControlMessage(ipv6.FlagDst|ipv6.FlagInterface, true)
+	err4 := ipv4.NewPacketConn(conn).SetControlMessage(ipv4.FlagDst|ipv4.FlagInterface, true)
+	if err6 != nil && err4 != nil {
+		return err4
+	}
+	return nil
+}
+
+// create gettyUDPConn
+func newGettyUDPConn(conn *net.UDPConn, peerUDPAddr *net.UDPAddr) *gettyUDPConn {
+	if conn == nil {
+		panic("newGettyWSConn(conn):@conn is nil")
+	}
+
+	var localAddr, peerAddr string
+	if conn.LocalAddr() != nil {
+		localAddr = conn.LocalAddr().String()
+	}
+
+	if conn.RemoteAddr() != nil {
+		// connected udp
+		peerAddr = conn.RemoteAddr().String()
+	} else if peerUDPAddr != nil {
+		// unconnected udp
+		peerAddr = peerUDPAddr.String()
+	}
+
+	return &gettyUDPConn{
+		conn:     conn,
+		peerAddr: peerUDPAddr,
+		gettyConn: gettyConn{
+			id:       atomic.AddUint32(&connID, 1),
+			local:    localAddr,
+			peer:     peerAddr,
+			compress: CompressNone,
+		},
+	}
+}
+
+func (u *gettyUDPConn) SetCompressType(c CompressType) {
+	switch c {
+	case CompressNone, CompressZip, CompressBestSpeed, CompressBestCompression, CompressHuffman, CompressSnappy:
+		u.compressType = c
+
+	default:
+		panic(fmt.Sprintf("illegal comparess type %d", c))
+	}
+}
+
+// udp connection read
+func (u *gettyUDPConn) read(p []byte) (int, *net.UDPAddr, error) {
+	var (
+		err         error
+		currentTime time.Time
+		length      int
+		addr        *net.UDPAddr
+	)
+
+	if u.rDeadline > 0 {
+		// Optimization: update read deadline only if more than 25%
+		// of the last read deadline exceeded.
+		// See https://github.com/golang/go/issues/15133 for details.
+		currentTime = wheel.Now()
+		if currentTime.Sub(u.rLastDeadline) > (u.rDeadline >> 2) {
+			if err = u.conn.SetReadDeadline(currentTime.Add(u.rDeadline)); err != nil {
+				return 0, nil, err
+			}
+			u.rLastDeadline = currentTime
+		}
+	}
+
+	if u.peerAddr == nil {
+		length, addr, err = u.conn.ReadFromUDP(p)
+	} else {
+		length, err = u.conn.Read(p)
+	}
+	if err == nil {
+		atomic.AddUint32(&u.readCount, uint32(length))
+	}
+
+	return length, addr, err
+}
+
+// write udp packet, @ctx should be of type UDPContext
+func (u *gettyUDPConn) Write(udpCtx interface{}) (int, error) {
+	var (
+		err         error
+		currentTime time.Time
+		length      int
+		ok          bool
+		ctx         UDPContext
+		peerAddr    *net.UDPAddr
+	)
+
+	if ctx, ok = udpCtx.(UDPContext); !ok {
+		return 0, fmt.Errorf("illegal @udpCtx{%#v} type", udpCtx)
+	}
+
+	if u.wDeadline > 0 {
+		// Optimization: update write deadline only if more than 25%
+		// of the last write deadline exceeded.
+		// See https://github.com/golang/go/issues/15133 for details.
+		currentTime = wheel.Now()
+		if currentTime.Sub(u.wLastDeadline) > (u.wDeadline >> 2) {
+			if err = u.conn.SetWriteDeadline(currentTime.Add(u.wDeadline)); err != nil {
+				return 0, err
+			}
+			u.wLastDeadline = currentTime
+		}
+	}
+
+	atomic.AddUint32(&u.writeCount, (uint32)(len(ctx.Pkg)))
+	peerAddr = ctx.PeerAddr
+	if u.peerAddr != nil {
+		peerAddr = u.peerAddr
+	}
+	length, _, err = u.conn.WriteMsgUDP(ctx.Pkg, nil, peerAddr)
+	return length, err
+}
+
+// close udp connection
+func (u *gettyUDPConn) close() {
+	if u.conn != nil {
+		u.conn.Close()
+		u.conn = nil
+	}
 }

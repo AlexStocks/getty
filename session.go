@@ -21,6 +21,7 @@ import (
 )
 
 import (
+	"github.com/AlexStocks/goext/context"
 	"github.com/AlexStocks/goext/sync"
 	"github.com/AlexStocks/goext/time"
 	log "github.com/AlexStocks/log4go"
@@ -34,6 +35,7 @@ const (
 	pendingDuration       = 3e9
 	defaultSessionName    = "session"
 	defaultTCPSessionName = "tcp-session"
+	defaultUDPSessionName = "udp-session"
 	defaultWSSessionName  = "ws-session"
 	defaultWSSSessionName = "wss-session"
 	outputFormat          = "session %s, Read Count: %d, Write Count: %d, Read Pkg Count: %d, Write Pkg Count: %d"
@@ -71,9 +73,9 @@ type Session interface {
 	SetWQLen(int)
 	SetWaitTime(time.Duration)
 
-	GetAttribute(string) interface{}
-	SetAttribute(string, interface{})
-	RemoveAttribute(string)
+	GetAttribute(interface{}) interface{}
+	SetAttribute(interface{}, interface{})
+	RemoveAttribute(interface{})
 
 	WritePkg(interface{}) error
 	WriteBytes([]byte) error
@@ -101,7 +103,7 @@ type session struct {
 	wQ     chan interface{}
 
 	// attribute
-	attrs map[string]interface{}
+	attrs *gxcontext.ValuesContext
 	// goroutines sync
 	grNum int32
 	lock  sync.RWMutex
@@ -113,7 +115,7 @@ func NewSession() Session {
 		done:   make(chan gxsync.Empty),
 		period: period,
 		wait:   pendingDuration,
-		attrs:  make(map[string]interface{}),
+		attrs:  gxcontext.NewValuesContext(nil),
 	}
 
 	session.SetWriteDeadline(netIOTimeout)
@@ -129,7 +131,23 @@ func NewTCPSession(conn net.Conn) Session {
 		done:       make(chan gxsync.Empty),
 		period:     period,
 		wait:       pendingDuration,
-		attrs:      make(map[string]interface{}),
+		attrs:      gxcontext.NewValuesContext(nil),
+	}
+
+	session.SetWriteDeadline(netIOTimeout)
+	session.SetReadDeadline(netIOTimeout)
+
+	return session
+}
+
+func NewUDPSession(conn *net.UDPConn, peerAddr *net.UDPAddr) Session {
+	session := &session{
+		name:       defaultUDPSessionName,
+		Connection: newGettyUDPConn(conn, peerAddr),
+		done:       make(chan gxsync.Empty),
+		period:     period,
+		wait:       pendingDuration,
+		attrs:      gxcontext.NewValuesContext(nil),
 	}
 
 	session.SetWriteDeadline(netIOTimeout)
@@ -145,7 +163,7 @@ func NewWSSession(conn *websocket.Conn) Session {
 		done:       make(chan gxsync.Empty),
 		period:     period,
 		wait:       pendingDuration,
-		attrs:      make(map[string]interface{}),
+		attrs:      gxcontext.NewValuesContext(nil),
 	}
 
 	session.SetWriteDeadline(netIOTimeout)
@@ -161,7 +179,7 @@ func (s *session) Reset() {
 	// s.errFlag = false
 	s.period = period
 	s.wait = pendingDuration
-	s.attrs = make(map[string]interface{})
+	s.attrs = gxcontext.NewValuesContext(nil)
 	s.grNum = 0
 
 	s.SetWriteDeadline(netIOTimeout)
@@ -295,25 +313,25 @@ func (s *session) SetWaitTime(waitTime time.Duration) {
 }
 
 // set attribute of key @session:key
-func (s *session) GetAttribute(key string) interface{} {
+func (s *session) GetAttribute(key interface{}) interface{} {
 	var ret interface{}
 	s.lock.RLock()
-	ret = s.attrs[key]
+	ret = s.attrs.Get(key)
 	s.lock.RUnlock()
 	return ret
 }
 
 // get attribute of key @session:key
-func (s *session) SetAttribute(key string, value interface{}) {
+func (s *session) SetAttribute(key interface{}, value interface{}) {
 	s.lock.Lock()
-	s.attrs[key] = value
+	s.attrs.Set(key, value)
 	s.lock.Unlock()
 }
 
 // delete attribute of key @session:key
-func (s *session) RemoveAttribute(key string) {
+func (s *session) RemoveAttribute(key interface{}) {
 	s.lock.Lock()
-	delete(s.attrs, key)
+	s.attrs.Delete(key)
 	s.lock.Unlock()
 }
 
@@ -362,7 +380,8 @@ func (s *session) WriteBytes(pkg []byte) error {
 	}
 
 	// s.conn.SetWriteDeadline(time.Now().Add(s.wDeadline))
-	return s.Connection.Write(pkg)
+	_, err := s.Connection.Write(pkg)
+	return err
 }
 
 // Write multiple packages at once
@@ -495,7 +514,7 @@ LOOP:
 		case outPkg = <-s.wQ:
 			if flag {
 				if err = s.writer.Write(s, outPkg); err != nil {
-					log.Error("%s, [session.handleLoop] = error{%+v}", s.sessionToken(), err)
+					log.Error("%s, [session.handleLoop] = error{%#v}", s.sessionToken(), err)
 					s.stop()
 					flag = false
 					// break LOOP
@@ -557,6 +576,8 @@ func (s *session) handlePackage() {
 		err = s.handleTCPPackage()
 	} else if _, ok := s.Connection.(*gettyWSConn); ok {
 		err = s.handleWSPackage()
+	} else if _, ok := s.Connection.(*gettyUDPConn); ok {
+		err = s.handleUDPPackage()
 	}
 }
 
@@ -593,7 +614,7 @@ func (s *session) handleTCPPackage() error {
 				if nerr, ok = err.(net.Error); ok && nerr.Timeout() {
 					break
 				}
-				log.Error("%s, [session.conn.read] = error{%v}", s.sessionToken(), err)
+				log.Error("%s, [session.conn.read] = error{%#v}", s.sessionToken(), err)
 				// for (Codec)OnErr
 				// s.errFlag = true
 				exit = true
@@ -633,6 +654,53 @@ func (s *session) handleTCPPackage() error {
 		if exit {
 			break
 		}
+	}
+
+	return err
+}
+
+// get package from udp packet
+func (s *session) handleUDPPackage() error {
+	var (
+		ok     bool
+		err    error
+		nerr   net.Error
+		conn   *gettyUDPConn
+		bufLen int
+		buf    []byte
+		addr   *net.UDPAddr
+	)
+
+	buf = make([]byte, s.maxMsgLen)
+	conn = s.Connection.(*gettyUDPConn)
+	bufLen = int(s.maxMsgLen + maxReadBufLen)
+	if int(s.maxMsgLen<<1) < bufLen {
+		bufLen = int(s.maxMsgLen << 1)
+	}
+	buf = make([]byte, bufLen)
+	for {
+		if s.IsClosed() {
+			break
+		}
+
+		bufLen, addr, err = conn.read(buf)
+		if nerr, ok = err.(net.Error); ok && nerr.Timeout() {
+			continue
+		}
+		if err != nil {
+			log.Warn("%s, [session.handleUDPPackage] = len{%d}, error{%+v}", s.sessionToken(), bufLen, err)
+			continue
+		}
+
+		if err == nil && s.maxMsgLen > 0 && bufLen > int(s.maxMsgLen) {
+			err = ErrMsgTooLong
+		}
+		if err != nil {
+			log.Warn("%s, [session.handleUDPPackage] = len{%d}, error{%+v}", s.sessionToken(), bufLen, err)
+			continue
+		}
+		s.UpdateActive()
+		s.rQ <- UDPContext{Pkg: buf[:bufLen], PeerAddr: addr}
 	}
 
 	return err

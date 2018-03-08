@@ -10,7 +10,7 @@
 package getty
 
 // NewSessionCallback will be invoked when server accepts a new client connection or client connects to server successfully.
-// if there are too many client connections or u do not want to connect a server again, u can return non-nil error. And
+// If there are too many client connections or u do not want to connect a server again, u can return non-nil error. And
 // then getty will close the new session.
 type NewSessionCallback func(Session) error
 
@@ -33,7 +33,7 @@ type ReadWriter interface {
 	Writer
 }
 
-// EventListener is used to process pkg that recved from remote session
+// EventListener is used to process pkg that received from remote session
 type EventListener interface {
 	// invoked when session opened
 	// If the return error is not nil, @Session will be closed.
@@ -49,7 +49,7 @@ type EventListener interface {
 	OnCron(Session)
 
 	// invoked when receive packge. Pls attention that do not handle long time logic processing in this func.
-	// Y'd better set the package's maximum length. If the message's length is greater than it, u should
+	// You'd better set the package's maximum length. If the message's length is greater than it, u should
 	// should return err in Reader{Read} and getty will close this connection soon.
 	OnMessage(Session, interface{})
 }
