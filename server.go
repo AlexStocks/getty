@@ -182,6 +182,10 @@ func (s *Server) listenUDP() error {
 	if err != nil {
 		return errors.Wrapf(err, "net.ListenUDP((udp, localAddr:%#v)", localAddr)
 	}
+	if err = setUDPSocketOptions(udpConn); err != nil {
+		return errors.Wrapf(err, "setUDPSocketOptions(udpConn:%#v)", udpConn)
+	}
+
 	s.udpConn = udpConn
 
 	return nil
@@ -268,6 +272,7 @@ func (s *Server) runUDPEventloop(newSession NewSessionCallback) {
 	if err := newSession(ss); err != nil {
 		panic(err.Error())
 	}
+	ss.(*session).run()
 }
 
 type wsHandler struct {

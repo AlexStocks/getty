@@ -10,7 +10,6 @@
 package getty
 
 import (
-	// "errors"
 	"compress/flate"
 	"crypto/tls"
 	"fmt"
@@ -581,6 +580,7 @@ func (u *gettyUDPConn) read(p []byte) (int, *net.UDPAddr, error) {
 		length, addr, err = u.conn.ReadFromUDP(p)
 	} else {
 		length, err = u.conn.Read(p)
+		addr = u.peerAddr
 	}
 	if err == nil {
 		atomic.AddUint32(&u.readCount, uint32(length))
