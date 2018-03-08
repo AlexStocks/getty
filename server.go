@@ -62,10 +62,11 @@ type Server struct {
 }
 
 // NewTCServer builds a tcp server.
-func NewTCPServer() *Server {
+func NewTCPServer(addr string) *Server {
 	return &Server{
 		typ:  TCP_SERVER,
 		done: make(chan gxsync.Empty),
+		addr: addr,
 	}
 }
 
