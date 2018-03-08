@@ -10,7 +10,7 @@
 package getty
 
 const (
-	Version     = "0.8.01"
+	Version     = "0.8.1"
 	DATE        = "2018/03/08"
 	GETTY_MAJOR = 0
 	GETTY_MINOR = 8

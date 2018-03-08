@@ -146,11 +146,7 @@ func NewWSClient(connNum int, connInterval time.Duration, serverAddr string) *Cl
 // @cert is client certificate file. it can be emtpy.
 // @privateKey is client private key(contains its public key). it can be empty.
 // @caCert is the root certificate file to verify the legitimacy of server
-func NewWSSClient(
-	connNum int,
-	connInterval time.Duration,
-	serverAddr string,
-	cert string) *Client {
+func NewWSSClient(connNum int, connInterval time.Duration, serverAddr string, cert string) *Client {
 
 	if connNum <= 0 {
 		connNum = 1

@@ -62,6 +62,7 @@ type Server struct {
 }
 
 // NewTCServer builds a tcp server.
+// @addr server listen address.
 func NewTCPServer(addr string) *Server {
 	return &Server{
 		typ:  TCP_SERVER,
@@ -71,7 +72,7 @@ func NewTCPServer(addr string) *Server {
 }
 
 // NewUDPServer builds a unconnected udp server.
-// @path: websocket request url path
+// @addr server listen address.
 func NewUDPPServer(addr string) *Server {
 	return &Server{
 		typ:  UDP_SERVER,
@@ -80,31 +81,29 @@ func NewUDPPServer(addr string) *Server {
 	}
 }
 
-// NewWSSServer builds a websocket server.
+// NewWSServer builds a websocket server.
+// @addr server listen address.
 // @path: websocket request url path
-func NewWSServer(path string) *Server {
+func NewWSServer(addr string, path string) *Server {
 	return &Server{
 		typ:  WS_SERVER,
 		done: make(chan gxsync.Empty),
+		addr: addr,
 		path: path,
 	}
 }
 
 // NewWSSServer builds a secure websocket server.
+// @addr server listen address.
 // @path: websocket request url path
 // @cert: server certificate file
 // @privateKey: server private key(contains its public key)
 // @caCert: root certificate file. to verify the legitimacy of client. it can be nil.
-func NewWSSServer(
-	path string,
-	cert string,
-	privateKey string,
-	caCert string,
-) *Server {
-
+func NewWSSServer(addr, path, cert, privateKey, caCert string) *Server {
 	return &Server{
 		typ:        WSS_SERVER,
 		done:       make(chan gxsync.Empty),
+		addr:       addr,
 		path:       path,
 		cert:       cert,
 		privateKey: privateKey,
