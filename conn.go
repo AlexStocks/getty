@@ -627,7 +627,7 @@ func (u *gettyUDPConn) Write(udpCtx interface{}) (int, error) {
 }
 
 // close udp connection
-func (u *gettyUDPConn) close() {
+func (u *gettyUDPConn) close(_ int) {
 	if u.conn != nil {
 		u.conn.Close()
 		u.conn = nil
