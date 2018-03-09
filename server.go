@@ -43,12 +43,12 @@ const (
 
 type Server struct {
 	// net
-	addr     string
-	udpConn  *net.UDPConn // for udp server
-	listener net.Listener
-	lock     sync.Mutex // for server
-	typ      int
-	server   *http.Server // for ws or wss server
+	addr           string
+	pktListener    net.PacketConn
+	streamListener net.Listener
+	lock           sync.Mutex // for server
+	typ            int
+	server         *http.Server // for ws or wss server
 
 	// websocket
 	path       string
@@ -116,6 +116,7 @@ func (s *Server) stop() {
 		err error
 		ctx context.Context
 	)
+
 	select {
 	case <-s.done:
 		return
@@ -131,10 +132,18 @@ func (s *Server) stop() {
 					log.Error("server shutdown ctx:%#v", err)
 				}
 			}
+			s.server = nil
 			s.lock.Unlock()
-			// 把listener.Close放在这里，既能防止多次关闭调用，
-			// 又能及时让Server因accept返回错误而从RunEventloop退出
-			s.listener.Close()
+			if s.streamListener != nil {
+				// 把streamListener.Close放在这里，既能防止多次关闭调用，
+				// 又能及时让Server因accept返回错误而从RunEventloop退出
+				s.streamListener.Close()
+				s.streamListener = nil
+			}
+			if s.pktListener == nil {
+				s.pktListener.Close()
+				s.pktListener = nil
+			}
 		})
 	}
 }
@@ -153,40 +162,40 @@ func (s *Server) IsClosed() bool {
 // net.ipv4.tcp_tw_recycle
 func (s *Server) listenTCP() error {
 	var (
-		err      error
-		listener net.Listener
+		err            error
+		streamListener net.Listener
 	)
 
-	listener, err = net.Listen("tcp", s.addr)
+	streamListener, err = net.Listen("tcp", s.addr)
 	if err != nil {
 		return errors.Wrapf(err, "net.Listen(tcp, addr:%s))", s.addr)
 	}
 
-	s.listener = listener
+	s.streamListener = streamListener
 
 	return nil
 }
 
 func (s *Server) listenUDP() error {
 	var (
-		err       error
-		localAddr *net.UDPAddr
-		udpConn   *net.UDPConn
+		err         error
+		localAddr   *net.UDPAddr
+		pktListener *net.UDPConn
 	)
 
 	localAddr, err = net.ResolveUDPAddr("udp", s.addr)
 	if err != nil {
 		return errors.Wrapf(err, "net.ResolveUDPAddr(udp, addr:%s)", s.addr)
 	}
-	udpConn, err = net.ListenUDP("udp", localAddr)
+	pktListener, err = net.ListenUDP("udp", localAddr)
 	if err != nil {
 		return errors.Wrapf(err, "net.ListenUDP((udp, localAddr:%#v)", localAddr)
 	}
-	if err = setUDPSocketOptions(udpConn); err != nil {
-		return errors.Wrapf(err, "setUDPSocketOptions(udpConn:%#v)", udpConn)
+	if err = setUDPSocketOptions(pktListener); err != nil {
+		return errors.Wrapf(err, "setUDPSocketOptions(pktListener:%#v)", pktListener)
 	}
 
-	s.udpConn = udpConn
+	s.pktListener = pktListener
 
 	return nil
 }
@@ -204,7 +213,7 @@ func (s *Server) listen() error {
 }
 
 func (s *Server) accept(newSession NewSessionCallback) (Session, error) {
-	conn, err := s.listener.Accept()
+	conn, err := s.streamListener.Accept()
 	if err != nil {
 		return nil, err
 	}
@@ -268,7 +277,7 @@ func (s *Server) runUDPEventloop(newSession NewSessionCallback) {
 		ss Session
 	)
 
-	ss = NewUDPSession(s.udpConn, nil)
+	ss = NewUDPSession(s.pktListener.(*net.UDPConn), nil)
 	if err := newSession(ss); err != nil {
 		panic(err.Error())
 	}
@@ -355,7 +364,7 @@ func (s *Server) runWSEventLoop(newSession NewSessionCallback) {
 		s.lock.Lock()
 		s.server = server
 		s.lock.Unlock()
-		err = server.Serve(s.listener)
+		err = server.Serve(s.streamListener)
 		if err != nil {
 			log.Error("http.Server.Serve(addr{%s}) = err{%#v}", s.addr, err)
 			// panic(err)
@@ -421,7 +430,7 @@ func (s *Server) runWSSEventLoop(newSession NewSessionCallback) {
 		s.lock.Lock()
 		s.server = server
 		s.lock.Unlock()
-		err = server.Serve(tls.NewListener(s.listener, config))
+		err = server.Serve(tls.NewListener(s.streamListener, config))
 		if err != nil {
 			log.Error("http.Server.Serve(addr{%s}) = err{%#v}", s.addr, err)
 			panic(err)
@@ -449,7 +458,7 @@ func (s *Server) RunEventloop(newSession NewSessionCallback) {
 }
 
 func (s *Server) Listener() net.Listener {
-	return s.listener
+	return s.streamListener
 }
 
 func (s *Server) Close() {

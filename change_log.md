@@ -15,6 +15,8 @@
     > feature
     * 1 add udp client and udp server
 
+    > version: 0.8.01
+
 - 2017/05/02
     > feature
     * 1 set read/write deadline for every read/write action refers to fasthttp
