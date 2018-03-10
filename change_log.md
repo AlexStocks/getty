@@ -17,6 +17,7 @@
     * 2 wDeadline -> wTimeout
     * 3 disable readtimeout in gettyWSConn:read 
     * 4 add gettyWSConn:updateWriteDeadline
+    * 5 add timeout for Session:WritePkg
     
 - 2018/03/08
     > feature

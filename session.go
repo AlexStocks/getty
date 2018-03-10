@@ -77,7 +77,7 @@ type Session interface {
 	SetAttribute(interface{}, interface{})
 	RemoveAttribute(interface{})
 
-	WritePkg(interface{}) error
+	WritePkg(interface{}, time.Duration) error
 	WriteBytes([]byte) error
 	WriteBytesArray(...[]byte) error
 	Close()
@@ -340,7 +340,7 @@ func (s *session) sessionToken() string {
 }
 
 // Queued Write, for handler
-func (s *session) WritePkg(pkg interface{}) error {
+func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 	if s.IsClosed() {
 		return ErrSessionClosed
 	}
@@ -354,18 +354,14 @@ func (s *session) WritePkg(pkg interface{}) error {
 		}
 	}()
 
-	var d = s.writeTimeout()
-	if d > netIOTimeout {
-		d = netIOTimeout
+	if timeout <= 0 {
+		timeout = netIOTimeout
 	}
 	select {
 	case s.wQ <- pkg:
 		break // for possible gen a new pkg
 
-	// default:
-	// case <-time.After(s.wTimeout):
-	// case <-time.After(netIOTimeout):
-	case <-wheel.After(d):
+	case <-wheel.After(timeout):
 		log.Warn("%s, [session.WritePkg] wQ{len:%d, cap:%d}", s.Stat(), len(s.wQ), cap(s.wQ))
 		return ErrSessionBlocked
 	}
