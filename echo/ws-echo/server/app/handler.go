@@ -126,6 +126,7 @@ func (this *EchoMessageHandler) OnCron(session getty.Session) {
 		flag   bool
 		active time.Time
 	)
+
 	this.rwlock.RLock()
 	if _, ok := this.sessionMap[session]; ok {
 		active = session.GetActive()
@@ -136,6 +137,7 @@ func (this *EchoMessageHandler) OnCron(session getty.Session) {
 		}
 	}
 	this.rwlock.RUnlock()
+
 	if flag {
 		this.rwlock.Lock()
 		delete(this.sessionMap, session)

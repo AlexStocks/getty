@@ -49,7 +49,7 @@ $(function() {
         if (socket.readyState != socket.OPEN) {
             if (!silence) {
                 addChatMessage({
-                    Message: '!!Connection closed'
+                    Message: '!!Connection closed\n'
                 });
             }
             return
@@ -125,7 +125,7 @@ $(function() {
             socket.close();
             socket = null;
             addChatMessage({
-                Message: '!!SYSTEM-WS-Close, connection disconnect'
+                Message: '!!SYSTEM-WS-Close, connection disconnect\n'
             })
         }
     }
@@ -226,13 +226,13 @@ $(function() {
         // console.log("socket.onclose" + e.reason)
         disconnect();
         addChatMessage({
-            Message: e.reason + '!!SYSTEM-WS-Close, connection closed'
+            Message: e.reason + '!!SYSTEM-WS-Close, connection closed\n'
         });
     };
 
     socket.onerror = function() {
         addChatMessage({
-            Message: '!!SYSTEM-WS-Error, connection closed'
+            Message: '!!SYSTEM-WS-Error, connection closed\n'
         });
     }
 });

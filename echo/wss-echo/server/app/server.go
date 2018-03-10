@@ -106,8 +106,8 @@ func newSession(session getty.Session) error {
 	session.SetEventListener(newEchoMessageHandler())
 	session.SetRQLen(conf.GettySessionParam.PkgRQSize)
 	session.SetWQLen(conf.GettySessionParam.PkgWQSize)
-	session.SetReadDeadline(conf.GettySessionParam.tcpReadTimeout)
-	session.SetWriteDeadline(conf.GettySessionParam.tcpWriteTimeout)
+	session.SetReadTimeout(conf.GettySessionParam.tcpReadTimeout)
+	session.SetWriteTimeout(conf.GettySessionParam.tcpWriteTimeout)
 	session.SetCronPeriod((int)(conf.heartbeatPeriod.Nanoseconds() / 1e6))
 	session.SetWaitTime(conf.GettySessionParam.waitTimeout)
 	log.Debug("app accepts new session:%s\n", session.Stat())
@@ -117,7 +117,6 @@ func newSession(session getty.Session) error {
 
 func initServer() {
 	var (
-		err      error
 		addr     string
 		portList []string
 		pathList []string
@@ -145,23 +144,17 @@ func initServer() {
 		panic("the @Ports's length is not equal to @Paths.")
 	}
 	for idx, port := range portList {
-		server = getty.NewServer()
-		// addr = *host + ":" + port
-		// addr = conf.Host + ":" + port
 		addr = gxnet.HostAddress2(conf.Host, port)
-		err = server.Listen("tcp", addr)
-		if err != nil {
-			panic(fmt.Sprintf("server.Listen(tcp, addr:%s) = error{%#v}", addr, err))
-		}
 
-		// run server
 		if conf.CertFile != "" && conf.KeyFile != "" {
-			server.RunWSSEventLoop(newSession, pathList[idx], conf.CertFile, conf.KeyFile, conf.CACert)
+			server = getty.NewWSSServer(addr, pathList[idx], conf.CertFile, conf.KeyFile, conf.CACert)
 			log.Debug("server bind addr{wss://%s/%s} ok!", addr, pathList[idx])
 		} else {
-			server.RunWSEventLoop(newSession, pathList[idx])
+			server = getty.NewWSServer(addr, pathList[idx])
 			log.Debug("server bind addr{ws://%s/%s} ok!", addr, pathList[idx])
 		}
+		server.RunEventloop(newSession)
+		// run server
 		serverList = append(serverList, server)
 	}
 }

@@ -41,7 +41,7 @@ func (this *EchoPackageHandler) Read(ss getty.Session, data []byte) (interface{}
 	len, err = pkg.Unmarshal(buf)
 	log.Debug("pkg.Read:%#v", pkg)
 	if err != nil {
-		if err == ErrNotEnoughSteam {
+		if err == ErrNotEnoughStream {
 			return nil, 0, nil
 		}
 

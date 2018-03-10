@@ -38,7 +38,7 @@ func (this *EchoPackageHandler) Read(ss getty.Session, data []byte) (interface{}
 	buf = bytes.NewBuffer(data)
 	len, err = pkg.Unmarshal(buf)
 	if err != nil {
-		if err == ErrNotEnoughSteam {
+		if err == ErrNotEnoughStream {
 			return nil, 0, nil
 		}
 

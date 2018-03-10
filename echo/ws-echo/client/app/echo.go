@@ -49,7 +49,7 @@ const (
 )
 
 var (
-	ErrNotEnoughSteam  = errors.New("packet stream is not enough")
+	ErrNotEnoughStream = errors.New("packet stream is not enough")
 	ErrTooLargePackage = errors.New("package length is exceed the echo package's legal maximum length.")
 	ErrIllegalMagic    = errors.New("package magic is not right.")
 )
@@ -111,7 +111,7 @@ func (this *EchoPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
 	)
 
 	if buf.Len() < echoPkgHeaderLen {
-		return 0, ErrNotEnoughSteam
+		return 0, ErrNotEnoughStream
 	}
 
 	// header
@@ -124,7 +124,7 @@ func (this *EchoPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
 		return 0, ErrIllegalMagic
 	}
 	if buf.Len() < (int)(this.H.Len) {
-		return 0, ErrNotEnoughSteam
+		return 0, ErrNotEnoughStream
 	}
 	if maxEchoStringLen < this.H.Len-1 {
 		return 0, ErrTooLargePackage
