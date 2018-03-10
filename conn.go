@@ -375,24 +375,7 @@ func (w *gettyWSConn) SetCompressType(c CompressType) {
 }
 
 func (w *gettyWSConn) handlePing(message string) error {
-	var (
-		err         error
-		currentTime time.Time
-	)
-	if w.wTimeout > 0 {
-		// Optimization: update write deadline only if more than 25%
-		// of the last write deadline exceeded.
-		// See https://github.com/golang/go/issues/15133 for details.
-		currentTime = wheel.Now()
-		if currentTime.Sub(w.wLastDeadline) > (w.wTimeout >> 2) {
-			if err = w.conn.SetWriteDeadline(currentTime.Add(w.wTimeout)); err != nil {
-				return err
-			}
-			w.wLastDeadline = currentTime
-		}
-	}
-
-	err = w.conn.WriteMessage(websocket.PongMessage, []byte(message))
+	err := w.writePong([]byte(message))
 	if err == websocket.ErrCloseSent {
 		err = nil
 	} else if e, ok := err.(net.Error); ok && e.Temporary() {
@@ -426,18 +409,12 @@ func (w *gettyWSConn) read() ([]byte, error) {
 	return b, e
 }
 
-// websocket connection write
-func (w *gettyWSConn) Write(pkg interface{}) (int, error) {
+func (w *gettyWSConn) updateWriteDeadline() error {
 	var (
 		err         error
 		currentTime time.Time
-		ok          bool
-		p           []byte
 	)
 
-	if p, ok = pkg.([]byte); !ok {
-		return 0, fmt.Errorf("illegal @pkg{%#v} type", pkg)
-	}
 	if w.wTimeout > 0 {
 		// Optimization: update write deadline only if more than 25%
 		// of the last write deadline exceeded.
@@ -445,24 +422,45 @@ func (w *gettyWSConn) Write(pkg interface{}) (int, error) {
 		currentTime = wheel.Now()
 		if currentTime.Sub(w.wLastDeadline) > (w.wTimeout >> 2) {
 			if err = w.conn.SetWriteDeadline(currentTime.Add(w.wTimeout)); err != nil {
-				return 0, err
+				return err
 			}
 			w.wLastDeadline = currentTime
 		}
 	}
 
+	return nil
+}
+
+// websocket connection write
+func (w *gettyWSConn) Write(pkg interface{}) (int, error) {
+	var (
+		ok bool
+		p  []byte
+	)
+
+	if p, ok = pkg.([]byte); !ok {
+		return 0, fmt.Errorf("illegal @pkg{%#v} type", pkg)
+	}
+
 	// atomic.AddUint32(&w.writeCount, 1)
 	atomic.AddUint32(&w.writeCount, (uint32)(len(p)))
-	// w.conn.SetWriteTimeout(time.Now().Add(w.wTimeout))
+	w.updateWriteDeadline()
 	return len(p), w.conn.WriteMessage(websocket.BinaryMessage, p)
 }
 
 func (w *gettyWSConn) writePing() error {
+	w.updateWriteDeadline()
 	return w.conn.WriteMessage(websocket.PingMessage, []byte{})
+}
+
+func (w *gettyWSConn) writePong(message []byte) error {
+	w.updateWriteDeadline()
+	return w.conn.WriteMessage(websocket.PongMessage, message)
 }
 
 // close websocket connection
 func (w *gettyWSConn) close(waitSec int) {
+	w.updateWriteDeadline()
 	w.conn.WriteMessage(websocket.CloseMessage, []byte("bye-bye!!!"))
 	conn := w.conn.UnderlyingConn()
 	if tcpConn, ok := conn.(*net.TCPConn); ok {
@@ -503,7 +501,7 @@ func setUDPSocketOptions(conn *net.UDPConn) error {
 // create gettyUDPConn
 func newGettyUDPConn(conn *net.UDPConn, peerUDPAddr *net.UDPAddr) *gettyUDPConn {
 	if conn == nil {
-		panic("newGettyWSConn(conn):@conn is nil")
+		panic("newGettyUDPConn(conn):@conn is nil")
 	}
 
 	var localAddr, peerAddr string

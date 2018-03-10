@@ -15,8 +15,9 @@
     > improvement
     * 1 rDeadline -> rTimeout
     * 2 wDeadline -> wTimeout
-    * 3 disable readtimeout in func (w *gettyWSConn) read() 
-
+    * 3 disable readtimeout in gettyWSConn:read 
+    * 4 add gettyWSConn:updateWriteDeadline
+    
 - 2018/03/08
     > feature
     * 1 add udp client and udp server
