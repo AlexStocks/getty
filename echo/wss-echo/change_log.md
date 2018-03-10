@@ -10,6 +10,10 @@
 ## develop history ##
 ---
 
+- 2018/03/10
+    > improvement
+    * using getty 0.8.1
+
 - 2017/04/27
     > improvement
     * enable wss client just using cert file；

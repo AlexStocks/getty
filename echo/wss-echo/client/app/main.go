@@ -173,9 +173,10 @@ func echo() {
 	pkg.H.Len = (uint16)(len(pkg.B)) + 1
 
 	if session := client.selectSession(); session != nil {
-		err := session.WritePkg(&pkg)
+		err := session.WritePkg(&pkg, conf.GettySessionParam.waitTimeout)
 		if err != nil {
-			log.Warn("session.WritePkg(session{%s}, pkg{%s}) = error{%v}", session.Stat(), pkg, err)
+			log.Warn("session.WritePkg(session{%s}, pkg{%s}, timeout{%d}) = error{%v}",
+				session.Stat(), pkg, conf.GettySessionParam.waitTimeout, err)
 			session.Close()
 			client.removeSession(session)
 		}

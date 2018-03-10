@@ -38,7 +38,7 @@ type MessageHandler struct{}
 func (this *MessageHandler) Handle(session getty.Session, pkg *EchoPackage) error {
 	log.Debug("get echo package{%s}", pkg)
 	fmt.Printf("get echo package{%s}\n", pkg)
-	return session.WritePkg(pkg)
+	return session.WritePkg(pkg, conf.GettySessionParam.waitTimeout)
 }
 
 ////////////////////////////////////////////
@@ -126,6 +126,7 @@ func (this *EchoMessageHandler) OnCron(session getty.Session) {
 		flag   bool
 		active time.Time
 	)
+
 	this.rwlock.RLock()
 	if _, ok := this.sessionMap[session]; ok {
 		active = session.GetActive()
@@ -136,6 +137,7 @@ func (this *EchoMessageHandler) OnCron(session getty.Session) {
 		}
 	}
 	this.rwlock.RUnlock()
+
 	if flag {
 		this.rwlock.Lock()
 		delete(this.sessionMap, session)
