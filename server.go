@@ -140,7 +140,7 @@ func (s *Server) stop() {
 				s.streamListener.Close()
 				s.streamListener = nil
 			}
-			if s.pktListener == nil {
+			if s.pktListener != nil {
 				s.pktListener.Close()
 				s.pktListener = nil
 			}

@@ -11,6 +11,12 @@
 ## develop history ##
 ---
 
+- 2018/03/10
+    > improvement
+    * 1 rDeadline -> rTimeout
+    * 2 wDeadline -> wTimeout
+    * 3 disable readtimeout in func (w *gettyWSConn) read() 
+
 - 2018/03/08
     > feature
     * 1 add udp client and udp server
@@ -137,7 +143,7 @@
     > 3 version: 0.4.0
 
 - 2016/10/01
-    > 1 remark SetReadDeadline & SetWriteDeadline in session.go (ref: https://github.com/golang/go/issues/15133)
+    > 1 remark SetReadTimeout & SetWriteTimeout in session.go (ref: https://github.com/golang/go/issues/15133)
     >
     > 3 version: 0.3.14
 
@@ -222,7 +228,7 @@
     >
     > 2 add clause "this.attrs = nil" in session.go:(Session)Close
     >
-    > 3 session.go:Session{*gettyConn, readDeadline, writeDeadline} -> session.go:Session{gettyConn, rDeadline, wDeadline}
+    > 3 session.go:Session{*gettyConn, readTimeout, writeTimeout} -> session.go:Session{gettyConn, rTimeout, wTimeout}
     >
     > 4 add session.go:(Session)Reset
     >

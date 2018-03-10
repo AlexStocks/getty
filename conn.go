@@ -63,12 +63,12 @@ type Connection interface {
 	UpdateActive()
 	// get session's active time
 	GetActive() time.Time
-	readDeadline() time.Duration
-	// SetReadDeadline sets deadline for the future read calls.
-	SetReadDeadline(time.Duration)
-	writeDeadline() time.Duration
-	// SetWriteDeadlile sets deadline for the future read calls.
-	SetWriteDeadline(time.Duration)
+	readTimeout() time.Duration
+	// SetReadTimeout sets deadline for the future read calls.
+	SetReadTimeout(time.Duration)
+	writeTimeout() time.Duration
+	// SetWriteTimeout sets deadline for the future read calls.
+	SetWriteTimeout(time.Duration)
 	Write(interface{}) (int, error)
 	// don't distinguish between tcp connection and websocket connection. Because
 	// gorilla/websocket/conn.go:(Conn)Close also invoke net.Conn.Close
@@ -93,8 +93,8 @@ type gettyConn struct {
 	readPkgCount  uint32        // send pkg count
 	writePkgCount uint32        // recv pkg count
 	active        int64         // last active, in milliseconds
-	rDeadline     time.Duration // network current limiting
-	wDeadline     time.Duration
+	rTimeout      time.Duration // network current limiting
+	wTimeout      time.Duration
 	rLastDeadline time.Time // lastest network read time
 	wLastDeadline time.Time // lastest network write time
 	local         string    // local address
@@ -135,33 +135,33 @@ func (c *gettyConn) Write(interface{}) (int, error) {
 
 func (c *gettyConn) close(int) {}
 
-func (c gettyConn) readDeadline() time.Duration {
-	return c.rDeadline
+func (c gettyConn) readTimeout() time.Duration {
+	return c.rTimeout
 }
 
-func (c *gettyConn) SetReadDeadline(rDeadline time.Duration) {
-	if rDeadline < 1 {
-		panic("@rDeadline < 1")
+func (c *gettyConn) SetReadTimeout(rTimeout time.Duration) {
+	if rTimeout < 1 {
+		panic("@rTimeout < 1")
 	}
 
-	c.rDeadline = rDeadline
-	if c.wDeadline == 0 {
-		c.wDeadline = rDeadline
+	c.rTimeout = rTimeout
+	if c.wTimeout == 0 {
+		c.wTimeout = rTimeout
 	}
 }
 
-func (c gettyConn) writeDeadline() time.Duration {
-	return c.wDeadline
+func (c gettyConn) writeTimeout() time.Duration {
+	return c.wTimeout
 }
 
-func (c *gettyConn) SetWriteDeadline(wDeadline time.Duration) {
-	if wDeadline < 1 {
-		panic("@wDeadline < 1")
+func (c *gettyConn) SetWriteTimeout(wTimeout time.Duration) {
+	if wTimeout < 1 {
+		panic("@wTimeout < 1")
 	}
 
-	c.wDeadline = wDeadline
-	if c.rDeadline == 0 {
-		c.rDeadline = wDeadline
+	c.wTimeout = wTimeout
+	if c.rTimeout == 0 {
+		c.rTimeout = wTimeout
 	}
 }
 
@@ -196,6 +196,8 @@ func newGettyTCPConn(conn net.Conn) *gettyTCPConn {
 		writer: io.Writer(conn),
 		gettyConn: gettyConn{
 			id:       atomic.AddUint32(&connID, 1),
+			rTimeout: netIOTimeout,
+			wTimeout: netIOTimeout,
 			local:    localAddr,
 			peer:     peerAddr,
 			compress: CompressNone,
@@ -255,13 +257,13 @@ func (t *gettyTCPConn) read(p []byte) (int, error) {
 		length      int
 	)
 
-	if t.rDeadline > 0 {
+	if t.rTimeout > 0 {
 		// Optimization: update read deadline only if more than 25%
 		// of the last read deadline exceeded.
 		// See https://github.com/golang/go/issues/15133 for details.
 		currentTime = wheel.Now()
-		if currentTime.Sub(t.rLastDeadline) > (t.rDeadline >> 2) {
-			if err = t.conn.SetReadDeadline(currentTime.Add(t.rDeadline)); err != nil {
+		if currentTime.Sub(t.rLastDeadline) > (t.rTimeout >> 2) {
+			if err = t.conn.SetReadDeadline(currentTime.Add(t.rTimeout)); err != nil {
 				return 0, err
 			}
 			t.rLastDeadline = currentTime
@@ -285,13 +287,13 @@ func (t *gettyTCPConn) Write(pkg interface{}) (int, error) {
 	if p, ok = pkg.([]byte); !ok {
 		return 0, fmt.Errorf("illegal @pkg{%#v} type", pkg)
 	}
-	if t.wDeadline > 0 {
+	if t.wTimeout > 0 {
 		// Optimization: update write deadline only if more than 25%
 		// of the last write deadline exceeded.
 		// See https://github.com/golang/go/issues/15133 for details.
 		currentTime = wheel.Now()
-		if currentTime.Sub(t.wLastDeadline) > (t.wDeadline >> 2) {
-			if err = t.conn.SetWriteDeadline(currentTime.Add(t.wDeadline)); err != nil {
+		if currentTime.Sub(t.wLastDeadline) > (t.wTimeout >> 2) {
+			if err = t.conn.SetWriteDeadline(currentTime.Add(t.wTimeout)); err != nil {
 				return 0, err
 			}
 			t.wLastDeadline = currentTime
@@ -346,9 +348,11 @@ func newGettyWSConn(conn *websocket.Conn) *gettyWSConn {
 	gettyWSConn := &gettyWSConn{
 		conn: conn,
 		gettyConn: gettyConn{
-			id:    atomic.AddUint32(&connID, 1),
-			local: localAddr,
-			peer:  peerAddr,
+			id:       atomic.AddUint32(&connID, 1),
+			rTimeout: netIOTimeout,
+			wTimeout: netIOTimeout,
+			local:    localAddr,
+			peer:     peerAddr,
 		},
 	}
 	conn.EnableWriteCompression(false)
@@ -375,13 +379,13 @@ func (w *gettyWSConn) handlePing(message string) error {
 		err         error
 		currentTime time.Time
 	)
-	if w.wDeadline > 0 {
+	if w.wTimeout > 0 {
 		// Optimization: update write deadline only if more than 25%
 		// of the last write deadline exceeded.
 		// See https://github.com/golang/go/issues/15133 for details.
 		currentTime = wheel.Now()
-		if currentTime.Sub(w.wLastDeadline) > (w.wDeadline >> 2) {
-			if err = w.conn.SetWriteDeadline(currentTime.Add(w.wDeadline)); err != nil {
+		if currentTime.Sub(w.wLastDeadline) > (w.wTimeout >> 2) {
+			if err = w.conn.SetWriteDeadline(currentTime.Add(w.wTimeout)); err != nil {
 				return err
 			}
 			w.wLastDeadline = currentTime
@@ -408,27 +412,10 @@ func (w *gettyWSConn) handlePong(string) error {
 
 // websocket connection read
 func (w *gettyWSConn) read() ([]byte, error) {
-	var (
-		err         error
-		currentTime time.Time
-	)
-	if w.rDeadline > 0 {
-		// Optimization: update read deadline only if more than 25%
-		// of the last read deadline exceeded.
-		// See https://github.com/golang/go/issues/15133 for details.
-		currentTime = wheel.Now()
-		if currentTime.Sub(w.rLastDeadline) > (w.rDeadline >> 2) {
-			if err = w.conn.SetReadDeadline(currentTime.Add(w.rDeadline)); err != nil {
-				return nil, err
-			}
-			w.rLastDeadline = currentTime
-		}
-	}
-
-	// w.conn.SetReadDeadline(time.Now().Add(w.rDeadline))
+	// Pls do not set read deadline when using ReadMessage. AlexStocks 20180310
+	// gorilla/websocket/conn.go:NextReader will always fail when got a timeout error.
 	_, b, e := w.conn.ReadMessage() // the first return value is message type.
 	if e == nil {
-		// atomic.AddUint32(&w.readCount, (uint32)(l))
 		atomic.AddUint32(&w.readPkgCount, 1)
 	} else {
 		if websocket.IsUnexpectedCloseError(e, websocket.CloseGoingAway) {
@@ -451,13 +438,13 @@ func (w *gettyWSConn) Write(pkg interface{}) (int, error) {
 	if p, ok = pkg.([]byte); !ok {
 		return 0, fmt.Errorf("illegal @pkg{%#v} type", pkg)
 	}
-	if w.wDeadline > 0 {
+	if w.wTimeout > 0 {
 		// Optimization: update write deadline only if more than 25%
 		// of the last write deadline exceeded.
 		// See https://github.com/golang/go/issues/15133 for details.
 		currentTime = wheel.Now()
-		if currentTime.Sub(w.wLastDeadline) > (w.wDeadline >> 2) {
-			if err = w.conn.SetWriteDeadline(currentTime.Add(w.wDeadline)); err != nil {
+		if currentTime.Sub(w.wLastDeadline) > (w.wTimeout >> 2) {
+			if err = w.conn.SetWriteDeadline(currentTime.Add(w.wTimeout)); err != nil {
 				return 0, err
 			}
 			w.wLastDeadline = currentTime
@@ -466,7 +453,7 @@ func (w *gettyWSConn) Write(pkg interface{}) (int, error) {
 
 	// atomic.AddUint32(&w.writeCount, 1)
 	atomic.AddUint32(&w.writeCount, (uint32)(len(p)))
-	// w.conn.SetWriteDeadline(time.Now().Add(w.wDeadline))
+	// w.conn.SetWriteTimeout(time.Now().Add(w.wTimeout))
 	return len(p), w.conn.WriteMessage(websocket.BinaryMessage, p)
 }
 
@@ -537,6 +524,8 @@ func newGettyUDPConn(conn *net.UDPConn, peerUDPAddr *net.UDPAddr) *gettyUDPConn 
 		peerAddr: peerUDPAddr,
 		gettyConn: gettyConn{
 			id:       atomic.AddUint32(&connID, 1),
+			rTimeout: netIOTimeout,
+			wTimeout: netIOTimeout,
 			local:    localAddr,
 			peer:     peerAddr,
 			compress: CompressNone,
@@ -563,13 +552,13 @@ func (u *gettyUDPConn) read(p []byte) (int, *net.UDPAddr, error) {
 		addr        *net.UDPAddr
 	)
 
-	if u.rDeadline > 0 {
+	if u.rTimeout > 0 {
 		// Optimization: update read deadline only if more than 25%
 		// of the last read deadline exceeded.
 		// See https://github.com/golang/go/issues/15133 for details.
 		currentTime = wheel.Now()
-		if currentTime.Sub(u.rLastDeadline) > (u.rDeadline >> 2) {
-			if err = u.conn.SetReadDeadline(currentTime.Add(u.rDeadline)); err != nil {
+		if currentTime.Sub(u.rLastDeadline) > (u.rTimeout >> 2) {
+			if err = u.conn.SetReadDeadline(currentTime.Add(u.rTimeout)); err != nil {
 				return 0, nil, err
 			}
 			u.rLastDeadline = currentTime
@@ -604,13 +593,13 @@ func (u *gettyUDPConn) Write(udpCtx interface{}) (int, error) {
 		return 0, fmt.Errorf("illegal @udpCtx{%#v} type", udpCtx)
 	}
 
-	if u.wDeadline > 0 {
+	if u.wTimeout > 0 {
 		// Optimization: update write deadline only if more than 25%
 		// of the last write deadline exceeded.
 		// See https://github.com/golang/go/issues/15133 for details.
 		currentTime = wheel.Now()
-		if currentTime.Sub(u.wLastDeadline) > (u.wDeadline >> 2) {
-			if err = u.conn.SetWriteDeadline(currentTime.Add(u.wDeadline)); err != nil {
+		if currentTime.Sub(u.wLastDeadline) > (u.wTimeout >> 2) {
+			if err = u.conn.SetWriteDeadline(currentTime.Add(u.wTimeout)); err != nil {
 				return 0, err
 			}
 			u.wLastDeadline = currentTime

@@ -118,8 +118,8 @@ func NewSession() Session {
 		attrs:  gxcontext.NewValuesContext(nil),
 	}
 
-	session.SetWriteDeadline(netIOTimeout)
-	session.SetReadDeadline(netIOTimeout)
+	session.SetWriteTimeout(netIOTimeout)
+	session.SetReadTimeout(netIOTimeout)
 
 	return session
 }
@@ -134,8 +134,8 @@ func NewTCPSession(conn net.Conn) Session {
 		attrs:      gxcontext.NewValuesContext(nil),
 	}
 
-	session.SetWriteDeadline(netIOTimeout)
-	session.SetReadDeadline(netIOTimeout)
+	session.SetWriteTimeout(netIOTimeout)
+	session.SetReadTimeout(netIOTimeout)
 
 	return session
 }
@@ -150,8 +150,8 @@ func NewUDPSession(conn *net.UDPConn, peerAddr *net.UDPAddr) Session {
 		attrs:      gxcontext.NewValuesContext(nil),
 	}
 
-	session.SetWriteDeadline(netIOTimeout)
-	session.SetReadDeadline(netIOTimeout)
+	session.SetWriteTimeout(netIOTimeout)
+	session.SetReadTimeout(netIOTimeout)
 
 	return session
 }
@@ -166,8 +166,8 @@ func NewWSSession(conn *websocket.Conn) Session {
 		attrs:      gxcontext.NewValuesContext(nil),
 	}
 
-	session.SetWriteDeadline(netIOTimeout)
-	session.SetReadDeadline(netIOTimeout)
+	session.SetWriteTimeout(netIOTimeout)
+	session.SetReadTimeout(netIOTimeout)
 
 	return session
 }
@@ -182,8 +182,8 @@ func (s *session) Reset() {
 	s.attrs = gxcontext.NewValuesContext(nil)
 	s.grNum = 0
 
-	s.SetWriteDeadline(netIOTimeout)
-	s.SetReadDeadline(netIOTimeout)
+	s.SetWriteTimeout(netIOTimeout)
+	s.SetReadTimeout(netIOTimeout)
 }
 
 // func (s *session) SetConn(conn net.Conn) { s.gettyConn = newGettyConn(conn) }
@@ -354,7 +354,7 @@ func (s *session) WritePkg(pkg interface{}) error {
 		}
 	}()
 
-	var d = s.writeDeadline()
+	var d = s.writeTimeout()
 	if d > netIOTimeout {
 		d = netIOTimeout
 	}
@@ -363,7 +363,7 @@ func (s *session) WritePkg(pkg interface{}) error {
 		break // for possible gen a new pkg
 
 	// default:
-	// case <-time.After(s.wDeadline):
+	// case <-time.After(s.wTimeout):
 	// case <-time.After(netIOTimeout):
 	case <-wheel.After(d):
 		log.Warn("%s, [session.WritePkg] wQ{len:%d, cap:%d}", s.Stat(), len(s.wQ), cap(s.wQ))
@@ -379,7 +379,7 @@ func (s *session) WriteBytes(pkg []byte) error {
 		return ErrSessionClosed
 	}
 
-	// s.conn.SetWriteDeadline(time.Now().Add(s.wDeadline))
+	// s.conn.SetWriteTimeout(time.Now().Add(s.wTimeout))
 	_, err := s.Connection.Write(pkg)
 	return err
 }
@@ -389,7 +389,7 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 	if s.IsClosed() {
 		return ErrSessionClosed
 	}
-	// s.conn.SetWriteDeadline(time.Now().Add(s.wDeadline))
+	// s.conn.SetWriteTimeout(time.Now().Add(s.wTimeout))
 
 	if len(pkgs) == 1 {
 		// return s.Connection.Write(pkgs[0])
@@ -529,7 +529,6 @@ LOOP:
 			if flag {
 				if wsFlag {
 					err = wsConn.writePing()
-					log.Debug("wsConn.writePing() = error{%#v}", err)
 					if err != nil {
 						log.Warn("wsConn.writePing() = error{%#v}", err)
 					}
@@ -578,6 +577,8 @@ func (s *session) handlePackage() {
 		err = s.handleWSPackage()
 	} else if _, ok := s.Connection.(*gettyUDPConn); ok {
 		err = s.handleUDPPackage()
+	} else {
+		panic(fmt.Sprintf("unknown type session{%#v}", s))
 	}
 }
 
@@ -608,7 +609,7 @@ func (s *session) handleTCPPackage() error {
 		bufLen = 0
 		for {
 			// for clause for the network timeout condition check
-			// s.conn.SetReadDeadline(time.Now().Add(s.rDeadline))
+			// s.conn.SetReadTimeout(time.Now().Add(s.rTimeout))
 			bufLen, err = conn.read(buf)
 			if err != nil {
 				if nerr, ok = err.(net.Error); ok && nerr.Timeout() {
@@ -725,6 +726,7 @@ func (s *session) handleWSPackage() error {
 		}
 		pkg, err = conn.read()
 		if nerr, ok = err.(net.Error); ok && nerr.Timeout() {
+
 			continue
 		}
 		if err != nil {
@@ -761,8 +763,8 @@ func (s *session) stop() {
 			// let read/Write timeout asap
 			now := wheel.Now()
 			if conn := s.Conn(); conn != nil {
-				conn.SetReadDeadline(now.Add(s.readDeadline()))
-				conn.SetWriteDeadline(now.Add(s.writeDeadline()))
+				conn.SetReadDeadline(now.Add(s.readTimeout()))
+				conn.SetWriteDeadline(now.Add(s.writeTimeout()))
 			}
 			close(s.done)
 		})
