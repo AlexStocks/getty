@@ -247,6 +247,7 @@ func (t *gettyTCPConn) SetCompressType(c CompressType) {
 	default:
 		panic(fmt.Sprintf("illegal comparess type %d", c))
 	}
+	t.compress = c
 }
 
 // tcp connection read
@@ -257,7 +258,7 @@ func (t *gettyTCPConn) read(p []byte) (int, error) {
 		length      int
 	)
 
-	if t.rTimeout > 0 {
+	if t.compress == CompressNone && t.rTimeout > 0 {
 		// Optimization: update read deadline only if more than 25%
 		// of the last read deadline exceeded.
 		// See https://github.com/golang/go/issues/15133 for details.
@@ -353,6 +354,7 @@ func newGettyWSConn(conn *websocket.Conn) *gettyWSConn {
 			wTimeout: netIOTimeout,
 			local:    localAddr,
 			peer:     peerAddr,
+			compress: CompressNone,
 		},
 	}
 	conn.EnableWriteCompression(false)
@@ -372,6 +374,7 @@ func (w *gettyWSConn) SetCompressType(c CompressType) {
 	default:
 		panic(fmt.Sprintf("illegal comparess type %d", c))
 	}
+	w.compress = c
 }
 
 func (w *gettyWSConn) handlePing(message string) error {
