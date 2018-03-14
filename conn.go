@@ -231,18 +231,21 @@ func (t *writeFlusher) Write(p []byte) (int, error) {
 func (t *gettyTCPConn) SetCompressType(c CompressType) {
 	switch c {
 	case CompressNone, CompressZip, CompressBestSpeed, CompressBestCompression, CompressHuffman:
-		t.reader = flate.NewReader(t.conn)
+		ioReader := io.Reader(t.conn)
+		t.reader = flate.NewReader(ioReader)
 
-		w, err := flate.NewWriter(t.conn, int(c))
+		ioWriter := io.Writer(t.conn)
+		w, err := flate.NewWriter(ioWriter, int(c))
 		if err != nil {
 			panic(fmt.Sprintf("flate.NewReader(flate.DefaultCompress) = err(%s)", err))
 		}
 		t.writer = &writeFlusher{flusher: w}
 
 	case CompressSnappy:
-		t.reader = snappy.NewReader(t.conn)
-		// t.writer = snappy.NewWriter(t.conn)
-		t.writer = snappy.NewBufferedWriter(t.conn)
+		ioReader := io.Reader(t.conn)
+		t.reader = snappy.NewReader(ioReader)
+		ioWriter := io.Writer(t.conn)
+		t.writer = snappy.NewBufferedWriter(ioWriter)
 
 	default:
 		panic(fmt.Sprintf("illegal comparess type %d", c))
@@ -272,6 +275,7 @@ func (t *gettyTCPConn) read(p []byte) (int, error) {
 	}
 
 	length, err = t.reader.Read(p)
+	fmt.Printf("compress connection now:%s, length:%d, err:%s\n", currentTime, length, err)
 	atomic.AddUint32(&t.readCount, uint32(length))
 	return length, err
 }
@@ -288,7 +292,7 @@ func (t *gettyTCPConn) Write(pkg interface{}) (int, error) {
 	if p, ok = pkg.([]byte); !ok {
 		return 0, fmt.Errorf("illegal @pkg{%#v} type", pkg)
 	}
-	if t.wTimeout > 0 {
+	if t.compress == CompressNone && t.wTimeout > 0 {
 		// Optimization: update write deadline only if more than 25%
 		// of the last write deadline exceeded.
 		// See https://github.com/golang/go/issues/15133 for details.
