@@ -275,7 +275,7 @@ func (t *gettyTCPConn) read(p []byte) (int, error) {
 	}
 
 	length, err = t.reader.Read(p)
-	fmt.Printf("compress connection now:%s, length:%d, err:%s\n", currentTime, length, err)
+	log.Debug("now:%s, length:%d, err:%s\n", currentTime, length, err)
 	atomic.AddUint32(&t.readCount, uint32(length))
 	return length, err
 }
