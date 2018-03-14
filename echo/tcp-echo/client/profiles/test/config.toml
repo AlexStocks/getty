@@ -38,6 +38,7 @@ FailFastTimeout         = "3s"
     CompressEncoding    = true
     TcpNoDelay          = true
     TcpKeepAlive        = true
+    KeepAlivePeriod     = "120s"
     TcpRBufSize         = 262144
     TcpWBufSize         = 65536
     PkgRQSize           = 512

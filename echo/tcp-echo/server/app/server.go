@@ -27,6 +27,7 @@ import (
 	"github.com/AlexStocks/goext/log"
 	"github.com/AlexStocks/goext/net"
 	log "github.com/AlexStocks/log4go"
+	"github.com/pingcap/tidb/ast"
 )
 
 const (
@@ -90,6 +91,9 @@ func newSession(session getty.Session) error {
 
 	tcpConn.SetNoDelay(conf.GettySessionParam.TcpNoDelay)
 	tcpConn.SetKeepAlive(conf.GettySessionParam.TcpKeepAlive)
+	if conf.GettySessionParam.TcpKeepAlive {
+		tcpConn.SetKeepAlivePeriod(conf.GettySessionParam.keepAlivePeriod)
+	}
 	tcpConn.SetReadBuffer(conf.GettySessionParam.TcpRBufSize)
 	tcpConn.SetWriteBuffer(conf.GettySessionParam.TcpWBufSize)
 

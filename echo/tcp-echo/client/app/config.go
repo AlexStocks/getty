@@ -35,6 +35,8 @@ type (
 		CompressEncoding bool   `default:"false"`
 		TcpNoDelay       bool   `default:"true"`
 		TcpKeepAlive     bool   `default:"true"`
+		KeepAlivePeriod  string `default:"180s"`
+		keepAlivePeriod  time.Duration
 		TcpRBufSize      int    `default:"262144"`
 		TcpWBufSize      int    `default:"65536"`
 		PkgRQSize        int    `default:"1024"`
@@ -121,6 +123,11 @@ func initConf() {
 	conf.failFastTimeout, err = time.ParseDuration(conf.FailFastTimeout)
 	if err != nil {
 		panic(fmt.Sprintf("time.ParseDuration(FailFastTimeout{%#v}) = error{%v}", conf.FailFastTimeout, err))
+		return
+	}
+	conf.GettySessionParam.keepAlivePeriod, err = time.ParseDuration(conf.GettySessionParam.KeepAlivePeriod)
+	if err != nil {
+		panic(fmt.Sprintf("time.ParseDuration(KeepAlivePeriod{%#v}) = error{%v}", conf.GettySessionParam.KeepAlivePeriod, err))
 		return
 	}
 	conf.GettySessionParam.tcpReadTimeout, err = time.ParseDuration(conf.GettySessionParam.TcpReadTimeout)

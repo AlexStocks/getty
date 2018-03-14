@@ -20,6 +20,10 @@ import (
 	log "github.com/AlexStocks/log4go"
 )
 
+const (
+	WritePkgTimeout = 1e8
+)
+
 var (
 	errTooManySessions = errors.New("Too many echo sessions!")
 )
@@ -42,7 +46,7 @@ func (this *HeartbeatHandler) Handle(session getty.Session, pkg *EchoPackage) er
 	rspPkg.B = echoHeartbeatResponseString
 	rspPkg.H.Len = uint16(len(rspPkg.B) + 1)
 
-	return session.WritePkg(&rspPkg)
+	return session.WritePkg(&rspPkg, WritePkgTimeout)
 }
 
 ////////////////////////////////////////////
@@ -53,7 +57,7 @@ type MessageHandler struct{}
 
 func (this *MessageHandler) Handle(session getty.Session, pkg *EchoPackage) error {
 	log.Debug("get echo package{%s}", pkg)
-	return session.WritePkg(pkg)
+	return session.WritePkg(pkg, WritePkgTimeout)
 }
 
 ////////////////////////////////////////////

@@ -35,6 +35,10 @@ const (
 	pprofPath = "/debug/pprof/"
 )
 
+const (
+	WritePkgTimeout = 1e8
+)
+
 var (
 	client EchoClient
 )
@@ -85,6 +89,9 @@ func newSession(session getty.Session) error {
 
 	tcpConn.SetNoDelay(conf.GettySessionParam.TcpNoDelay)
 	tcpConn.SetKeepAlive(conf.GettySessionParam.TcpKeepAlive)
+	if conf.GettySessionParam.TcpKeepAlive {
+		tcpConn.SetKeepAlivePeriod(conf.GettySessionParam.keepAlivePeriod)
+	}
 	tcpConn.SetReadBuffer(conf.GettySessionParam.TcpRBufSize)
 	tcpConn.SetWriteBuffer(conf.GettySessionParam.TcpWBufSize)
 
@@ -155,7 +162,7 @@ func echo() {
 	pkg.H.Len = (uint16)(len(pkg.B)) + 1
 
 	if session := client.selectSession(); session != nil {
-		err := session.WritePkg(&pkg)
+		err := session.WritePkg(&pkg, WritePkgTimeout)
 		if err != nil {
 			log.Warn("session.WritePkg(session{%s}, pkg{%s}) = error{%v}", session.Stat(), pkg, err)
 			session.Close()
