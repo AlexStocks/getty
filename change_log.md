@@ -14,9 +14,14 @@
 ## develop history ##
 ---
 
+- 2018/03/15
+    > improvement
+    * add gettyUDPConn to session::Conn and session::gettyConn
+
 - 2018/03/14
     > bug fix
     * disable SetReadDeadline when enable compression.
+    
         Refers to the NextReader/NextWriter of gorilla/websocket, you should make a new compression reader/writer when
         read/write a package again.
 

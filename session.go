@@ -192,6 +192,10 @@ func (s *session) Conn() net.Conn {
 		return tc.conn
 	}
 
+	if uc, ok := s.Connection.(*gettyUDPConn); ok {
+		return uc.conn
+	}
+
 	if wc, ok := s.Connection.(*gettyWSConn); ok {
 		return wc.conn.UnderlyingConn()
 	}
@@ -202,6 +206,10 @@ func (s *session) Conn() net.Conn {
 func (s *session) gettyConn() *gettyConn {
 	if tc, ok := s.Connection.(*gettyTCPConn); ok {
 		return &(tc.gettyConn)
+	}
+
+	if uc, ok := s.Connection.(*gettyUDPConn); ok {
+		return &(uc.gettyConn)
 	}
 
 	if wc, ok := s.Connection.(*gettyWSConn); ok {
