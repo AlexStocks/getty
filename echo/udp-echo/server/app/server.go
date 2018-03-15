@@ -77,32 +77,28 @@ func initProfiling() {
 func newSession(session getty.Session) error {
 	var (
 		ok      bool
-		tcpConn *net.TCPConn
+		udpConn *net.UDPConn
 	)
 
 	if conf.GettySessionParam.CompressEncoding {
 		session.SetCompressType(getty.CompressZip)
 	}
 
-	if tcpConn, ok = session.Conn().(*net.TCPConn); !ok {
-		panic(fmt.Sprintf("%s, session.conn{%#v} is not tcp connection\n", session.Stat(), session.Conn()))
+	gxlog.CInfo("session:%#v", session)
+	if udpConn, ok = session.Conn().(*net.UDPConn); !ok {
+		panic(fmt.Sprintf("%s, session.conn{%#v} is not udp connection\n", session.Stat(), session.Conn()))
 	}
 
-	tcpConn.SetNoDelay(conf.GettySessionParam.TcpNoDelay)
-	tcpConn.SetKeepAlive(conf.GettySessionParam.TcpKeepAlive)
-	if conf.GettySessionParam.TcpKeepAlive {
-		tcpConn.SetKeepAlivePeriod(conf.GettySessionParam.keepAlivePeriod)
-	}
-	tcpConn.SetReadBuffer(conf.GettySessionParam.TcpRBufSize)
-	tcpConn.SetWriteBuffer(conf.GettySessionParam.TcpWBufSize)
+	udpConn.SetReadBuffer(conf.GettySessionParam.UdpRBufSize)
+	udpConn.SetWriteBuffer(conf.GettySessionParam.UdpWBufSize)
 
 	session.SetName(conf.GettySessionParam.SessionName)
 	session.SetPkgHandler(NewEchoPackageHandler())
 	session.SetEventListener(newEchoMessageHandler())
 	session.SetRQLen(conf.GettySessionParam.PkgRQSize)
 	session.SetWQLen(conf.GettySessionParam.PkgWQSize)
-	session.SetReadTimeout(conf.GettySessionParam.tcpReadTimeout)
-	session.SetWriteTimeout(conf.GettySessionParam.tcpWriteTimeout)
+	session.SetReadTimeout(conf.GettySessionParam.udpReadTimeout)
+	session.SetWriteTimeout(conf.GettySessionParam.udpWriteTimeout)
 	session.SetCronPeriod((int)(conf.sessionTimeout.Nanoseconds() / 1e6))
 	session.SetWaitTime(conf.GettySessionParam.waitTimeout)
 	log.Debug("app accepts new session:%s\n", session.Stat())
@@ -132,7 +128,7 @@ func initServer() {
 	}
 	for _, port := range portList {
 		addr = gxnet.HostAddress2(conf.Host, port)
-		server = getty.NewTCPServer(addr)
+		server = getty.NewUDPPServer(addr)
 		// run server
 		server.RunEventloop(newSession)
 		log.Debug("server bind addr{%s} ok!", addr)

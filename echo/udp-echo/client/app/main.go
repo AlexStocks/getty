@@ -1,10 +1,10 @@
 /******************************************************
-# DESC    : echo server
+# DESC    : echo client app
 # AUTHOR  : Alex Stocks
 # LICENCE : Apache License 2.0
 # EMAIL   : alexstocks@foxmail.com
-# MOD     : 2016-09-04 15:49
-# FILE    : server.go
+# MOD     : 2016-09-06 17:24
+# FILE    : main.go
 ******************************************************/
 
 package main
@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/signal"
 	// "strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -26,6 +27,7 @@ import (
 	"github.com/AlexStocks/getty"
 	"github.com/AlexStocks/goext/log"
 	"github.com/AlexStocks/goext/net"
+	"github.com/AlexStocks/goext/time"
 	log "github.com/AlexStocks/log4go"
 )
 
@@ -33,30 +35,28 @@ const (
 	pprofPath = "/debug/pprof/"
 )
 
-var (
-// host  = flag.String("host", "127.0.0.1", "local host address that server app will use")
-// ports = flag.String("ports", "12345,12346,12347", "local host port list that the server app will bind")
+const (
+	WritePkgTimeout = 1e8
 )
 
 var (
-	serverList []*getty.Server
+	client EchoClient
 )
+
+////////////////////////////////////////////////////////////////////
+// main
+////////////////////////////////////////////////////////////////////
 
 func main() {
-	// flag.Parse()
-	// if *host == "" || *ports == "" {
-	// 	panic(fmt.Sprintf("Please intput local host ip or port lists"))
-	// }
-
 	initConf()
 
 	initProfiling()
 
-	initServer()
-	gxlog.CInfo("%s starts successfull! its version=%s, its listen ends=%s:%s\n",
-		conf.AppName, Version, conf.Host, conf.Ports)
-	log.Info("%s starts successfull! its version=%s, its listen ends=%s:%s\n",
-		conf.AppName, Version, conf.Host, conf.Ports)
+	initClient()
+	gxlog.CInfo("%s starts successfull! its version=%s\n", conf.AppName, Version)
+	log.Info("%s starts successfull! its version=%s\n", conf.AppName, Version)
+
+	go test()
 
 	initSignal()
 }
@@ -66,8 +66,7 @@ func initProfiling() {
 		addr string
 	)
 
-	// addr = *host + ":" + "10000"
-	addr = gxnet.HostAddress(conf.Host, conf.ProfilePort)
+	addr = gxnet.HostAddress(conf.LocalHost, conf.ProfilePort)
 	log.Info("App Profiling startup on address{%v}", addr+pprofPath)
 	go func() {
 		log.Info(http.ListenAndServe(addr, nil))
@@ -77,73 +76,45 @@ func initProfiling() {
 func newSession(session getty.Session) error {
 	var (
 		ok      bool
-		tcpConn *net.TCPConn
+		udpConn *net.UDPConn
 	)
 
 	if conf.GettySessionParam.CompressEncoding {
 		session.SetCompressType(getty.CompressZip)
 	}
 
-	if tcpConn, ok = session.Conn().(*net.TCPConn); !ok {
+	if udpConn, ok = session.Conn().(*net.UDPConn); !ok {
 		panic(fmt.Sprintf("%s, session.conn{%#v} is not tcp connection\n", session.Stat(), session.Conn()))
 	}
 
-	tcpConn.SetNoDelay(conf.GettySessionParam.TcpNoDelay)
-	tcpConn.SetKeepAlive(conf.GettySessionParam.TcpKeepAlive)
-	if conf.GettySessionParam.TcpKeepAlive {
-		tcpConn.SetKeepAlivePeriod(conf.GettySessionParam.keepAlivePeriod)
-	}
-	tcpConn.SetReadBuffer(conf.GettySessionParam.TcpRBufSize)
-	tcpConn.SetWriteBuffer(conf.GettySessionParam.TcpWBufSize)
+	udpConn.SetReadBuffer(conf.GettySessionParam.UdpRBufSize)
+	udpConn.SetWriteBuffer(conf.GettySessionParam.UdpWBufSize)
 
 	session.SetName(conf.GettySessionParam.SessionName)
 	session.SetPkgHandler(NewEchoPackageHandler())
 	session.SetEventListener(newEchoMessageHandler())
 	session.SetRQLen(conf.GettySessionParam.PkgRQSize)
 	session.SetWQLen(conf.GettySessionParam.PkgWQSize)
-	session.SetReadTimeout(conf.GettySessionParam.tcpReadTimeout)
-	session.SetWriteTimeout(conf.GettySessionParam.tcpWriteTimeout)
-	session.SetCronPeriod((int)(conf.sessionTimeout.Nanoseconds() / 1e6))
+	session.SetReadTimeout(conf.GettySessionParam.udpReadTimeout)
+	session.SetWriteTimeout(conf.GettySessionParam.udpWriteTimeout)
+	session.SetCronPeriod((int)(conf.heartbeatPeriod.Nanoseconds() / 1e6))
 	session.SetWaitTime(conf.GettySessionParam.waitTimeout)
-	log.Debug("app accepts new session:%s\n", session.Stat())
+	log.Debug("client new session:%s\n", session.Stat())
 
 	return nil
 }
 
-func initServer() {
-	var (
-		addr     string
-		portList []string
-		server   *getty.Server
+func initClient() {
+	client.gettyClient = getty.NewUDPClient(
+		(int)(conf.ConnectionNum),
+		conf.connectInterval,
+		gxnet.HostAddress(conf.ServerHost, conf.ServerPort),
 	)
-
-	// if *host == "" {
-	// 	panic("host can not be nil")
-	// }
-	// if *ports == "" {
-	// 	panic("ports can not be nil")
-	// }
-
-	// portList = strings.Split(*ports, ",")
-
-	portList = conf.Ports
-	if len(portList) == 0 {
-		panic("portList is nil")
-	}
-	for _, port := range portList {
-		addr = gxnet.HostAddress2(conf.Host, port)
-		server = getty.NewTCPServer(addr)
-		// run server
-		server.RunEventloop(newSession)
-		log.Debug("server bind addr{%s} ok!", addr)
-		serverList = append(serverList, server)
-	}
+	client.gettyClient.RunEventLoop(newSession)
 }
 
-func uninitServer() {
-	for _, server := range serverList {
-		server.Close()
-	}
+func uninitClient() {
+	client.close()
 }
 
 func initSignal() {
@@ -166,11 +137,52 @@ func initSignal() {
 			})
 
 			// 要么survialTimeout时间内执行完毕下面的逻辑然后程序退出，要么执行上面的超时函数程序强行退出
-			uninitServer()
+			uninitClient()
 			// fmt.Println("app exit now...")
 			log.Exit("app exit now...")
 			log.Close()
 			return
 		}
 	}
+}
+
+func echo() {
+	var pkg EchoPackage
+	pkg.H.Magic = echoPkgMagic
+	pkg.H.LogID = (uint32)(src.Int63())
+	pkg.H.Sequence = atomic.AddUint32(&reqID, 1)
+	// pkg.H.ServiceID = 0
+	pkg.H.Command = echoCmd
+	pkg.B = conf.EchoString
+	pkg.H.Len = (uint16)(len(pkg.B)) + 1
+
+	if session := client.selectSession(); session != nil {
+		err := session.WritePkg(&pkg, WritePkgTimeout)
+		if err != nil {
+			log.Warn("session.WritePkg(session{%s}, pkg{%s}) = error{%v}", session.Stat(), pkg, err)
+			session.Close()
+			client.removeSession(session)
+		}
+	}
+}
+
+func test() {
+	for {
+		if client.isAvailable() {
+			break
+		}
+		time.Sleep(1e6)
+	}
+
+	var (
+		cost    int64
+		counter gxtime.CountWatch
+	)
+	counter.Start()
+	for i := 0; i < conf.EchoTimes; i++ {
+		echo()
+	}
+	cost = counter.Count()
+	log.Info("after loop %d times, echo cost %d ms", conf.EchoTimes, cost/1e6)
+	gxlog.CInfo("after loop %d times, echo cost %d ms", conf.EchoTimes, cost/1e6)
 }

@@ -1,4 +1,4 @@
-# ws-echo #
+# tcp-echo #
 ---
 *getty tcp examples of Echo Example*
 

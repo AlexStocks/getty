@@ -1,6 +1,6 @@
-# ws-echo #
+# wss-echo #
 ---
-*getty websocket code examples of Echo Example*
+*getty secure websocket code examples of Echo Example*
 
 ## LICENSE ##
 ---
