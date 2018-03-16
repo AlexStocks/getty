@@ -55,10 +55,15 @@ func (this *EchoMessageHandler) OnClose(session getty.Session) {
 	client.removeSession(session)
 }
 
-func (this *EchoMessageHandler) OnMessage(session getty.Session, pkg interface{}) {
-	p, ok := pkg.(*EchoPackage)
+func (this *EchoMessageHandler) OnMessage(session getty.Session, udpCtx interface{}) {
+	ctx, ok := udpCtx.(getty.UDPContext)
 	if !ok {
-		log.Error("illegal packge{%#v}", pkg)
+		log.Error("illegal UDPContext{%#v}", udpCtx)
+		return
+	}
+	p, ok := ctx.Pkg.(*EchoPackage)
+	if !ok {
+		log.Error("illegal packge{%#v}", ctx.Pkg)
 		return
 	}
 

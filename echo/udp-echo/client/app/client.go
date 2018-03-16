@@ -146,7 +146,11 @@ func (this *EchoClient) getClientEchoSession(session getty.Session) (clientEchoS
 }
 
 func (this *EchoClient) heartbeat(session getty.Session) {
-	var pkg EchoPackage
+	var (
+		pkg EchoPackage
+		ctx getty.UDPContext
+	)
+
 	pkg.H.Magic = echoPkgMagic
 	pkg.H.LogID = (uint32)(src.Int63())
 	pkg.H.Sequence = atomic.AddUint32(&reqID, 1)
@@ -155,8 +159,11 @@ func (this *EchoClient) heartbeat(session getty.Session) {
 	pkg.B = echoHeartbeatRequestString
 	pkg.H.Len = (uint16)(len(pkg.B) + 1)
 
-	if err := session.WritePkg(&pkg, WritePkgTimeout); err != nil {
-		log.Warn("session.WritePkg(session{%s}, pkg{%s}) = error{%v}", session.Stat(), pkg, err)
+	ctx.Pkg = &pkg
+	ctx.PeerAddr = &(conf.serverAddr)
+
+	if err := session.WritePkg(ctx, WritePkgTimeout); err != nil {
+		log.Warn("session.WritePkg(session{%s}, context{%#v}) = error{%v}", session.Stat(), ctx, err)
 		session.Close()
 
 		this.removeSession(session)

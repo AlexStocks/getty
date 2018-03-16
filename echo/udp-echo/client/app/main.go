@@ -147,7 +147,11 @@ func initSignal() {
 }
 
 func echo() {
-	var pkg EchoPackage
+	var (
+		pkg EchoPackage
+		ctx getty.UDPContext
+	)
+
 	pkg.H.Magic = echoPkgMagic
 	pkg.H.LogID = (uint32)(src.Int63())
 	pkg.H.Sequence = atomic.AddUint32(&reqID, 1)
@@ -156,10 +160,13 @@ func echo() {
 	pkg.B = conf.EchoString
 	pkg.H.Len = (uint16)(len(pkg.B)) + 1
 
+	ctx.Pkg = &pkg
+	ctx.PeerAddr = &(conf.serverAddr)
+
 	if session := client.selectSession(); session != nil {
-		err := session.WritePkg(&pkg, WritePkgTimeout)
+		err := session.WritePkg(ctx, WritePkgTimeout)
 		if err != nil {
-			log.Warn("session.WritePkg(session{%s}, pkg{%s}) = error{%v}", session.Stat(), pkg, err)
+			log.Warn("session.WritePkg(session{%s}, UDPContext{%#v}) = error{%v}", session.Stat(), ctx, err)
 			session.Close()
 			client.removeSession(session)
 		}

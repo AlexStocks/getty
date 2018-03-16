@@ -12,6 +12,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -48,18 +49,25 @@ func (this *EchoPackageHandler) Read(ss getty.Session, data []byte) (interface{}
 	return &pkg, len, nil
 }
 
-func (this *EchoPackageHandler) Write(ss getty.Session, pkg interface{}) error {
+func (this *EchoPackageHandler) Write(ss getty.Session, udpCtx interface{}) error {
 	var (
 		ok        bool
 		err       error
 		startTime time.Time
 		echoPkg   *EchoPackage
 		buf       *bytes.Buffer
+		ctx       getty.UDPContext
 	)
 
+	ctx, ok = udpCtx.(getty.UDPContext)
+	if !ok {
+		log.Error("illegal UDPContext{%#v}", udpCtx)
+		return fmt.Errorf("illegal @udpCtx{%#v}", udpCtx)
+	}
+
 	startTime = time.Now()
-	if echoPkg, ok = pkg.(*EchoPackage); !ok {
-		log.Error("illegal pkg:%+v\n", pkg)
+	if echoPkg, ok = ctx.Pkg.(*EchoPackage); !ok {
+		log.Error("illegal pkg:%+v\n", ctx.Pkg)
 		return errors.New("invalid echo package!")
 	}
 
@@ -69,7 +77,7 @@ func (this *EchoPackageHandler) Write(ss getty.Session, pkg interface{}) error {
 		return err
 	}
 
-	err = ss.WriteBytes(buf.Bytes())
+	_, err = ss.Write(getty.UDPContext{Pkg: buf.Bytes(), PeerAddr: ctx.PeerAddr})
 	log.Info("WriteEchoPkgTimeMs = %s", time.Since(startTime).String())
 
 	return err

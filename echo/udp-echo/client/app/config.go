@@ -19,6 +19,7 @@ import (
 import (
 	log "github.com/AlexStocks/log4go"
 	config "github.com/koding/multiconfig"
+	"net"
 )
 
 const (
@@ -56,6 +57,7 @@ type (
 		ServerHost  string `default:"127.0.0.1"`
 		ServerPort  int    `default:"10000"`
 		ProfilePort int    `default:"10086"`
+		serverAddr  net.UDPAddr
 
 		// session pool
 		ConnectionNum   int    `default:"16"`
@@ -101,6 +103,9 @@ func initConf() {
 	}
 	conf = new(Config)
 	config.MustLoadWithPath(confFile, conf)
+
+	conf.serverAddr = net.UDPAddr{IP: net.ParseIP(conf.ServerHost), Port: conf.ServerPort}
+
 	conf.connectInterval, err = time.ParseDuration(conf.ConnectInterval)
 	if err != nil {
 		panic(fmt.Sprintf("time.ParseDuration(ConnectionInterval{%#v}) = error{%v}", conf.ConnectInterval, err))
