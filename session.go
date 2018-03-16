@@ -700,12 +700,9 @@ func (s *session) handleUDPPackage() error {
 		if nerr, ok = err.(net.Error); ok && nerr.Timeout() {
 			continue
 		}
-		if bufLen == 0 {
-			continue
-		}
 		if err != nil {
-			log.Warn("%s, [session.handleUDPPackage] = len{%d}, error{%+v}", s.sessionToken(), bufLen, err)
-			continue
+			log.Error("%s, [session.handleUDPPackage] = len{%d}, error{%+v}", s.sessionToken(), bufLen, err)
+			break
 		}
 
 		pkg, pkgLen, err = s.reader.Read(s, buf[:bufLen])
