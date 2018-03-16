@@ -77,6 +77,8 @@ type Session interface {
 	SetAttribute(interface{}, interface{})
 	RemoveAttribute(interface{})
 
+	// the Writer will invoke this function.
+	// for udp session, the first parameter should be UDPContext. Otherwise its type is []byte.
 	WritePkg(interface{}, time.Duration) error
 	WriteBytes([]byte) error
 	WriteBytesArray(...[]byte) error
@@ -347,7 +349,8 @@ func (s *session) sessionToken() string {
 	return fmt.Sprintf("{%s:%d:%s<->%s}", s.name, s.ID(), s.LocalAddr(), s.RemoteAddr())
 }
 
-// Queued Write, for handler
+// Queued Write, for handler.
+// For udp session, the @pkg should be UDPContext.
 func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 	if s.IsClosed() {
 		return ErrSessionClosed
@@ -674,6 +677,8 @@ func (s *session) handleUDPPackage() error {
 		bufLen int
 		buf    []byte
 		addr   *net.UDPAddr
+		pkgLen int
+		pkg    interface{}
 	)
 
 	buf = make([]byte, s.maxMsgLen)
@@ -697,6 +702,7 @@ func (s *session) handleUDPPackage() error {
 			continue
 		}
 
+		pkg, pkgLen, err = s.reader.Read(s, buf[:bufLen])
 		if err == nil && s.maxMsgLen > 0 && bufLen > int(s.maxMsgLen) {
 			err = ErrMsgTooLong
 		}
@@ -705,7 +711,7 @@ func (s *session) handleUDPPackage() error {
 			continue
 		}
 		s.UpdateActive()
-		s.rQ <- UDPContext{Pkg: buf[:bufLen], PeerAddr: addr}
+		s.rQ <- UDPContext{Pkg: pkg, PeerAddr: addr}
 	}
 
 	return err

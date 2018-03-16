@@ -342,7 +342,7 @@ func (t *gettyTCPConn) close(waitSec int) {
 /////////////////////////////////////////
 
 type UDPContext struct {
-	Pkg      []byte
+	Pkg      interface{}
 	PeerAddr *net.UDPAddr
 }
 
@@ -450,11 +450,15 @@ func (u *gettyUDPConn) Write(udpCtx interface{}) (int, error) {
 		length      int
 		ok          bool
 		ctx         UDPContext
+		buf         []byte
 		peerAddr    *net.UDPAddr
 	)
 
 	if ctx, ok = udpCtx.(UDPContext); !ok {
 		return 0, fmt.Errorf("illegal @udpCtx{%#v} type", udpCtx)
+	}
+	if buf, ok = ctx.Pkg.([]byte); !ok {
+		return 0, fmt.Errorf("illegal @udpCtx.Pkg{%#v} type", udpCtx)
 	}
 
 	if u.wTimeout > 0 {
@@ -470,12 +474,12 @@ func (u *gettyUDPConn) Write(udpCtx interface{}) (int, error) {
 		}
 	}
 
-	atomic.AddUint32(&u.writeCount, (uint32)(len(ctx.Pkg)))
+	atomic.AddUint32(&u.writeCount, (uint32)(len(buf)))
 	peerAddr = ctx.PeerAddr
 	if u.peerAddr != nil {
 		peerAddr = u.peerAddr
 	}
-	length, _, err = u.conn.WriteMsgUDP(ctx.Pkg, nil, peerAddr)
+	length, _, err = u.conn.WriteMsgUDP(buf, nil, peerAddr)
 	return length, err
 }
 

@@ -51,5 +51,7 @@ type EventListener interface {
 	// invoked when receive packge. Pls attention that do not handle long time logic processing in this func.
 	// You'd better set the package's maximum length. If the message's length is greater than it, u should
 	// should return err in Reader{Read} and getty will close this connection soon.
+	//
+	// If this is a udp event listener, the second parameter type is UDPContext.
 	OnMessage(Session, interface{})
 }
