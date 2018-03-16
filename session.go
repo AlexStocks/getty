@@ -696,7 +696,7 @@ func (s *session) handleUDPPackage() error {
 		}
 
 		bufLen, addr, err = conn.read(buf)
-		gxlog.CInfo("conn.read() = bufLen:%d, addr:%#v, err:%#v", bufLen, pkgLen, err)
+		gxlog.CInfo("conn.read() = bufLen:%d, addr:%#v, err:%s", bufLen, pkgLen, err)
 		if nerr, ok = err.(net.Error); ok && nerr.Timeout() {
 			continue
 		}
@@ -710,7 +710,6 @@ func (s *session) handleUDPPackage() error {
 
 		pkg, pkgLen, err = s.reader.Read(s, buf[:bufLen])
 		gxlog.CInfo("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%#v", pkg, pkgLen, err)
-		time.Sleep(10e9)
 		if err == nil && s.maxMsgLen > 0 && bufLen > int(s.maxMsgLen) {
 			err = ErrMsgTooLong
 		}

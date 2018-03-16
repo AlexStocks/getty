@@ -20,7 +20,6 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/goext/log"
 	log "github.com/AlexStocks/log4go"
 	"github.com/golang/snappy"
 	"github.com/gorilla/websocket"
