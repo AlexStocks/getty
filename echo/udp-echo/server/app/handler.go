@@ -16,6 +16,7 @@ import (
 )
 
 import (
+	"fmt"
 	"github.com/AlexStocks/getty"
 	log "github.com/AlexStocks/log4go"
 )
@@ -29,7 +30,7 @@ var (
 )
 
 type PackageHandler interface {
-	Handle(getty.Session, *EchoPackage) error
+	Handle(getty.Session, getty.UDPContext) error
 }
 
 ////////////////////////////////////////////
@@ -38,15 +39,23 @@ type PackageHandler interface {
 
 type HeartbeatHandler struct{}
 
-func (this *HeartbeatHandler) Handle(session getty.Session, pkg *EchoPackage) error {
-	log.Debug("get echo heartbeat package{%s}", pkg)
+func (this *HeartbeatHandler) Handle(session getty.Session, ctx getty.UDPContext) error {
+	var (
+		pkg *EchoPackage
+		ok  bool
+	)
+
+	log.Debug("get echo heartbeat udp context{%#v}", ctx)
+	if pkg, ok = ctx.Pkg.(*EchoPackage); !ok {
+		return fmt.Errorf("illegal @ctx.Pkg:%#v", ctx.Pkg)
+	}
 
 	var rspPkg EchoPackage
 	rspPkg.H = pkg.H
 	rspPkg.B = echoHeartbeatResponseString
 	rspPkg.H.Len = uint16(len(rspPkg.B) + 1)
 
-	return session.WritePkg(&rspPkg, WritePkgTimeout)
+	return session.WritePkg(getty.UDPContext{Pkg: &rspPkg, PeerAddr: ctx.PeerAddr}, WritePkgTimeout)
 }
 
 ////////////////////////////////////////////
@@ -55,9 +64,10 @@ func (this *HeartbeatHandler) Handle(session getty.Session, pkg *EchoPackage) er
 
 type MessageHandler struct{}
 
-func (this *MessageHandler) Handle(session getty.Session, pkg *EchoPackage) error {
-	log.Debug("get echo package{%s}", pkg)
-	return session.WritePkg(pkg, WritePkgTimeout)
+func (this *MessageHandler) Handle(session getty.Session, ctx getty.UDPContext) error {
+	log.Debug("get echo ctx{%#v}", ctx)
+	// write echo message handle logic here.
+	return session.WritePkg(ctx, WritePkgTimeout)
 }
 
 ////////////////////////////////////////////
@@ -120,10 +130,16 @@ func (this *EchoMessageHandler) OnClose(session getty.Session) {
 	this.rwlock.Unlock()
 }
 
-func (this *EchoMessageHandler) OnMessage(session getty.Session, pkg interface{}) {
-	p, ok := pkg.(*EchoPackage)
+func (this *EchoMessageHandler) OnMessage(session getty.Session, udpCtx interface{}) {
+	ctx, ok := udpCtx.(getty.UDPContext)
 	if !ok {
-		log.Error("illegal packge{%#v}", pkg)
+		log.Error("illegal UDPContext{%#v}", udpCtx)
+		return
+	}
+
+	p, ok := ctx.Pkg.(*EchoPackage)
+	if !ok {
+		log.Error("illegal pkg{%#v}", ctx.Pkg)
 		return
 	}
 
@@ -132,7 +148,7 @@ func (this *EchoMessageHandler) OnMessage(session getty.Session, pkg interface{}
 		log.Error("illegal command{%d}", p.H.Command)
 		return
 	}
-	err := handler.Handle(session, p)
+	err := handler.Handle(session, ctx)
 	if err != nil {
 		this.rwlock.Lock()
 		if _, ok := this.sessionMap[session]; ok {
