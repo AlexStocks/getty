@@ -161,23 +161,24 @@ func (this *EchoMessageHandler) OnMessage(session getty.Session, udpCtx interfac
 
 func (this *EchoMessageHandler) OnCron(session getty.Session) {
 	var (
-		flag   bool
+		//flag   bool
 		active time.Time
 	)
 	this.rwlock.RLock()
 	if _, ok := this.sessionMap[session]; ok {
 		active = session.GetActive()
 		if conf.sessionTimeout.Nanoseconds() < time.Since(active).Nanoseconds() {
-			flag = true
-			log.Warn("session{%s} timeout{%s}, reqNum{%d}",
+			//flag = true
+			log.Error("session{%s} timeout{%s}, reqNum{%d}",
 				session.Stat(), time.Since(active).String(), this.sessionMap[session].reqNum)
 		}
 	}
 	this.rwlock.RUnlock()
-	if flag {
-		this.rwlock.Lock()
-		delete(this.sessionMap, session)
-		this.rwlock.Unlock()
-		session.Close()
-	}
+	// udp session是根据本地udp socket fd生成的，如果关闭则连同socket也一同关闭了
+	//if flag {
+	//	this.rwlock.Lock()
+	//	delete(this.sessionMap, session)
+	//	this.rwlock.Unlock()
+	//	session.Close()
+	//}
 }

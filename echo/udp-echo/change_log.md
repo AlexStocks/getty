@@ -10,6 +10,10 @@
 ## develop history ##
 ---
 
+- 2018/03/16
+    > bug fix
+    * forbid close udp session in OnCron
+
 - 2018/03/14
     > init
 
