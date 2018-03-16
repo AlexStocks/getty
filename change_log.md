@@ -14,6 +14,10 @@
 ## develop history ##
 ---
 
+- 2018/03/16
+    > bug fix
+    * set maxMsgLen of UDPSession from zero to 4k
+
 - 2018/03/15
     > improvement
     * add gettyUDPConn to session::Conn and session::gettyConn

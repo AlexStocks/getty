@@ -22,6 +22,7 @@ import (
 
 import (
 	"github.com/AlexStocks/goext/context"
+	"github.com/AlexStocks/goext/log"
 	"github.com/AlexStocks/goext/sync"
 	"github.com/AlexStocks/goext/time"
 	log "github.com/AlexStocks/log4go"
@@ -145,6 +146,7 @@ func NewTCPSession(conn net.Conn) Session {
 func NewUDPSession(conn *net.UDPConn, peerAddr *net.UDPAddr) Session {
 	session := &session{
 		name:       defaultUDPSessionName,
+		maxMsgLen:  maxReadBufLen,
 		Connection: newGettyUDPConn(conn, peerAddr),
 		done:       make(chan gxsync.Empty),
 		period:     period,
@@ -512,6 +514,7 @@ LOOP:
 		case inPkg = <-s.rQ:
 			// 这个条件分支通过(session)rQ排空确保(session)handlePackage gr不会阻塞在(session)rQ上
 			if flag {
+				gxlog.CInfo("%#v <-s.rQ", inPkg)
 				s.listener.OnMessage(s, inPkg)
 				s.incReadPkgCount()
 			} else {
@@ -681,7 +684,6 @@ func (s *session) handleUDPPackage() error {
 		pkg    interface{}
 	)
 
-	buf = make([]byte, s.maxMsgLen)
 	conn = s.Connection.(*gettyUDPConn)
 	bufLen = int(s.maxMsgLen + maxReadBufLen)
 	if int(s.maxMsgLen<<1) < bufLen {
@@ -694,7 +696,11 @@ func (s *session) handleUDPPackage() error {
 		}
 
 		bufLen, addr, err = conn.read(buf)
+		gxlog.CInfo("conn.read() = bufLen:%d, addr:%#v, err:%#v", bufLen, pkgLen, err)
 		if nerr, ok = err.(net.Error); ok && nerr.Timeout() {
+			continue
+		}
+		if bufLen == 0 {
 			continue
 		}
 		if err != nil {
@@ -703,11 +709,13 @@ func (s *session) handleUDPPackage() error {
 		}
 
 		pkg, pkgLen, err = s.reader.Read(s, buf[:bufLen])
+		gxlog.CInfo("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%#v", pkg, pkgLen, err)
+		time.Sleep(10e9)
 		if err == nil && s.maxMsgLen > 0 && bufLen > int(s.maxMsgLen) {
 			err = ErrMsgTooLong
 		}
 		if err != nil {
-			log.Warn("%s, [session.handleUDPPackage] = len{%d}, error{%+v}", s.sessionToken(), bufLen, err)
+			log.Warn("%s, [session.handleUDPPackage] = len{%d}, error{%+v}", s.sessionToken(), pkgLen, err)
 			continue
 		}
 		s.UpdateActive()

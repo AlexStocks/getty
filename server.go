@@ -191,9 +191,9 @@ func (s *Server) listenUDP() error {
 	if err != nil {
 		return errors.Wrapf(err, "net.ListenUDP((udp, localAddr:%#v)", localAddr)
 	}
-	if err = setUDPSocketOptions(pktListener); err != nil {
-		return errors.Wrapf(err, "setUDPSocketOptions(pktListener:%#v)", pktListener)
-	}
+	//if err = setUDPSocketOptions(pktListener); err != nil {
+	//	return errors.Wrapf(err, "setUDPSocketOptions(pktListener:%#v)", pktListener)
+	//}
 
 	s.pktListener = pktListener
 
@@ -382,7 +382,6 @@ func (s *Server) runWSEventLoop(newSession NewSessionCallback) {
 func (s *Server) runWSSEventLoop(newSession NewSessionCallback) {
 	s.wg.Add(1)
 	go func() {
-		defer s.wg.Done()
 		var (
 			err         error
 			certPem     []byte
@@ -392,6 +391,7 @@ func (s *Server) runWSSEventLoop(newSession NewSessionCallback) {
 			handler     *wsHandler
 			server      *http.Server
 		)
+		defer s.wg.Done()
 
 		if certificate, err = tls.LoadX509KeyPair(s.cert, s.privateKey); err != nil {
 			panic(fmt.Sprintf("tls.LoadX509KeyPair(cert{%s}, privateKey{%s}) = err{%#v}", s.cert, s.privateKey, err))

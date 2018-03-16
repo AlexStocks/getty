@@ -20,6 +20,7 @@ import (
 )
 
 import (
+	"github.com/AlexStocks/goext/log"
 	log "github.com/AlexStocks/log4go"
 	"github.com/golang/snappy"
 	"github.com/gorilla/websocket"
@@ -435,6 +436,7 @@ func (u *gettyUDPConn) read(p []byte) (int, *net.UDPAddr, error) {
 		length, err = u.conn.Read(p)
 		addr = u.peerAddr
 	}
+	log.Debug("now:%s, length:%d, err:%#v", currentTime, length, err)
 	if err == nil {
 		atomic.AddUint32(&u.readCount, uint32(length))
 	}
@@ -480,6 +482,8 @@ func (u *gettyUDPConn) Write(udpCtx interface{}) (int, error) {
 		peerAddr = u.peerAddr
 	}
 	length, _, err = u.conn.WriteMsgUDP(buf, nil, peerAddr)
+	log.Debug("now:%s, length:%d, err:%#v", currentTime, length, err)
+
 	return length, err
 }
 
