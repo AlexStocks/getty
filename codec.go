@@ -9,6 +9,10 @@
 
 package getty
 
+import (
+	"net"
+)
+
 // NewSessionCallback will be invoked when server accepts a new client connection or client connects to server successfully.
 // If there are too many client connections or u do not want to connect a server again, u can return non-nil error. And
 // then getty will close the new session.
@@ -55,4 +59,20 @@ type EventListener interface {
 	//
 	// If this is a udp event listener, the second parameter type is UDPContext.
 	OnMessage(Session, interface{})
+}
+
+type EndPoint interface {
+	Type() EndPointType
+	RunEventLoop(newSession NewSessionCallback)
+	IsClosed() bool
+	Close()
+}
+
+type Client interface {
+	EndPoint
+}
+
+type Server interface {
+	EndPoint
+	Listener() net.Listener
 }

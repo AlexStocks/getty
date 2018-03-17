@@ -17,6 +17,7 @@
 - 2018/03/17
     > improvement
     * add end point type
+    * add Client & Server interface
 
 - 2018/03/16
     > bug fix

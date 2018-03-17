@@ -34,7 +34,7 @@ var (
 	serverFastFailTimeout = gxtime.TimeSecondDuration(1)
 )
 
-type Server struct {
+type server struct {
 	// net
 	addr           string
 	pktListener    net.PacketConn
@@ -56,12 +56,12 @@ type Server struct {
 
 // NewTCServer builds a tcp server.
 // @addr server listen address.
-func NewTCPServer(addr string) *Server {
+func NewTCPServer(addr string) Server {
 	if addr == "" {
 		panic(fmt.Sprintf("@addr:%s", addr))
 	}
 
-	return &Server{
+	return &server{
 		endPointType: TCP_SERVER,
 		done:         make(chan gxsync.Empty),
 		addr:         addr,
@@ -70,12 +70,12 @@ func NewTCPServer(addr string) *Server {
 
 // NewUDPServer builds a unconnected udp server.
 // @addr server listen address.
-func NewUDPPServer(addr string) *Server {
+func NewUDPPServer(addr string) Server {
 	if addr == "" {
 		panic(fmt.Sprintf("@addr:%s", addr))
 	}
 
-	return &Server{
+	return &server{
 		endPointType: UDP_SERVER,
 		done:         make(chan gxsync.Empty),
 		addr:         addr,
@@ -85,12 +85,12 @@ func NewUDPPServer(addr string) *Server {
 // NewWSServer builds a websocket server.
 // @addr server listen address.
 // @path: websocket request url path
-func NewWSServer(addr string, path string) *Server {
+func NewWSServer(addr string, path string) Server {
 	if addr == "" {
 		panic(fmt.Sprintf("@addr:%s", addr))
 	}
 
-	return &Server{
+	return &server{
 		endPointType: WS_SERVER,
 		done:         make(chan gxsync.Empty),
 		addr:         addr,
@@ -104,12 +104,12 @@ func NewWSServer(addr string, path string) *Server {
 // @cert: server certificate file
 // @privateKey: server private key(contains its public key)
 // @caCert: root certificate file. to verify the legitimacy of client. it can be nil.
-func NewWSSServer(addr, path, cert, privateKey, caCert string) *Server {
+func NewWSSServer(addr, path, cert, privateKey, caCert string) Server {
 	if addr == "" || cert == "" || privateKey == "" || caCert == "" {
 		panic(fmt.Sprintf("@addr:%s, @cert:%s, @privateKey:%s, @caCert:%s", addr, cert, privateKey, caCert))
 	}
 
-	return &Server{
+	return &server{
 		endPointType: WSS_SERVER,
 		done:         make(chan gxsync.Empty),
 		addr:         addr,
@@ -120,11 +120,11 @@ func NewWSSServer(addr, path, cert, privateKey, caCert string) *Server {
 	}
 }
 
-func (s Server) Type() EndPointType {
+func (s server) Type() EndPointType {
 	return s.endPointType
 }
 
-func (s *Server) stop() {
+func (s *server) stop() {
 	var (
 		err error
 		ctx context.Context
@@ -149,7 +149,7 @@ func (s *Server) stop() {
 			s.lock.Unlock()
 			if s.streamListener != nil {
 				// 把streamListener.Close放在这里，既能防止多次关闭调用，
-				// 又能及时让Server因accept返回错误而从RunEventloop退出
+				// 又能及时让Server因accept返回错误而从RunEventLoop退出
 				s.streamListener.Close()
 				s.streamListener = nil
 			}
@@ -161,7 +161,7 @@ func (s *Server) stop() {
 	}
 }
 
-func (s *Server) IsClosed() bool {
+func (s *server) IsClosed() bool {
 	select {
 	case <-s.done:
 		return true
@@ -173,7 +173,7 @@ func (s *Server) IsClosed() bool {
 // net.ipv4.tcp_max_syn_backlog
 // net.ipv4.tcp_timestamps
 // net.ipv4.tcp_tw_recycle
-func (s *Server) listenTCP() error {
+func (s *server) listenTCP() error {
 	var (
 		err            error
 		streamListener net.Listener
@@ -189,7 +189,7 @@ func (s *Server) listenTCP() error {
 	return nil
 }
 
-func (s *Server) listenUDP() error {
+func (s *server) listenUDP() error {
 	var (
 		err         error
 		localAddr   *net.UDPAddr
@@ -214,7 +214,7 @@ func (s *Server) listenUDP() error {
 }
 
 // Listen announces on the local network address.
-func (s *Server) listen() error {
+func (s *server) listen() error {
 	switch s.endPointType {
 	case TCP_SERVER, WS_SERVER, WSS_SERVER:
 		return s.listenTCP()
@@ -225,7 +225,7 @@ func (s *Server) listen() error {
 	return nil
 }
 
-func (s *Server) accept(newSession NewSessionCallback) (Session, error) {
+func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 	conn, err := s.streamListener.Accept()
 	if err != nil {
 		return nil, err
@@ -245,7 +245,7 @@ func (s *Server) accept(newSession NewSessionCallback) (Session, error) {
 	return ss, nil
 }
 
-func (s *Server) runTcpEventloop(newSession NewSessionCallback) {
+func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
@@ -256,7 +256,7 @@ func (s *Server) runTcpEventloop(newSession NewSessionCallback) {
 		)
 		for {
 			if s.IsClosed() {
-				log.Warn("Server{%s} stop acceptting client connect request.", s.addr)
+				log.Warn("server{%s} stop acceptting client connect request.", s.addr)
 				return
 			}
 			if delay != 0 {
@@ -275,7 +275,7 @@ func (s *Server) runTcpEventloop(newSession NewSessionCallback) {
 					}
 					continue
 				}
-				log.Warn("Server{%s}.Accept() = err {%#v}", s.addr, err)
+				log.Warn("server{%s}.Accept() = err {%#v}", s.addr, err)
 				continue
 			}
 			delay = 0
@@ -285,7 +285,7 @@ func (s *Server) runTcpEventloop(newSession NewSessionCallback) {
 	}()
 }
 
-func (s *Server) runUDPEventloop(newSession NewSessionCallback) {
+func (s *server) runUDPEventLoop(newSession NewSessionCallback) {
 	var (
 		ss Session
 	)
@@ -299,12 +299,12 @@ func (s *Server) runUDPEventloop(newSession NewSessionCallback) {
 
 type wsHandler struct {
 	http.ServeMux
-	server     *Server
+	server     *server
 	newSession NewSessionCallback
 	upgrader   websocket.Upgrader
 }
 
-func newWSHandler(server *Server, newSession NewSessionCallback) *wsHandler {
+func newWSHandler(server *server, newSession NewSessionCallback) *wsHandler {
 	return &wsHandler{
 		server:     server,
 		newSession: newSession,
@@ -326,7 +326,7 @@ func (s *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 
 	if s.server.IsClosed() {
 		http.Error(w, "HTTP server is closed(code:500-11).", 500)
-		log.Warn("Server{%s} stop acceptting client connect request.", s.server.addr)
+		log.Warn("server{%s} stop acceptting client connect request.", s.server.addr)
 		return
 	}
 
@@ -344,7 +344,7 @@ func (s *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 	err = s.newSession(ss)
 	if err != nil {
 		conn.Close()
-		log.Warn("Server{%s}.newSession(ss{%#v}) = err {%#v}", s.server.addr, ss, err)
+		log.Warn("server{%s}.newSession(ss{%#v}) = err {%#v}", s.server.addr, ss, err)
 		return
 	}
 	if ss.(*session).maxMsgLen > 0 {
@@ -357,7 +357,7 @@ func (s *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 // runWSEventLoop serve websocket client request
 // @newSession: new websocket connection callback
 // @path: websocket request url path
-func (s *Server) runWSEventLoop(newSession NewSessionCallback) {
+func (s *server) runWSEventLoop(newSession NewSessionCallback) {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
@@ -379,7 +379,7 @@ func (s *Server) runWSEventLoop(newSession NewSessionCallback) {
 		s.lock.Unlock()
 		err = server.Serve(s.streamListener)
 		if err != nil {
-			log.Error("http.Server.Serve(addr{%s}) = err{%#v}", s.addr, err)
+			log.Error("http.server.Serve(addr{%s}) = err{%#v}", s.addr, err)
 			// panic(err)
 		}
 	}()
@@ -392,7 +392,7 @@ func (s *Server) runWSEventLoop(newSession NewSessionCallback) {
 // @cert: server certificate file
 // @privateKey: server private key(contains its public key)
 // @caCert: root certificate file. to verify the legitimacy of client. it can be nil.
-func (s *Server) runWSSEventLoop(newSession NewSessionCallback) {
+func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 	s.wg.Add(1)
 	go func() {
 		var (
@@ -445,24 +445,24 @@ func (s *Server) runWSSEventLoop(newSession NewSessionCallback) {
 		s.lock.Unlock()
 		err = server.Serve(tls.NewListener(s.streamListener, config))
 		if err != nil {
-			log.Error("http.Server.Serve(addr{%s}) = err{%#v}", s.addr, err)
+			log.Error("http.server.Serve(addr{%s}) = err{%#v}", s.addr, err)
 			panic(err)
 		}
 	}()
 }
 
-// RunEventloop serves client request.
+// RunEventLoop serves client request.
 // @newSession: new connection callback
-func (s *Server) RunEventloop(newSession NewSessionCallback) {
+func (s *server) RunEventLoop(newSession NewSessionCallback) {
 	if err := s.listen(); err != nil {
-		panic(fmt.Errorf("Server.listen() = error:%#v", err))
+		panic(fmt.Errorf("server.listen() = error:%#v", err))
 	}
 
 	switch s.endPointType {
 	case TCP_SERVER:
-		s.runTcpEventloop(newSession)
+		s.runTcpEventLoop(newSession)
 	case UDP_SERVER:
-		s.runUDPEventloop(newSession)
+		s.runUDPEventLoop(newSession)
 	case WS_SERVER:
 		s.runWSEventLoop(newSession)
 	case WSS_SERVER:
@@ -472,11 +472,11 @@ func (s *Server) RunEventloop(newSession NewSessionCallback) {
 	}
 }
 
-func (s *Server) Listener() net.Listener {
+func (s *server) Listener() net.Listener {
 	return s.streamListener
 }
 
-func (s *Server) Close() {
+func (s *server) Close() {
 	s.stop()
 	s.wg.Wait()
 }

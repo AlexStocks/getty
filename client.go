@@ -37,7 +37,7 @@ const (
 // getty tcp client
 /////////////////////////////////////////
 
-type Client struct {
+type client struct {
 	// net
 	sync.Mutex
 	endPointType EndPointType
@@ -61,7 +61,7 @@ type Client struct {
 // @connNum is connection number.
 // @connInterval is reconnect sleep interval when getty fails to connect the server.
 // @serverAddr is server address.
-func NewTCPClient(connNum int, connInterval time.Duration, serverAddr string) *Client {
+func NewTCPClient(connNum int, connInterval time.Duration, serverAddr string) Client {
 	if connNum <= 0 || serverAddr == "" {
 		panic(fmt.Sprintf("@connNum:%d, @serverAddr:%s", connNum, serverAddr))
 	}
@@ -69,7 +69,7 @@ func NewTCPClient(connNum int, connInterval time.Duration, serverAddr string) *C
 		connInterval = defaultInterval
 	}
 
-	return &Client{
+	return &client{
 		endPointType: TCP_CLIENT,
 		number:       connNum,
 		interval:     connInterval,
@@ -83,7 +83,7 @@ func NewTCPClient(connNum int, connInterval time.Duration, serverAddr string) *C
 // @connNum is connection number.
 // @connInterval is reconnect sleep interval when getty fails to connect the server.
 // @serverAddr is server address. if this value is none-nil-string, getty will build some connected udp clients.
-func NewUDPClient(connNum int, connInterval time.Duration, serverAddr string) *Client {
+func NewUDPClient(connNum int, connInterval time.Duration, serverAddr string) Client {
 	var endPointType = UNCONNECTED_UDP_CLIENT
 	if len(serverAddr) != 0 {
 		if connNum <= 0 {
@@ -98,7 +98,7 @@ func NewUDPClient(connNum int, connInterval time.Duration, serverAddr string) *C
 		connInterval = defaultInterval
 	}
 
-	return &Client{
+	return &client{
 		endPointType: endPointType,
 		number:       connNum,
 		interval:     connInterval,
@@ -112,7 +112,7 @@ func NewUDPClient(connNum int, connInterval time.Duration, serverAddr string) *C
 // @connNum is connection number.
 // @connInterval is reconnect sleep interval when getty fails to connect the server.
 // @serverAddr is server address. its prefix should be "ws://".
-func NewWSClient(connNum int, connInterval time.Duration, serverAddr string) *Client {
+func NewWSClient(connNum int, connInterval time.Duration, serverAddr string) Client {
 	if connNum <= 0 || serverAddr == "" {
 		panic(fmt.Sprintf("@connNum:%d, @serverAddr:%s", connNum, serverAddr))
 	}
@@ -124,7 +124,7 @@ func NewWSClient(connNum int, connInterval time.Duration, serverAddr string) *Cl
 		return nil
 	}
 
-	return &Client{
+	return &client{
 		endPointType: WS_CLIENT,
 		number:       connNum,
 		interval:     connInterval,
@@ -141,7 +141,7 @@ func NewWSClient(connNum int, connInterval time.Duration, serverAddr string) *Cl
 // @cert is client certificate file. it can be emtpy.
 // @privateKey is client private key(contains its public key). it can be empty.
 // @caCert is the root certificate file to verify the legitimacy of server
-func NewWSSClient(connNum int, connInterval time.Duration, serverAddr string, cert string) *Client {
+func NewWSSClient(connNum int, connInterval time.Duration, serverAddr string, cert string) Client {
 	if connNum <= 0 || serverAddr == "" || cert == "" {
 		panic(fmt.Sprintf("@connNum:%d, @serverAddr:%s, @cert:%s", connNum, serverAddr, cert))
 	}
@@ -157,7 +157,7 @@ func NewWSSClient(connNum int, connInterval time.Duration, serverAddr string, ce
 		return nil
 	}
 
-	return &Client{
+	return &client{
 		endPointType: WSS_CLIENT,
 		number:       connNum,
 		interval:     connInterval,
@@ -168,11 +168,11 @@ func NewWSSClient(connNum int, connInterval time.Duration, serverAddr string, ce
 	}
 }
 
-func (c Client) Type() EndPointType {
+func (c client) Type() EndPointType {
 	return c.endPointType
 }
 
-func (c *Client) dialTCP() Session {
+func (c *client) dialTCP() Session {
 	var (
 		err  error
 		conn net.Conn
@@ -195,7 +195,7 @@ func (c *Client) dialTCP() Session {
 	}
 }
 
-func (c *Client) dialUDP() Session {
+func (c *client) dialUDP() Session {
 	var (
 		err       error
 		conn      *net.UDPConn
@@ -227,7 +227,7 @@ func (c *Client) dialUDP() Session {
 	}
 }
 
-func (c *Client) dialWS() Session {
+func (c *client) dialWS() Session {
 	var (
 		err    error
 		dialer websocket.Dialer
@@ -259,7 +259,7 @@ func (c *Client) dialWS() Session {
 	}
 }
 
-func (c *Client) dialWSS() Session {
+func (c *client) dialWSS() Session {
 	var (
 		err      error
 		root     *x509.Certificate
@@ -336,7 +336,7 @@ func (c *Client) dialWSS() Session {
 	}
 }
 
-func (c *Client) dial() Session {
+func (c *client) dial() Session {
 	switch c.endPointType {
 	case TCP_CLIENT:
 		return c.dialTCP()
@@ -351,7 +351,7 @@ func (c *Client) dial() Session {
 	return nil
 }
 
-func (c *Client) sessionNum() int {
+func (c *client) sessionNum() int {
 	var num int
 
 	c.Lock()
@@ -366,7 +366,7 @@ func (c *Client) sessionNum() int {
 	return num
 }
 
-func (c *Client) connect() {
+func (c *client) connect() {
 	var (
 		err error
 		ss  Session
@@ -393,7 +393,7 @@ func (c *Client) connect() {
 	}
 }
 
-func (c *Client) RunEventLoop(newSession NewSessionCallback) {
+func (c *client) RunEventLoop(newSession NewSessionCallback) {
 	c.Lock()
 	c.newSession = newSession
 	c.Unlock()
@@ -434,7 +434,7 @@ func (c *Client) RunEventLoop(newSession NewSessionCallback) {
 	}()
 }
 
-func (c *Client) stop() {
+func (c *client) stop() {
 	select {
 	case <-c.done:
 		return
@@ -451,7 +451,7 @@ func (c *Client) stop() {
 	}
 }
 
-func (c *Client) IsClosed() bool {
+func (c *client) IsClosed() bool {
 	select {
 	case <-c.done:
 		return true
@@ -460,7 +460,7 @@ func (c *Client) IsClosed() bool {
 	}
 }
 
-func (c *Client) Close() {
+func (c *client) Close() {
 	c.stop()
 	c.wg.Wait()
 }
