@@ -35,89 +35,66 @@ var (
 )
 
 type server struct {
+	ServerOptions
+
 	// net
-	addr           string
 	pktListener    net.PacketConn
 	streamListener net.Listener
 	lock           sync.Mutex // for server
 	endPointType   EndPointType
 	server         *http.Server // for ws or wss server
 
-	// websocket
-	path       string
-	cert       string
-	privateKey string
-	caCert     string
-
 	sync.Once
 	done chan gxsync.Empty
 	wg   sync.WaitGroup
 }
 
-// NewTCServer builds a tcp server.
-// @addr server listen address.
-func NewTCPServer(addr string) Server {
-	if addr == "" {
-		panic(fmt.Sprintf("@addr:%s", addr))
+func (s *server) init(opts ...ServerOption) {
+	for _, opt := range opts {
+		opt(&(s.ServerOptions))
+	}
+}
+
+func newServer(t EndPointType, opts ...ServerOption) *server {
+	s := &server{
+		endPointType: t,
+		done:         make(chan gxsync.Empty),
 	}
 
-	return &server{
-		endPointType: TCP_SERVER,
-		done:         make(chan gxsync.Empty),
-		addr:         addr,
+	s.init(opts...)
+
+	if s.addr == "" {
+		panic(fmt.Sprintf("@addr:%s", s.addr))
 	}
+
+	return s
+}
+
+// NewTCServer builds a tcp server.
+func NewTCPServer(opts ...ServerOption) Server {
+	return newServer(TCP_SERVER, opts...)
 }
 
 // NewUDPServer builds a unconnected udp server.
-// @addr server listen address.
-func NewUDPPServer(addr string) Server {
-	if addr == "" {
-		panic(fmt.Sprintf("@addr:%s", addr))
-	}
-
-	return &server{
-		endPointType: UDP_SERVER,
-		done:         make(chan gxsync.Empty),
-		addr:         addr,
-	}
+func NewUDPPServer(opts ...ServerOption) Server {
+	return newServer(UDP_SERVER, opts...)
 }
 
 // NewWSServer builds a websocket server.
-// @addr server listen address.
-// @path: websocket request url path
-func NewWSServer(addr string, path string) Server {
-	if addr == "" {
-		panic(fmt.Sprintf("@addr:%s", addr))
-	}
-
-	return &server{
-		endPointType: WS_SERVER,
-		done:         make(chan gxsync.Empty),
-		addr:         addr,
-		path:         path,
-	}
+func NewWSServer(opts ...ServerOption) Server {
+	return newServer(WS_SERVER, opts...)
 }
 
 // NewWSSServer builds a secure websocket server.
-// @addr server listen address.
-// @path: websocket request url path
-// @cert: server certificate file
-// @privateKey: server private key(contains its public key)
-// @caCert: root certificate file. to verify the legitimacy of client. it can be nil.
-func NewWSSServer(addr, path, cert, privateKey, caCert string) Server {
-	if addr == "" || cert == "" || privateKey == "" || caCert == "" {
-		panic(fmt.Sprintf("@addr:%s, @cert:%s, @privateKey:%s, @caCert:%s", addr, cert, privateKey, caCert))
+func NewWSSServer(opts ...ServerOption) Server {
+	s := newServer(WSS_SERVER, opts...)
+
+	if s.addr == "" || s.cert == "" || s.privateKey == "" || s.caCert == "" {
+		panic(fmt.Sprintf("@addr:%s, @cert:%s, @privateKey:%s, @caCert:%s",
+			s.addr, s.cert, s.privateKey, s.caCert))
 	}
 
-	return &server{
-		endPointType: WSS_SERVER,
-		done:         make(chan gxsync.Empty),
-		addr:         addr,
-		path:         path,
-		cert:         cert,
-		privateKey:   privateKey,
-		caCert:       caCert,
-	}
+	return s
 }
 
 func (s server) Type() EndPointType {
@@ -356,7 +333,6 @@ func (s *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 
 // runWSEventLoop serve websocket client request
 // @newSession: new websocket connection callback
-// @path: websocket request url path
 func (s *server) runWSEventLoop(newSession NewSessionCallback) {
 	s.wg.Add(1)
 	go func() {
@@ -387,11 +363,6 @@ func (s *server) runWSEventLoop(newSession NewSessionCallback) {
 
 // serve websocket client request
 // RunWSSEventLoop serve websocket client request
-// @newSession: new websocket connection callback
-// @path: websocket request url path
-// @cert: server certificate file
-// @privateKey: server private key(contains its public key)
-// @caCert: root certificate file. to verify the legitimacy of client. it can be nil.
 func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 	s.wg.Add(1)
 	go func() {

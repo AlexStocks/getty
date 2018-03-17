@@ -153,7 +153,7 @@ type Session interface {
 type EndPoint interface {
 	// get endpoint type
 	Type() EndPointType
-	// run event loop
+	// run event loop and serves client request.
 	RunEventLoop(newSession NewSessionCallback)
 	// check the endpoint has been closed
 	IsClosed() bool

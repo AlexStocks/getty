@@ -28,9 +28,9 @@ import (
 )
 
 const (
-	defaultInterval = 3e9 // 3s
-	connectTimeout  = 5e9
-	maxTimes        = 10
+	connInterval   = 3e9 // 3s
+	connectTimeout = 5e9
+	maxTimes       = 10
 )
 
 /////////////////////////////////////////
@@ -38,134 +38,106 @@ const (
 /////////////////////////////////////////
 
 type client struct {
+	ClientOptions
+
 	// net
 	sync.Mutex
 	endPointType EndPointType
-	number       int
-	interval     time.Duration
-	addr         string
-	newSession   NewSessionCallback
-	ssMap        map[Session]gxsync.Empty
+
+	newSession NewSessionCallback
+	ssMap      map[Session]gxsync.Empty
 
 	sync.Once
 	done chan gxsync.Empty
 	wg   sync.WaitGroup
+}
 
-	// for wss client
-	// 服务端的证书文件（包含了公钥以及服务端其他一些验证信息：服务端域名、
-	// 服务端ip、起始有效日期、有效时长、hash算法、秘钥长度等）
-	cert string
+func (c *client) init(opts ...ClientOption) {
+	for _, opt := range opts {
+		opt(&(c.ClientOptions))
+	}
 }
 
 // NewTcpClient function builds a tcp client.
-// @connNum is connection number.
-// @connInterval is reconnect sleep interval when getty fails to connect the server.
-// @serverAddr is server address.
-func NewTCPClient(connNum int, connInterval time.Duration, serverAddr string) Client {
-	if connNum <= 0 || serverAddr == "" {
-		panic(fmt.Sprintf("@connNum:%d, @serverAddr:%s", connNum, serverAddr))
-	}
-	if connInterval < defaultInterval {
-		connInterval = defaultInterval
-	}
-
-	return &client{
+func NewTCPClient(opts ...ClientOption) Client {
+	c := &client{
 		endPointType: TCP_CLIENT,
-		number:       connNum,
-		interval:     connInterval,
-		addr:         serverAddr,
-		ssMap:        make(map[Session]gxsync.Empty, connNum),
 		done:         make(chan gxsync.Empty),
 	}
+
+	c.init(opts...)
+
+	if c.number <= 0 || c.addr == "" {
+		panic(fmt.Sprintf("@connNum:%d, @serverAddr:%s", c.number, c.addr))
+	}
+
+	c.ssMap = make(map[Session]gxsync.Empty, c.number)
+
+	return c
 }
 
 // NewUdpClient function builds a udp client
-// @connNum is connection number.
-// @connInterval is reconnect sleep interval when getty fails to connect the server.
-// @serverAddr is server address. if this value is none-nil-string, getty will build some connected udp clients.
-func NewUDPClient(connNum int, connInterval time.Duration, serverAddr string) Client {
-	var endPointType = UNCONNECTED_UDP_CLIENT
-	if len(serverAddr) != 0 {
-		if connNum <= 0 {
+func NewUDPClient(opts ...ClientOption) Client {
+	c := &client{
+		done: make(chan gxsync.Empty),
+	}
+
+	c.init(opts...)
+
+	c.endPointType = UNCONNECTED_UDP_CLIENT
+	if len(c.addr) != 0 {
+		if c.number <= 0 {
 			panic(fmt.Sprintf("getty will build a preconected connection by @serverAddr:%s while @connNum is %d",
-				serverAddr, connNum))
+				c.addr, c.number))
 		}
 
-		endPointType = CONNECTED_UDP_CLIENT
+		c.endPointType = CONNECTED_UDP_CLIENT
 	}
+	c.ssMap = make(map[Session]gxsync.Empty, c.number)
 
-	if connInterval < defaultInterval {
-		connInterval = defaultInterval
-	}
-
-	return &client{
-		endPointType: endPointType,
-		number:       connNum,
-		interval:     connInterval,
-		addr:         serverAddr,
-		ssMap:        make(map[Session]gxsync.Empty, connNum),
-		done:         make(chan gxsync.Empty),
-	}
+	return c
 }
 
 // NewWsClient function builds a ws client.
-// @connNum is connection number.
-// @connInterval is reconnect sleep interval when getty fails to connect the server.
-// @serverAddr is server address. its prefix should be "ws://".
-func NewWSClient(connNum int, connInterval time.Duration, serverAddr string) Client {
-	if connNum <= 0 || serverAddr == "" {
-		panic(fmt.Sprintf("@connNum:%d, @serverAddr:%s", connNum, serverAddr))
-	}
-	if connInterval < defaultInterval {
-		connInterval = defaultInterval
-	}
-
-	if !strings.HasPrefix(serverAddr, "ws://") {
-		return nil
-	}
-
-	return &client{
+func NewWSClient(opts ...ClientOption) Client {
+	c := &client{
 		endPointType: WS_CLIENT,
-		number:       connNum,
-		interval:     connInterval,
-		addr:         serverAddr,
-		ssMap:        make(map[Session]gxsync.Empty, connNum),
 		done:         make(chan gxsync.Empty),
 	}
+
+	c.init(opts...)
+
+	if c.number <= 0 || c.addr == "" {
+		panic(fmt.Sprintf("@connNum:%d, @serverAddr:%s", c.number, c.addr))
+	}
+	if !strings.HasPrefix(c.addr, "ws://") {
+		panic(fmt.Sprintf("the prefix @serverAddr:%s is not ws://", c.addr))
+	}
+
+	c.ssMap = make(map[Session]gxsync.Empty, c.number)
+
+	return c
 }
 
 // NewWSSClient function builds a wss client.
-// @connNum is connection number.
-// @connInterval is reconnect sleep interval when getty fails to connect the server.
-// @serverAddr is server address.
-// @cert is client certificate file. it can be emtpy.
-// @privateKey is client private key(contains its public key). it can be empty.
-// @caCert is the root certificate file to verify the legitimacy of server
-func NewWSSClient(connNum int, connInterval time.Duration, serverAddr string, cert string) Client {
-	if connNum <= 0 || serverAddr == "" || cert == "" {
-		panic(fmt.Sprintf("@connNum:%d, @serverAddr:%s, @cert:%s", connNum, serverAddr, cert))
-	}
-
-	if connNum <= 0 {
-		connNum = 1
-	}
-	if connInterval < defaultInterval {
-		connInterval = defaultInterval
-	}
-
-	if !strings.HasPrefix(serverAddr, "wss://") {
-		return nil
-	}
-
-	return &client{
+func NewWSSClient(opts ...ClientOption) Client {
+	c := &client{
 		endPointType: WSS_CLIENT,
-		number:       connNum,
-		interval:     connInterval,
-		addr:         serverAddr,
-		ssMap:        make(map[Session]gxsync.Empty, connNum),
 		done:         make(chan gxsync.Empty),
-		cert:         cert,
 	}
+
+	c.init(opts...)
+
+	if c.number <= 0 || c.addr == "" || c.cert == "" {
+		panic(fmt.Sprintf("@connNum:%d, @serverAddr:%s, @cert:%s", c.number, c.addr, c.cert))
+	}
+	if !strings.HasPrefix(c.addr, "wss://") {
+		panic(fmt.Sprintf("the prefix @serverAddr:%s is not wss://", c.addr))
+	}
+
+	c.ssMap = make(map[Session]gxsync.Empty, c.number)
+
+	return c
 }
 
 func (c client) Type() EndPointType {
@@ -191,7 +163,7 @@ func (c *client) dialTCP() Session {
 		}
 
 		log.Info("net.DialTimeout(addr:%s, timeout:%v) = error{%v}", c.addr, err)
-		time.Sleep(c.interval)
+		time.Sleep(connInterval)
 	}
 }
 
@@ -223,7 +195,7 @@ func (c *client) dialUDP() Session {
 		}
 
 		log.Info("net.DialTimeout(addr:%s, timeout:%v) = error{%v}", c.addr, err)
-		time.Sleep(c.interval)
+		time.Sleep(connInterval)
 	}
 }
 
@@ -255,7 +227,7 @@ func (c *client) dialWS() Session {
 		}
 
 		log.Info("websocket.dialer.Dial(addr:%s) = error{%v}", c.addr, err)
-		time.Sleep(c.interval)
+		time.Sleep(connInterval)
 	}
 }
 
@@ -332,7 +304,7 @@ func (c *client) dialWSS() Session {
 		}
 
 		log.Info("websocket.dialer.Dial(addr:%s) = error{%v}", c.addr, err)
-		time.Sleep(c.interval)
+		time.Sleep(connInterval)
 	}
 }
 
@@ -421,7 +393,7 @@ func (c *client) RunEventLoop(newSession NewSessionCallback) {
 				if maxTimes < times {
 					times = maxTimes
 				}
-				time.Sleep(time.Duration(int64(times) * defaultInterval))
+				time.Sleep(time.Duration(int64(times) * connInterval))
 				continue
 			}
 			times = 0

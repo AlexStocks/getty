@@ -17,7 +17,9 @@
 - 2018/03/17
     > improvement
     * add end point type
-    * add Client & Server interface
+    * add ClientOptions & Client
+    * add ServerOptions & Server
+    * version 0.8.2
 
 - 2018/03/16
     > bug fix
