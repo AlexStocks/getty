@@ -33,14 +33,6 @@ const (
 	maxTimes        = 10
 )
 
-const (
-	CONNECTED_UDP_CLIENT   = 1
-	UNCONNECTED_UDP_CLIENT = 2
-	TCP_CLIENT             = 3
-	WS_CLIENT              = 4
-	WSS_CLIENT             = 5
-)
-
 /////////////////////////////////////////
 // getty tcp client
 /////////////////////////////////////////
@@ -48,12 +40,12 @@ const (
 type Client struct {
 	// net
 	sync.Mutex
-	typ        int
-	number     int
-	interval   time.Duration
-	addr       string
-	newSession NewSessionCallback
-	ssMap      map[Session]gxsync.Empty
+	endPointType EndPointType
+	number       int
+	interval     time.Duration
+	addr         string
+	newSession   NewSessionCallback
+	ssMap        map[Session]gxsync.Empty
 
 	sync.Once
 	done chan gxsync.Empty
@@ -70,46 +62,49 @@ type Client struct {
 // @connInterval is reconnect sleep interval when getty fails to connect the server.
 // @serverAddr is server address.
 func NewTCPClient(connNum int, connInterval time.Duration, serverAddr string) *Client {
-	if connNum <= 0 {
-		connNum = 1
+	if connNum <= 0 || serverAddr == "" {
+		panic(fmt.Sprintf("@connNum:%d, @serverAddr:%s", connNum, serverAddr))
 	}
 	if connInterval < defaultInterval {
 		connInterval = defaultInterval
 	}
 
 	return &Client{
-		typ:      TCP_CLIENT,
-		number:   connNum,
-		interval: connInterval,
-		addr:     serverAddr,
-		ssMap:    make(map[Session]gxsync.Empty, connNum),
-		done:     make(chan gxsync.Empty),
+		endPointType: TCP_CLIENT,
+		number:       connNum,
+		interval:     connInterval,
+		addr:         serverAddr,
+		ssMap:        make(map[Session]gxsync.Empty, connNum),
+		done:         make(chan gxsync.Empty),
 	}
 }
 
 // NewUdpClient function builds a udp client
-// @connNum is connection number. If this value is non-zero, getty will build
-// some connected udp clients.
-//
+// @connNum is connection number.
 // @connInterval is reconnect sleep interval when getty fails to connect the server.
-// @serverAddr is server address.
+// @serverAddr is server address. if this value is none-nil-string, getty will build some connected udp clients.
 func NewUDPClient(connNum int, connInterval time.Duration, serverAddr string) *Client {
-	var typ int = CONNECTED_UDP_CLIENT
-	if connNum <= 0 {
-		connNum = 1
-		typ = UNCONNECTED_UDP_CLIENT
+	var endPointType = UNCONNECTED_UDP_CLIENT
+	if len(serverAddr) != 0 {
+		if connNum <= 0 {
+			panic(fmt.Sprintf("getty will build a preconected connection by @serverAddr:%s while @connNum is %d",
+				serverAddr, connNum))
+		}
+
+		endPointType = CONNECTED_UDP_CLIENT
 	}
+
 	if connInterval < defaultInterval {
 		connInterval = defaultInterval
 	}
 
 	return &Client{
-		typ:      typ,
-		number:   connNum,
-		interval: connInterval,
-		addr:     serverAddr,
-		ssMap:    make(map[Session]gxsync.Empty, connNum),
-		done:     make(chan gxsync.Empty),
+		endPointType: endPointType,
+		number:       connNum,
+		interval:     connInterval,
+		addr:         serverAddr,
+		ssMap:        make(map[Session]gxsync.Empty, connNum),
+		done:         make(chan gxsync.Empty),
 	}
 }
 
@@ -130,12 +125,12 @@ func NewWSClient(connNum int, connInterval time.Duration, serverAddr string) *Cl
 	}
 
 	return &Client{
-		typ:      WS_CLIENT,
-		number:   connNum,
-		interval: connInterval,
-		addr:     serverAddr,
-		ssMap:    make(map[Session]gxsync.Empty, connNum),
-		done:     make(chan gxsync.Empty),
+		endPointType: WS_CLIENT,
+		number:       connNum,
+		interval:     connInterval,
+		addr:         serverAddr,
+		ssMap:        make(map[Session]gxsync.Empty, connNum),
+		done:         make(chan gxsync.Empty),
 	}
 }
 
@@ -160,14 +155,18 @@ func NewWSSClient(connNum int, connInterval time.Duration, serverAddr string, ce
 	}
 
 	return &Client{
-		typ:      WSS_CLIENT,
-		number:   connNum,
-		interval: connInterval,
-		addr:     serverAddr,
-		ssMap:    make(map[Session]gxsync.Empty, connNum),
-		done:     make(chan gxsync.Empty),
-		cert:     cert,
+		endPointType: WSS_CLIENT,
+		number:       connNum,
+		interval:     connInterval,
+		addr:         serverAddr,
+		ssMap:        make(map[Session]gxsync.Empty, connNum),
+		done:         make(chan gxsync.Empty),
+		cert:         cert,
 	}
+}
+
+func (c Client) Type() EndPointType {
+	return c.endPointType
 }
 
 func (c *Client) dialTCP() Session {
@@ -207,7 +206,7 @@ func (c *Client) dialUDP() Session {
 		if c.IsClosed() {
 			return nil
 		}
-		if UNCONNECTED_UDP_CLIENT == c.typ {
+		if UNCONNECTED_UDP_CLIENT == c.endPointType {
 			conn, err = net.ListenUDP("udp", localAddr)
 		} else {
 			conn, err = net.DialUDP("udp", localAddr, peerAddr)
@@ -335,7 +334,7 @@ func (c *Client) dialWSS() Session {
 }
 
 func (c *Client) dial() Session {
-	switch c.typ {
+	switch c.endPointType {
 	case TCP_CLIENT:
 		return c.dialTCP()
 	case UNCONNECTED_UDP_CLIENT, CONNECTED_UDP_CLIENT:
@@ -424,7 +423,7 @@ func (c *Client) RunEventLoop(newSession NewSessionCallback) {
 			}
 			times = 0
 			c.connect()
-			if c.typ == UNCONNECTED_UDP_CLIENT || c.typ == CONNECTED_UDP_CLIENT {
+			if c.endPointType == UNCONNECTED_UDP_CLIENT || c.endPointType == CONNECTED_UDP_CLIENT {
 				break
 			}
 			// time.Sleep(c.interval) // build c.number connections asap

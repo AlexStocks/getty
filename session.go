@@ -524,7 +524,7 @@ LOOP:
 		case outPkg = <-s.wQ:
 			if flag {
 				if err = s.writer.Write(s, outPkg); err != nil {
-					log.Error("%s, [session.handleLoop] = error{%#v}", s.sessionToken(), err)
+					log.Error("%s, [session.handleLoop] = error{%+v}", s.sessionToken(), err)
 					s.stop()
 					flag = false
 					// break LOOP

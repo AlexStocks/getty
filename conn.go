@@ -20,6 +20,7 @@ import (
 )
 
 import (
+	"github.com/AlexStocks/goext/net"
 	log "github.com/AlexStocks/log4go"
 	"github.com/golang/snappy"
 	"github.com/gorilla/websocket"
@@ -477,11 +478,17 @@ func (u *gettyUDPConn) Write(udpCtx interface{}) (int, error) {
 
 	atomic.AddUint32(&u.writeCount, (uint32)(len(buf)))
 	peerAddr = ctx.PeerAddr
-	if u.peerAddr != nil {
-		peerAddr = u.peerAddr
+	if u.peerAddr != nil && peerAddr != nil {
+		if !gxnet.IsUDPAddrEqual(peerAddr, u.peerAddr) {
+			return 0, fmt.Errorf("use of peerAddr %s different from preconnected udp connection address %s",
+				peerAddr, u.peerAddr)
+		}
+		peerAddr = nil
 	}
+
+	peerAddr = nil
 	length, _, err = u.conn.WriteMsgUDP(buf, nil, peerAddr)
-	log.Debug("now:%s, length:%d, err:%#v", currentTime, length, err)
+	log.Debug("now:%s, length:%d, err:%s, peerAddr:%s, session.peer:%s", currentTime, length, err, peerAddr, u.peerAddr)
 
 	return length, err
 }

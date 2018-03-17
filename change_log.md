@@ -14,6 +14,10 @@
 ## develop history ##
 ---
 
+- 2018/03/17
+    > improvement
+    * add end point type
+
 - 2018/03/16
     > bug fix
     * set maxMsgLen of UDPSession from zero to 4k

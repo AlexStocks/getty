@@ -34,20 +34,13 @@ var (
 	serverFastFailTimeout = gxtime.TimeSecondDuration(1)
 )
 
-const (
-	UDP_SERVER = 1
-	TCP_SERVER = 2
-	WS_SERVER  = 3
-	WSS_SERVER = 4
-)
-
 type Server struct {
 	// net
 	addr           string
 	pktListener    net.PacketConn
 	streamListener net.Listener
 	lock           sync.Mutex // for server
-	typ            int
+	endPointType   EndPointType
 	server         *http.Server // for ws or wss server
 
 	// websocket
@@ -65,9 +58,9 @@ type Server struct {
 // @addr server listen address.
 func NewTCPServer(addr string) *Server {
 	return &Server{
-		typ:  TCP_SERVER,
-		done: make(chan gxsync.Empty),
-		addr: addr,
+		endPointType: TCP_SERVER,
+		done:         make(chan gxsync.Empty),
+		addr:         addr,
 	}
 }
 
@@ -75,9 +68,9 @@ func NewTCPServer(addr string) *Server {
 // @addr server listen address.
 func NewUDPPServer(addr string) *Server {
 	return &Server{
-		typ:  UDP_SERVER,
-		done: make(chan gxsync.Empty),
-		addr: addr,
+		endPointType: UDP_SERVER,
+		done:         make(chan gxsync.Empty),
+		addr:         addr,
 	}
 }
 
@@ -86,10 +79,10 @@ func NewUDPPServer(addr string) *Server {
 // @path: websocket request url path
 func NewWSServer(addr string, path string) *Server {
 	return &Server{
-		typ:  WS_SERVER,
-		done: make(chan gxsync.Empty),
-		addr: addr,
-		path: path,
+		endPointType: WS_SERVER,
+		done:         make(chan gxsync.Empty),
+		addr:         addr,
+		path:         path,
 	}
 }
 
@@ -101,14 +94,18 @@ func NewWSServer(addr string, path string) *Server {
 // @caCert: root certificate file. to verify the legitimacy of client. it can be nil.
 func NewWSSServer(addr, path, cert, privateKey, caCert string) *Server {
 	return &Server{
-		typ:        WSS_SERVER,
-		done:       make(chan gxsync.Empty),
-		addr:       addr,
-		path:       path,
-		cert:       cert,
-		privateKey: privateKey,
-		caCert:     caCert,
+		endPointType: WSS_SERVER,
+		done:         make(chan gxsync.Empty),
+		addr:         addr,
+		path:         path,
+		cert:         cert,
+		privateKey:   privateKey,
+		caCert:       caCert,
 	}
+}
+
+func (s Server) Type() EndPointType {
+	return s.endPointType
 }
 
 func (s *Server) stop() {
@@ -202,7 +199,7 @@ func (s *Server) listenUDP() error {
 
 // Listen announces on the local network address.
 func (s *Server) listen() error {
-	switch s.typ {
+	switch s.endPointType {
 	case TCP_SERVER, WS_SERVER, WSS_SERVER:
 		return s.listenTCP()
 	case UDP_SERVER:
@@ -445,7 +442,7 @@ func (s *Server) RunEventloop(newSession NewSessionCallback) {
 		panic(fmt.Errorf("Server.listen() = error:%#v", err))
 	}
 
-	switch s.typ {
+	switch s.endPointType {
 	case TCP_SERVER:
 		s.runTcpEventloop(newSession)
 	case UDP_SERVER:
@@ -454,6 +451,8 @@ func (s *Server) RunEventloop(newSession NewSessionCallback) {
 		s.runWSEventLoop(newSession)
 	case WSS_SERVER:
 		s.runWSSEventLoop(newSession)
+	default:
+		panic(fmt.Sprintf("illegal server type %s", s.endPointType.String()))
 	}
 }
 
