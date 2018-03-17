@@ -90,6 +90,7 @@ func newSession(session getty.Session) error {
 	udpConn.SetReadBuffer(conf.GettySessionParam.UdpRBufSize)
 	udpConn.SetWriteBuffer(conf.GettySessionParam.UdpWBufSize)
 
+	session.SetMaxMsgLen(conf.MaxMsgLen)
 	session.SetName(conf.GettySessionParam.SessionName)
 	session.SetPkgHandler(NewEchoPackageHandler())
 	session.SetEventListener(newEchoMessageHandler())
@@ -106,9 +107,8 @@ func newSession(session getty.Session) error {
 
 func initClient() {
 	client.gettyClient = getty.NewUDPClient(
-		(int)(conf.ConnectionNum),
-		conf.connectInterval,
-		gxnet.HostAddress(conf.ServerHost, conf.ServerPort),
+		getty.WithServerAddress(gxnet.HostAddress(conf.ServerHost, conf.ServerPort)),
+		getty.WithConnectionNumber((int)(conf.ConnectionNum)),
 	)
 	client.gettyClient.RunEventLoop(newSession)
 	client.serverAddr = net.UDPAddr{IP: net.ParseIP(conf.ServerHost), Port: conf.ServerPort}

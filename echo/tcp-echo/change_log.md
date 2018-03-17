@@ -10,6 +10,10 @@
 ## develop history ##
 ---
 
+- 2018/03/17
+    > improvement
+    * use getty 0.8.2
+
 - 2018/03/14
     > improvement
     * add keep alive period

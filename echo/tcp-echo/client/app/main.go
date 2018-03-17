@@ -95,6 +95,7 @@ func newSession(session getty.Session) error {
 	tcpConn.SetReadBuffer(conf.GettySessionParam.TcpRBufSize)
 	tcpConn.SetWriteBuffer(conf.GettySessionParam.TcpWBufSize)
 
+	session.SetMaxMsgLen(conf.GettySessionParam.MaxMsgLen)
 	session.SetName(conf.GettySessionParam.SessionName)
 	session.SetPkgHandler(NewEchoPackageHandler())
 	session.SetEventListener(newEchoMessageHandler())
@@ -111,9 +112,8 @@ func newSession(session getty.Session) error {
 
 func initClient() {
 	client.gettyClient = getty.NewTCPClient(
-		(int)(conf.ConnectionNum),
-		conf.connectInterval,
-		gxnet.HostAddress(conf.ServerHost, conf.ServerPort),
+		getty.WithServerAddress(gxnet.HostAddress(conf.ServerHost, conf.ServerPort)),
+		getty.WithConnectionNumber((int)(conf.ConnectionNum)),
 	)
 	client.gettyClient.RunEventLoop(newSession)
 }

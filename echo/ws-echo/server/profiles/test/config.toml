@@ -34,4 +34,5 @@ FailFastTimeout         = "3s"
     TcpReadTimeout      = "1s"
     TcpWriteTimeout     = "5s"
     WaitTimeout         = "1s"
+    MaxMsgLen           = 128
     SessionName         = "echo-server"

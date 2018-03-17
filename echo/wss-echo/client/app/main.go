@@ -96,6 +96,7 @@ func newSession(session getty.Session) error {
 		tcpConn.SetWriteBuffer(conf.GettySessionParam.TcpWBufSize)
 	}
 
+	session.SetMaxMsgLen(conf.GettySessionParam.MaxMsgLen)
 	session.SetName(conf.GettySessionParam.SessionName)
 	session.SetPkgHandler(NewEchoPackageHandler())
 	session.SetEventListener(newEchoMessageHandler())
@@ -113,16 +114,14 @@ func newSession(session getty.Session) error {
 func initClient() {
 	if conf.WSSEnable {
 		client.gettyClient = getty.NewWSSClient(
-			(int)(conf.ConnectionNum),
-			conf.connectInterval,
-			gxnet.WSSHostAddress(conf.ServerHost, conf.ServerPort, conf.ServerPath),
-			conf.CertFile,
+			getty.WithServerAddress(gxnet.WSSHostAddress(conf.ServerHost, conf.ServerPort, conf.ServerPath)),
+			getty.WithConnectionNumber((int)(conf.ConnectionNum)),
+			getty.WithRootCertificateFile(conf.CertFile),
 		)
 	} else {
 		client.gettyClient = getty.NewWSClient(
-			(int)(conf.ConnectionNum),
-			conf.connectInterval,
-			gxnet.WSHostAddress(conf.ServerHost, conf.ServerPort, conf.ServerPath),
+			getty.WithServerAddress(gxnet.WSSHostAddress(conf.ServerHost, conf.ServerPort, conf.ServerPath)),
+			getty.WithConnectionNumber((int)(conf.ConnectionNum)),
 		)
 	}
 

@@ -46,6 +46,7 @@ type (
 		tcpWriteTimeout  time.Duration
 		WaitTimeout      string `default:"7s"`
 		waitTimeout      time.Duration
+		MaxMsgLen        int    `default:"1024"`
 		SessionName      string `default:"echo-client"`
 	}
 

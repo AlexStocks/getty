@@ -47,6 +47,7 @@ type (
 		tcpWriteTimeout  time.Duration
 		WaitTimeout      string `default:"7s"`
 		waitTimeout      time.Duration
+		MaxMsgLen        int    `default:"1024"`
 		SessionName      string `default:"echo-client"`
 	}
 
@@ -62,9 +63,7 @@ type (
 		ProfilePort int    `default:"10086"`
 
 		// session pool
-		ConnectionNum   int    `default:"16"`
-		ConnectInterval string `default:"5s"`
-		connectInterval time.Duration
+		ConnectionNum int `default:"16"`
 
 		// heartbeat
 		HeartbeatPeriod string `default:"15s"`
@@ -105,11 +104,6 @@ func initConf() {
 	}
 	conf = new(Config)
 	config.MustLoadWithPath(confFile, conf)
-	conf.connectInterval, err = time.ParseDuration(conf.ConnectInterval)
-	if err != nil {
-		panic(fmt.Sprintf("time.ParseDuration(ConnectionInterval{%#v}) = error{%v}", conf.ConnectInterval, err))
-		return
-	}
 	conf.heartbeatPeriod, err = time.ParseDuration(conf.HeartbeatPeriod)
 	if err != nil {
 		panic(fmt.Sprintf("time.ParseDuration(HeartbeatPeroid{%#v}) = error{%v}", conf.HeartbeatPeriod, err))

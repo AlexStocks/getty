@@ -38,7 +38,7 @@ func init() {
 type EchoClient struct {
 	lock        sync.RWMutex
 	sessions    []*clientEchoSession
-	gettyClient *getty.Client
+	gettyClient getty.Client
 	serverAddr  net.UDPAddr
 }
 

@@ -40,7 +40,7 @@ var (
 )
 
 var (
-	serverList []*getty.Server
+	serverList []getty.Server
 )
 
 func main() {
@@ -101,6 +101,7 @@ func newSession(session getty.Session) error {
 		tcpConn.SetWriteBuffer(conf.GettySessionParam.TcpWBufSize)
 	}
 
+	session.SetMaxMsgLen(conf.GettySessionParam.MaxMsgLen)
 	session.SetName(conf.GettySessionParam.SessionName)
 	session.SetPkgHandler(NewEchoPackageHandler())
 	session.SetEventListener(newEchoMessageHandler())
@@ -120,7 +121,7 @@ func initServer() {
 		addr     string
 		portList []string
 		pathList []string
-		server   *getty.Server
+		server   getty.Server
 	)
 
 	// if *host == "" {
@@ -147,13 +148,22 @@ func initServer() {
 		addr = gxnet.HostAddress2(conf.Host, port)
 
 		if conf.CertFile != "" && conf.KeyFile != "" {
-			server = getty.NewWSSServer(addr, pathList[idx], conf.CertFile, conf.KeyFile, conf.CACert)
+			server = getty.NewWSSServer(
+				getty.WithLocalAddress(addr),
+				getty.WithWebsocketServerPath(pathList[idx]),
+				getty.WithWebsocketServerCert(conf.CertFile),
+				getty.WithWebsocketServerPrivateKey(conf.KeyFile),
+				getty.WithWebsocketServerRootCert(conf.CACert),
+			)
 			log.Debug("server bind addr{wss://%s/%s} ok!", addr, pathList[idx])
 		} else {
-			server = getty.NewWSServer(addr, pathList[idx])
+			server = getty.NewWSServer(
+				getty.WithLocalAddress(addr),
+				getty.WithWebsocketServerPath(pathList[idx]),
+			)
 			log.Debug("server bind addr{ws://%s/%s} ok!", addr, pathList[idx])
 		}
-		server.RunEventloop(newSession)
+		server.RunEventLoop(newSession)
 		// run server
 		serverList = append(serverList, server)
 	}

@@ -92,6 +92,7 @@ func newSession(session getty.Session) error {
 	udpConn.SetReadBuffer(conf.GettySessionParam.UdpRBufSize)
 	udpConn.SetWriteBuffer(conf.GettySessionParam.UdpWBufSize)
 
+	session.SetMaxMsgLen(conf.GettySessionParam.MaxMsgLen)
 	session.SetName(conf.GettySessionParam.SessionName)
 	session.SetPkgHandler(NewEchoPackageHandler())
 	session.SetEventListener(newEchoMessageHandler())

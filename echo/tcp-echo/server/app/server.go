@@ -39,7 +39,7 @@ var (
 )
 
 var (
-	serverList []*getty.Server
+	serverList []getty.Server
 )
 
 func main() {
@@ -96,6 +96,7 @@ func newSession(session getty.Session) error {
 	tcpConn.SetReadBuffer(conf.GettySessionParam.TcpRBufSize)
 	tcpConn.SetWriteBuffer(conf.GettySessionParam.TcpWBufSize)
 
+	session.SetMaxMsgLen(conf.GettySessionParam.MaxMsgLen)
 	session.SetName(conf.GettySessionParam.SessionName)
 	session.SetPkgHandler(NewEchoPackageHandler())
 	session.SetEventListener(newEchoMessageHandler())
@@ -114,7 +115,7 @@ func initServer() {
 	var (
 		addr     string
 		portList []string
-		server   *getty.Server
+		server   getty.Server
 	)
 
 	// if *host == "" {
@@ -132,9 +133,11 @@ func initServer() {
 	}
 	for _, port := range portList {
 		addr = gxnet.HostAddress2(conf.Host, port)
-		server = getty.NewTCPServer(addr)
+		server = getty.NewTCPServer(
+			getty.WithLocalAddress(addr),
+		)
 		// run server
-		server.RunEventloop(newSession)
+		server.RunEventLoop(newSession)
 		log.Debug("server bind addr{%s} ok!", addr)
 		serverList = append(serverList, server)
 	}

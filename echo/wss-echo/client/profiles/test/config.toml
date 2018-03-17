@@ -21,8 +21,6 @@ CertFile                = "./conf/cert/client.crt"
 # connection pool
 # 连接池连接数目
 ConnectionNum           = 2
-# 当连接失败或者连接断开时，连接池中重连的间隔时间
-ConnectInterval         = "5s"
 
 # session
 # client与server之间连接的心跳周期
@@ -53,4 +51,5 @@ FailFastTimeout         = "3s"
     TcpReadTimeout      = "1s"
     TcpWriteTimeout     = "5s"
     WaitTimeout         = "1s"
+    MaxMsgLen           = 128
     SessionName         = "echo-client"

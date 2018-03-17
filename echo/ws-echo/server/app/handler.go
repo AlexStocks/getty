@@ -16,7 +16,6 @@ import (
 )
 
 import (
-	"fmt"
 	"github.com/AlexStocks/getty"
 	log "github.com/AlexStocks/log4go"
 )

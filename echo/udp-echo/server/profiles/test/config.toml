@@ -28,4 +28,5 @@ FailFastTimeout         = "3s"
     UdpReadTimeout      = "1s"
     UdpWriteTimeout     = "5s"
     WaitTimeout         = "1s"
+    MaxMsgLen           = 128
     SessionName         = "echo-server"

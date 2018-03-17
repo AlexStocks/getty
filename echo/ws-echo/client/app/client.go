@@ -36,7 +36,7 @@ func init() {
 type EchoClient struct {
 	lock        sync.RWMutex
 	sessions    []*clientEchoSession
-	gettyClient *getty.Client
+	gettyClient getty.Client
 }
 
 func (this *EchoClient) isAvailable() bool {
