@@ -35,48 +35,6 @@ var (
 )
 
 /////////////////////////////////////////
-// compress
-/////////////////////////////////////////
-
-type CompressType int
-
-const (
-	CompressNone            CompressType = flate.NoCompression      // 0
-	CompressZip                          = flate.DefaultCompression // -1
-	CompressBestSpeed                    = flate.BestSpeed          // 1
-	CompressBestCompression              = flate.BestCompression    // 9
-	CompressHuffman                      = flate.HuffmanOnly        // -2
-	CompressSnappy                       = 10
-)
-
-/////////////////////////////////////////
-// connection interfacke
-/////////////////////////////////////////
-
-type Connection interface {
-	ID() uint32
-	SetCompressType(CompressType)
-	LocalAddr() string
-	RemoteAddr() string
-	incReadPkgCount()
-	incWritePkgCount()
-	// update session's active time
-	UpdateActive()
-	// get session's active time
-	GetActive() time.Time
-	readTimeout() time.Duration
-	// SetReadTimeout sets deadline for the future read calls.
-	SetReadTimeout(time.Duration)
-	writeTimeout() time.Duration
-	// SetWriteTimeout sets deadline for the future read calls.
-	SetWriteTimeout(time.Duration)
-	Write(interface{}) (int, error)
-	// don't distinguish between tcp connection and websocket connection. Because
-	// gorilla/websocket/conn.go:(Conn)Close also invoke net.Conn.Close
-	close(int)
-}
-
-/////////////////////////////////////////
 // getty connection
 /////////////////////////////////////////
 

@@ -11,7 +11,6 @@ package getty
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"net"
 	"runtime"
@@ -47,44 +46,8 @@ const (
 /////////////////////////////////////////
 
 var (
-	ErrSessionClosed  = errors.New("session Already Closed")
-	ErrSessionBlocked = errors.New("session Full Blocked")
-	ErrMsgTooLong     = errors.New("Message Too Long")
-)
-
-var (
 	wheel = gxtime.NewWheel(gxtime.TimeMillisecondDuration(100), 1200) // wheel longest span is 2 minute
 )
-
-type Session interface {
-	Connection
-	Reset()
-	Conn() net.Conn
-	Stat() string
-	IsClosed() bool
-
-	SetMaxMsgLen(int)
-	SetName(string)
-	SetEventListener(EventListener)
-	SetPkgHandler(ReadWriter)
-	SetReader(Reader)
-	SetWriter(Writer)
-	SetCronPeriod(int)
-	SetRQLen(int)
-	SetWQLen(int)
-	SetWaitTime(time.Duration)
-
-	GetAttribute(interface{}) interface{}
-	SetAttribute(interface{}, interface{})
-	RemoveAttribute(interface{})
-
-	// the Writer will invoke this function.
-	// for udp session, the first parameter should be UDPContext. Otherwise its type is []byte.
-	WritePkg(interface{}, time.Duration) error
-	WriteBytes([]byte) error
-	WriteBytesArray(...[]byte) error
-	Close()
-}
 
 // getty base session
 type session struct {
