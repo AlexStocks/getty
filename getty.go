@@ -104,6 +104,8 @@ type Connection interface {
 	// don't distinguish between tcp connection and websocket connection. Because
 	// gorilla/websocket/conn.go:(Conn)Close also invoke net.Conn.Close
 	close(int)
+	// set related session
+	setSession(Session)
 }
 
 /////////////////////////////////////////
@@ -114,6 +116,7 @@ var (
 	ErrSessionClosed  = errors.New("session Already Closed")
 	ErrSessionBlocked = errors.New("session Full Blocked")
 	ErrMsgTooLong     = errors.New("Message Too Long")
+	ErrNullPeerAddr   = errors.New("peer address is nil")
 )
 
 type Session interface {
@@ -122,6 +125,8 @@ type Session interface {
 	Conn() net.Conn
 	Stat() string
 	IsClosed() bool
+	// get endpoint type
+	Type() EndPointType
 
 	SetMaxMsgLen(int)
 	SetName(string)

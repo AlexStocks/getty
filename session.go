@@ -51,8 +51,9 @@ var (
 
 // getty base session
 type session struct {
-	name      string
-	maxMsgLen int32
+	name         string
+	endPointType EndPointType
+	maxMsgLen    int32
 	// net read Write
 	Connection
 	// pkgHandler ReadWriter
@@ -75,66 +76,45 @@ type session struct {
 	lock  sync.RWMutex
 }
 
-func NewSession() Session {
+func newSession(endPointType EndPointType, conn Connection) *session {
 	session := &session{
-		name:   defaultSessionName,
-		done:   make(chan gxsync.Empty),
-		period: period,
-		wait:   pendingDuration,
-		attrs:  gxcontext.NewValuesContext(nil),
+		name:         defaultSessionName,
+		endPointType: endPointType,
+		maxMsgLen:    maxReadBufLen,
+		Connection:   conn,
+		done:         make(chan gxsync.Empty),
+		period:       period,
+		wait:         pendingDuration,
+		attrs:        gxcontext.NewValuesContext(nil),
 	}
 
+	session.Connection.setSession(session)
 	session.SetWriteTimeout(netIOTimeout)
 	session.SetReadTimeout(netIOTimeout)
 
 	return session
 }
 
-func NewTCPSession(conn net.Conn) Session {
-	session := &session{
-		name:       defaultTCPSessionName,
-		Connection: newGettyTCPConn(conn),
-		done:       make(chan gxsync.Empty),
-		period:     period,
-		wait:       pendingDuration,
-		attrs:      gxcontext.NewValuesContext(nil),
-	}
-
-	session.SetWriteTimeout(netIOTimeout)
-	session.SetReadTimeout(netIOTimeout)
+func newTCPSession(conn net.Conn, endPointType EndPointType) Session {
+	c := newGettyTCPConn(conn)
+	session := newSession(endPointType, c)
+	session.name = defaultTCPSessionName
 
 	return session
 }
 
-func NewUDPSession(conn *net.UDPConn, peerAddr *net.UDPAddr) Session {
-	session := &session{
-		name:       defaultUDPSessionName,
-		maxMsgLen:  maxReadBufLen,
-		Connection: newGettyUDPConn(conn, peerAddr),
-		done:       make(chan gxsync.Empty),
-		period:     period,
-		wait:       pendingDuration,
-		attrs:      gxcontext.NewValuesContext(nil),
-	}
-
-	session.SetWriteTimeout(netIOTimeout)
-	session.SetReadTimeout(netIOTimeout)
+func newUDPSession(conn *net.UDPConn, endPointType EndPointType) Session {
+	c := newGettyUDPConn(conn)
+	session := newSession(endPointType, c)
+	session.name = defaultUDPSessionName
 
 	return session
 }
 
-func NewWSSession(conn *websocket.Conn) Session {
-	session := &session{
-		name:       defaultWSSessionName,
-		Connection: newGettyWSConn(conn),
-		done:       make(chan gxsync.Empty),
-		period:     period,
-		wait:       pendingDuration,
-		attrs:      gxcontext.NewValuesContext(nil),
-	}
-
-	session.SetWriteTimeout(netIOTimeout)
-	session.SetReadTimeout(netIOTimeout)
+func newWSSession(conn *websocket.Conn, endPointType EndPointType) Session {
+	c := newGettyWSConn(conn)
+	session := newSession(endPointType, c)
+	session.name = defaultWSSessionName
 
 	return session
 }
@@ -168,6 +148,10 @@ func (s *session) Conn() net.Conn {
 	}
 
 	return nil
+}
+
+func (s *session) Type() EndPointType {
+	return s.endPointType
 }
 
 func (s *session) gettyConn() *gettyConn {

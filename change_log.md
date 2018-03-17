@@ -19,6 +19,7 @@
     * add end point type
     * add ClientOptions & Client
     * add ServerOptions & Server
+    * delete peerAddr of UDPSession
     * version 0.8.2
 
 - 2018/03/16
@@ -32,7 +33,7 @@
 - 2018/03/14
     > bug fix
     * disable SetReadDeadline when enable compression.
-    
+
         Refers to the NextReader/NextWriter of gorilla/websocket, you should make a new compression reader/writer when
         read/write a package again.
 
@@ -40,10 +41,10 @@
     > improvement
     * 1 rDeadline -> rTimeout
     * 2 wDeadline -> wTimeout
-    * 3 disable readtimeout in gettyWSConn:read 
+    * 3 disable readtimeout in gettyWSConn:read
     * 4 add gettyWSConn:updateWriteDeadline
     * 5 add timeout for Session:WritePkg
-    
+
 - 2018/03/08
     > feature
     * 1 add udp client and udp server

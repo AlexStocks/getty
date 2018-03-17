@@ -20,7 +20,6 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/goext/net"
 	log "github.com/AlexStocks/log4go"
 	"github.com/golang/snappy"
 	"github.com/gorilla/websocket"
@@ -58,6 +57,7 @@ type gettyConn struct {
 	wLastDeadline time.Time // lastest network write time
 	local         string    // local address
 	peer          string    // peer address
+	ss            Session
 }
 
 func (c *gettyConn) ID() uint32 {
@@ -96,6 +96,10 @@ func (c *gettyConn) close(int) {}
 
 func (c gettyConn) readTimeout() time.Duration {
 	return c.rTimeout
+}
+
+func (c *gettyConn) setSession(ss Session) {
+	c.ss = ss
 }
 
 // Pls do not set read deadline for websocket connection. AlexStocks 20180310
@@ -307,7 +311,6 @@ type UDPContext struct {
 
 type gettyUDPConn struct {
 	gettyConn
-	peerAddr     *net.UDPAddr // for client
 	compressType CompressType
 	conn         *net.UDPConn // for server
 }
@@ -324,7 +327,7 @@ func setUDPSocketOptions(conn *net.UDPConn) error {
 }
 
 // create gettyUDPConn
-func newGettyUDPConn(conn *net.UDPConn, peerUDPAddr *net.UDPAddr) *gettyUDPConn {
+func newGettyUDPConn(conn *net.UDPConn) *gettyUDPConn {
 	if conn == nil {
 		panic("newGettyUDPConn(conn):@conn is nil")
 	}
@@ -337,14 +340,10 @@ func newGettyUDPConn(conn *net.UDPConn, peerUDPAddr *net.UDPAddr) *gettyUDPConn 
 	if conn.RemoteAddr() != nil {
 		// connected udp
 		peerAddr = conn.RemoteAddr().String()
-	} else if peerUDPAddr != nil {
-		// unconnected udp
-		peerAddr = peerUDPAddr.String()
 	}
 
 	return &gettyUDPConn{
-		conn:     conn,
-		peerAddr: peerUDPAddr,
+		conn: conn,
 		gettyConn: gettyConn{
 			id:       atomic.AddUint32(&connID, 1),
 			rTimeout: netIOTimeout,
@@ -388,11 +387,10 @@ func (u *gettyUDPConn) read(p []byte) (int, *net.UDPAddr, error) {
 		}
 	}
 
-	if u.peerAddr == nil {
-		length, addr, err = u.conn.ReadFromUDP(p)
-	} else {
+	if u.ss.Type() == CONNECTED_UDP_CLIENT {
 		length, err = u.conn.Read(p)
-		addr = u.peerAddr
+	} else {
+		length, addr, err = u.conn.ReadFromUDP(p)
 	}
 	log.Debug("now:%s, length:%d, err:%#v", currentTime, length, err)
 	if err == nil {
@@ -420,6 +418,12 @@ func (u *gettyUDPConn) Write(udpCtx interface{}) (int, error) {
 	if buf, ok = ctx.Pkg.([]byte); !ok {
 		return 0, fmt.Errorf("illegal @udpCtx.Pkg{%#v} type", udpCtx)
 	}
+	if u.ss.Type() == UDP_SERVER || u.ss.Type() == UNCONNECTED_UDP_CLIENT {
+		peerAddr = ctx.PeerAddr
+		if peerAddr == nil {
+			return 0, ErrNullPeerAddr
+		}
+	}
 
 	if u.wTimeout > 0 {
 		// Optimization: update write deadline only if more than 25%
@@ -435,18 +439,9 @@ func (u *gettyUDPConn) Write(udpCtx interface{}) (int, error) {
 	}
 
 	atomic.AddUint32(&u.writeCount, (uint32)(len(buf)))
-	peerAddr = ctx.PeerAddr
-	if u.peerAddr != nil && peerAddr != nil {
-		if !gxnet.IsUDPAddrEqual(peerAddr, u.peerAddr) {
-			return 0, fmt.Errorf("use of peerAddr %s different from preconnected udp connection address %s",
-				peerAddr, u.peerAddr)
-		}
-		peerAddr = nil
-	}
 
-	peerAddr = nil
 	length, _, err = u.conn.WriteMsgUDP(buf, nil, peerAddr)
-	log.Debug("now:%s, length:%d, err:%s, peerAddr:%s, session.peer:%s", currentTime, length, err, peerAddr, u.peerAddr)
+	log.Debug("now:%s, length:%d, err:%s, peerAddr:%s", currentTime, length, err, peerAddr)
 
 	return length, err
 }

@@ -12,6 +12,7 @@ package getty
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -21,7 +22,6 @@ import (
 )
 
 import (
-	"encoding/pem"
 	"github.com/AlexStocks/goext/sync"
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
@@ -58,16 +58,15 @@ func (c *client) init(opts ...ClientOption) {
 	}
 }
 
-// NewTcpClient function builds a tcp client.
-func NewTCPClient(opts ...ClientOption) Client {
+func newClient(t EndPointType, opts ...ClientOption) *client {
 	c := &client{
-		endPointType: TCP_CLIENT,
+		endPointType: t,
 		done:         make(chan gxsync.Empty),
 	}
 
 	c.init(opts...)
 
-	if c.number <= 0 || c.addr == "" {
+	if t != UNCONNECTED_UDP_CLIENT && c.number <= 0 || c.addr == "" {
 		panic(fmt.Sprintf("@connNum:%d, @serverAddr:%s", c.number, c.addr))
 	}
 
@@ -76,15 +75,15 @@ func NewTCPClient(opts ...ClientOption) Client {
 	return c
 }
 
+// NewTcpClient function builds a tcp client.
+func NewTCPClient(opts ...ClientOption) Client {
+	return newClient(TCP_CLIENT, opts...)
+}
+
 // NewUdpClient function builds a udp client
 func NewUDPClient(opts ...ClientOption) Client {
-	c := &client{
-		done: make(chan gxsync.Empty),
-	}
+	c := newClient(UNCONNECTED_UDP_CLIENT, opts...)
 
-	c.init(opts...)
-
-	c.endPointType = UNCONNECTED_UDP_CLIENT
 	if len(c.addr) != 0 {
 		if c.number <= 0 {
 			panic(fmt.Sprintf("getty will build a preconected connection by @serverAddr:%s while @connNum is %d",
@@ -93,49 +92,31 @@ func NewUDPClient(opts ...ClientOption) Client {
 
 		c.endPointType = CONNECTED_UDP_CLIENT
 	}
-	c.ssMap = make(map[Session]gxsync.Empty, c.number)
 
 	return c
 }
 
 // NewWsClient function builds a ws client.
 func NewWSClient(opts ...ClientOption) Client {
-	c := &client{
-		endPointType: WS_CLIENT,
-		done:         make(chan gxsync.Empty),
-	}
+	c := newClient(WS_CLIENT, opts...)
 
-	c.init(opts...)
-
-	if c.number <= 0 || c.addr == "" {
-		panic(fmt.Sprintf("@connNum:%d, @serverAddr:%s", c.number, c.addr))
-	}
 	if !strings.HasPrefix(c.addr, "ws://") {
 		panic(fmt.Sprintf("the prefix @serverAddr:%s is not ws://", c.addr))
 	}
-
-	c.ssMap = make(map[Session]gxsync.Empty, c.number)
 
 	return c
 }
 
 // NewWSSClient function builds a wss client.
 func NewWSSClient(opts ...ClientOption) Client {
-	c := &client{
-		endPointType: WSS_CLIENT,
-		done:         make(chan gxsync.Empty),
-	}
+	c := newClient(WSS_CLIENT, opts...)
 
-	c.init(opts...)
-
-	if c.number <= 0 || c.addr == "" || c.cert == "" {
-		panic(fmt.Sprintf("@connNum:%d, @serverAddr:%s, @cert:%s", c.number, c.addr, c.cert))
+	if c.cert == "" {
+		panic(fmt.Sprintf("@cert:%s", c.cert))
 	}
 	if !strings.HasPrefix(c.addr, "wss://") {
 		panic(fmt.Sprintf("the prefix @serverAddr:%s is not wss://", c.addr))
 	}
-
-	c.ssMap = make(map[Session]gxsync.Empty, c.number)
 
 	return c
 }
@@ -159,7 +140,7 @@ func (c *client) dialTCP() Session {
 			err = errSelfConnect
 		}
 		if err == nil {
-			return NewTCPSession(conn)
+			return newTCPSession(conn, c.endPointType)
 		}
 
 		log.Info("net.DialTimeout(addr:%s, timeout:%v) = error{%v}", c.addr, err)
@@ -188,10 +169,9 @@ func (c *client) dialUDP() Session {
 			if err == nil && conn.LocalAddr().String() == conn.RemoteAddr().String() {
 				err = errSelfConnect
 			}
-			peerAddr = nil // for connected session
 		}
 		if err == nil {
-			return NewUDPSession(conn, peerAddr)
+			return newUDPSession(conn, c.endPointType)
 		}
 
 		log.Info("net.DialTimeout(addr:%s, timeout:%v) = error{%v}", c.addr, err)
@@ -218,7 +198,7 @@ func (c *client) dialWS() Session {
 			err = errSelfConnect
 		}
 		if err == nil {
-			ss = NewWSSession(conn)
+			ss = newWSSession(conn, c.endPointType)
 			if ss.(*session).maxMsgLen > 0 {
 				conn.SetReadLimit(int64(ss.(*session).maxMsgLen))
 			}
@@ -294,7 +274,7 @@ func (c *client) dialWSS() Session {
 			err = errSelfConnect
 		}
 		if err == nil {
-			ss = NewWSSession(conn)
+			ss = newWSSession(conn, c.endPointType)
 			if ss.(*session).maxMsgLen > 0 {
 				conn.SetReadLimit(int64(ss.(*session).maxMsgLen))
 			}

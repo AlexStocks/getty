@@ -181,9 +181,9 @@ func (s *server) listenUDP() error {
 	if err != nil {
 		return errors.Wrapf(err, "net.ListenUDP((udp, localAddr:%#v)", localAddr)
 	}
-	//if err = setUDPSocketOptions(pktListener); err != nil {
-	//	return errors.Wrapf(err, "setUDPSocketOptions(pktListener:%#v)", pktListener)
-	//}
+	// if err = setUDPSocketOptions(pktListener); err != nil {
+	//  	return errors.Wrapf(err, "setUDPSocketOptions(pktListener:%#v)", pktListener)
+	// }
 
 	s.pktListener = pktListener
 
@@ -212,7 +212,7 @@ func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 		return nil, errSelfConnect
 	}
 
-	ss := NewTCPSession(conn)
+	ss := newTCPSession(conn, s.endPointType)
 	err = newSession(ss)
 	if err != nil {
 		conn.Close()
@@ -267,7 +267,7 @@ func (s *server) runUDPEventLoop(newSession NewSessionCallback) {
 		ss Session
 	)
 
-	ss = NewUDPSession(s.pktListener.(*net.UDPConn), nil)
+	ss = newUDPSession(s.pktListener.(*net.UDPConn), s.endPointType)
 	if err := newSession(ss); err != nil {
 		panic(err.Error())
 	}
@@ -317,7 +317,7 @@ func (s *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// conn.SetReadLimit(int64(handler.maxMsgLen))
-	ss := NewWSSession(conn)
+	ss := newWSSession(conn, s.server.endPointType)
 	err = s.newSession(ss)
 	if err != nil {
 		conn.Close()
