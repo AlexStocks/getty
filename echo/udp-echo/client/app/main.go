@@ -111,6 +111,7 @@ func initClient() {
 		gxnet.HostAddress(conf.ServerHost, conf.ServerPort),
 	)
 	client.gettyClient.RunEventLoop(newSession)
+	client.serverAddr = net.UDPAddr{IP: net.ParseIP(conf.ServerHost), Port: conf.ServerPort}
 }
 
 func uninitClient() {
@@ -146,7 +147,7 @@ func initSignal() {
 	}
 }
 
-func echo() {
+func echo(serverAddr *net.UDPAddr) {
 	var (
 		pkg EchoPackage
 		ctx getty.UDPContext
@@ -161,7 +162,7 @@ func echo() {
 	pkg.H.Len = (uint16)(len(pkg.B)) + 1
 
 	ctx.Pkg = &pkg
-	ctx.PeerAddr = &(conf.serverAddr)
+	ctx.PeerAddr = serverAddr
 
 	if session := client.selectSession(); session != nil {
 		err := session.WritePkg(ctx, WritePkgTimeout)
@@ -174,6 +175,12 @@ func echo() {
 }
 
 func test() {
+	var (
+		cost       int64
+		serverAddr net.UDPAddr
+		counter    gxtime.CountWatch
+	)
+
 	for {
 		if client.isAvailable() {
 			break
@@ -181,13 +188,11 @@ func test() {
 		time.Sleep(1e6)
 	}
 
-	var (
-		cost    int64
-		counter gxtime.CountWatch
-	)
+	serverAddr = net.UDPAddr{IP: net.ParseIP(conf.ServerHost), Port: conf.ServerPort}
+
 	counter.Start()
 	for i := 0; i < conf.EchoTimes; i++ {
-		echo()
+		echo(&serverAddr)
 	}
 	cost = counter.Count()
 	log.Info("after loop %d times, echo cost %d ms", conf.EchoTimes, cost/1e6)

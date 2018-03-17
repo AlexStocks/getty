@@ -19,6 +19,7 @@ import (
 import (
 	"github.com/AlexStocks/getty"
 	log "github.com/AlexStocks/log4go"
+	"net"
 )
 
 var (
@@ -38,6 +39,7 @@ type EchoClient struct {
 	lock        sync.RWMutex
 	sessions    []*clientEchoSession
 	gettyClient *getty.Client
+	serverAddr  net.UDPAddr
 }
 
 func (this *EchoClient) isAvailable() bool {
@@ -160,7 +162,7 @@ func (this *EchoClient) heartbeat(session getty.Session) {
 	pkg.H.Len = (uint16)(len(pkg.B) + 1)
 
 	ctx.Pkg = &pkg
-	ctx.PeerAddr = &(conf.serverAddr)
+	ctx.PeerAddr = &(this.serverAddr)
 
 	if err := session.WritePkg(ctx, WritePkgTimeout); err != nil {
 		log.Warn("session.WritePkg(session{%s}, context{%#v}) = error{%v}", session.Stat(), ctx, err)

@@ -80,8 +80,8 @@ func (this *EchoMessageHandler) OnCron(session getty.Session) {
 	if conf.sessionTimeout.Nanoseconds() < time.Since(session.GetActive()).Nanoseconds() {
 		log.Warn("session{%s} timeout{%s}, reqNum{%d}",
 			session.Stat(), time.Since(session.GetActive()).String(), clientEchoSession.reqNum)
-		client.removeSession(session)
-		return
+		// client.removeSession(session)
+		// return
 	}
 
 	client.heartbeat(session)

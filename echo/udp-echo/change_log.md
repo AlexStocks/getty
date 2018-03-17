@@ -10,6 +10,10 @@
 ## develop history ##
 ---
 
+- 2018/03/17
+    > improvement
+    * use getty v0.8.2
+
 - 2018/03/16
     > bug fix
     * forbid close udp session in OnCron

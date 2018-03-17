@@ -39,7 +39,7 @@ var (
 )
 
 var (
-	serverList []*getty.Server
+	serverList []getty.Server
 )
 
 func main() {
@@ -110,7 +110,7 @@ func initServer() {
 	var (
 		addr     string
 		portList []string
-		server   *getty.Server
+		server   getty.Server
 	)
 
 	// if *host == "" {
@@ -128,9 +128,11 @@ func initServer() {
 	}
 	for _, port := range portList {
 		addr = gxnet.HostAddress2(conf.Host, port)
-		server = getty.NewUDPPServer(addr)
+		server = getty.NewUDPPServer(
+			getty.WithLocalAddress(addr),
+		)
 		// run server
-		server.RunEventloop(newSession)
+		server.RunEventLoop(newSession)
 		log.Debug("server bind addr{%s} ok!", addr)
 		serverList = append(serverList, server)
 	}

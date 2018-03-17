@@ -21,8 +21,7 @@ import (
 	log "github.com/AlexStocks/log4go"
 )
 
-type EchoPackageHandler struct {
-}
+type EchoPackageHandler struct{}
 
 func NewEchoPackageHandler() *EchoPackageHandler {
 	return &EchoPackageHandler{}

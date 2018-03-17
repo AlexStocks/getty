@@ -5,7 +5,7 @@
     <!-- level is (:?FINEST|FINE|DEBUG|TRACE|INFO|WARNING|ERROR) -->
     <level>DEBUG</level>
   </filter>
-  <filter enabled="false">
+  <filter enabled="true">
     <tag>debug_file</tag>
     <type>file</type>
     <level>DEBUG</level>
