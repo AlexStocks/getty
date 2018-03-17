@@ -57,6 +57,10 @@ type Server struct {
 // NewTCServer builds a tcp server.
 // @addr server listen address.
 func NewTCPServer(addr string) *Server {
+	if addr == "" {
+		panic(fmt.Sprintf("@addr:%s", addr))
+	}
+
 	return &Server{
 		endPointType: TCP_SERVER,
 		done:         make(chan gxsync.Empty),
@@ -67,6 +71,10 @@ func NewTCPServer(addr string) *Server {
 // NewUDPServer builds a unconnected udp server.
 // @addr server listen address.
 func NewUDPPServer(addr string) *Server {
+	if addr == "" {
+		panic(fmt.Sprintf("@addr:%s", addr))
+	}
+
 	return &Server{
 		endPointType: UDP_SERVER,
 		done:         make(chan gxsync.Empty),
@@ -78,6 +86,10 @@ func NewUDPPServer(addr string) *Server {
 // @addr server listen address.
 // @path: websocket request url path
 func NewWSServer(addr string, path string) *Server {
+	if addr == "" {
+		panic(fmt.Sprintf("@addr:%s", addr))
+	}
+
 	return &Server{
 		endPointType: WS_SERVER,
 		done:         make(chan gxsync.Empty),
@@ -93,6 +105,10 @@ func NewWSServer(addr string, path string) *Server {
 // @privateKey: server private key(contains its public key)
 // @caCert: root certificate file. to verify the legitimacy of client. it can be nil.
 func NewWSSServer(addr, path, cert, privateKey, caCert string) *Server {
+	if addr == "" || cert == "" || privateKey == "" || caCert == "" {
+		panic(fmt.Sprintf("@addr:%s, @cert:%s, @privateKey:%s, @caCert:%s", addr, cert, privateKey, caCert))
+	}
+
 	return &Server{
 		endPointType: WSS_SERVER,
 		done:         make(chan gxsync.Empty),

@@ -113,8 +113,8 @@ func NewUDPClient(connNum int, connInterval time.Duration, serverAddr string) *C
 // @connInterval is reconnect sleep interval when getty fails to connect the server.
 // @serverAddr is server address. its prefix should be "ws://".
 func NewWSClient(connNum int, connInterval time.Duration, serverAddr string) *Client {
-	if connNum <= 0 {
-		connNum = 1
+	if connNum <= 0 || serverAddr == "" {
+		panic(fmt.Sprintf("@connNum:%d, @serverAddr:%s", connNum, serverAddr))
 	}
 	if connInterval < defaultInterval {
 		connInterval = defaultInterval
@@ -142,6 +142,9 @@ func NewWSClient(connNum int, connInterval time.Duration, serverAddr string) *Cl
 // @privateKey is client private key(contains its public key). it can be empty.
 // @caCert is the root certificate file to verify the legitimacy of server
 func NewWSSClient(connNum int, connInterval time.Duration, serverAddr string, cert string) *Client {
+	if connNum <= 0 || serverAddr == "" || cert == "" {
+		panic(fmt.Sprintf("@connNum:%d, @serverAddr:%s, @cert:%s", connNum, serverAddr, cert))
+	}
 
 	if connNum <= 0 {
 		connNum = 1
