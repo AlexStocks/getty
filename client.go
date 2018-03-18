@@ -132,7 +132,7 @@ func (c *client) dialTCP() Session {
 			return newTCPSession(conn, c.endPointType)
 		}
 
-		log.Info("net.DialTimeout(addr:%s, timeout:%v) = error{%v}", c.addr, err)
+		log.Info("net.DialTimeout(addr:%s, timeout:%v) = error{%s}", c.addr, err)
 		time.Sleep(connInterval)
 	}
 }
@@ -159,7 +159,7 @@ func (c *client) dialUDP() Session {
 			return newUDPSession(conn, c.endPointType)
 		}
 
-		log.Info("net.DialTimeout(addr:%s, timeout:%v) = error{%v}", c.addr, err)
+		log.Info("net.DialTimeout(addr:%s, timeout:%v) = error{%s}", c.addr, err)
 		time.Sleep(connInterval)
 	}
 }
@@ -178,7 +178,7 @@ func (c *client) dialWS() Session {
 			return nil
 		}
 		conn, _, err = dialer.Dial(c.addr, nil)
-		log.Info("websocket.dialer.Dial(addr:%s) = error{%v}", c.addr, err)
+		log.Info("websocket.dialer.Dial(addr:%s) = error:%s", c.addr, err)
 		if err == nil && conn.LocalAddr().String() == conn.RemoteAddr().String() {
 			err = errSelfConnect
 		}
@@ -191,7 +191,7 @@ func (c *client) dialWS() Session {
 			return ss
 		}
 
-		log.Info("websocket.dialer.Dial(addr:%s) = error{%v}", c.addr, err)
+		log.Info("websocket.dialer.Dial(addr:%s) = error:%s", c.addr, err)
 		time.Sleep(connInterval)
 	}
 }
@@ -217,7 +217,7 @@ func (c *client) dialWSS() Session {
 	if c.cert != "" {
 		certPEMBlock, err := ioutil.ReadFile(c.cert)
 		if err != nil {
-			panic(fmt.Sprintf("ioutil.ReadFile(cert:%s) = error{%#v}", c.cert, err))
+			panic(fmt.Sprintf("ioutil.ReadFile(cert:%s) = error{%s}", c.cert, err))
 		}
 
 		var cert tls.Certificate
@@ -239,7 +239,7 @@ func (c *client) dialWSS() Session {
 	for _, c := range config.Certificates {
 		roots, err = x509.ParseCertificates(c.Certificate[len(c.Certificate)-1])
 		if err != nil {
-			panic(fmt.Sprintf("error parsing server's root cert: %v\n", err))
+			panic(fmt.Sprintf("error parsing server's root cert: %s\n", err))
 		}
 		for _, root = range roots {
 			certPool.AddCert(root)
@@ -268,7 +268,7 @@ func (c *client) dialWSS() Session {
 			return ss
 		}
 
-		log.Info("websocket.dialer.Dial(addr:%s) = error{%v}", c.addr, err)
+		log.Info("websocket.dialer.Dial(addr:%s) = error{%s}", c.addr, err)
 		time.Sleep(connInterval)
 	}
 }

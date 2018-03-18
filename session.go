@@ -310,7 +310,7 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 			const size = 64 << 10
 			rBuf := make([]byte, size)
 			rBuf = rBuf[:runtime.Stack(rBuf, false)]
-			log.Error("[session.WritePkg] panic session %s: err=%#v\n%s", s.sessionToken(), r, rBuf)
+			log.Error("[session.WritePkg] panic session %s: err=%s\n%s", s.sessionToken(), r, rBuf)
 		}
 	}()
 
@@ -423,7 +423,7 @@ func (s *session) handleLoop() {
 			const size = 64 << 10
 			rBuf := make([]byte, size)
 			rBuf = rBuf[:runtime.Stack(rBuf, false)]
-			log.Error("[session.handleLoop] panic session %s: err=%#v\n%s", s.sessionToken(), r, rBuf)
+			log.Error("[session.handleLoop] panic session %s: err=%s\n%s", s.sessionToken(), r, rBuf)
 		}
 
 		grNum = atomic.AddInt32(&(s.grNum), -1)
@@ -471,7 +471,7 @@ LOOP:
 		case outPkg = <-s.wQ:
 			if flag {
 				if err = s.writer.Write(s, outPkg); err != nil {
-					log.Error("%s, [session.handleLoop] = error{%+v}", s.sessionToken(), err)
+					log.Error("%s, [session.handleLoop] = error{%s}", s.sessionToken(), err)
 					s.stop()
 					flag = false
 					// break LOOP
@@ -487,7 +487,7 @@ LOOP:
 				if wsFlag {
 					err = wsConn.writePing()
 					if err != nil {
-						log.Warn("wsConn.writePing() = error{%#v}", err)
+						log.Warn("wsConn.writePing() = error{%s}", err)
 					}
 				}
 				s.listener.OnCron(s)
@@ -509,7 +509,7 @@ func (s *session) handlePackage() {
 			const size = 64 << 10
 			rBuf := make([]byte, size)
 			rBuf = rBuf[:runtime.Stack(rBuf, false)]
-			log.Error("[session.handlePackage] panic session %s: err=%#v\n%s", s.sessionToken(), r, rBuf)
+			log.Error("[session.handlePackage] panic session %s: err=%s\n%s", s.sessionToken(), r, rBuf)
 		}
 
 		grNum = atomic.AddInt32(&(s.grNum), -1)
@@ -517,7 +517,7 @@ func (s *session) handlePackage() {
 		s.stop()
 		// if s.errFlag {
 		if err != nil {
-			log.Error("%s, [session.handlePackage] error{%#v}", s.sessionToken(), err)
+			log.Error("%s, [session.handlePackage] error{%s}", s.sessionToken(), err)
 			s.listener.OnError(s, err)
 		}
 	}()
@@ -572,7 +572,7 @@ func (s *session) handleTCPPackage() error {
 				if nerr, ok = err.(net.Error); ok && nerr.Timeout() {
 					break
 				}
-				log.Error("%s, [session.conn.read] = error{%#v}", s.sessionToken(), err)
+				log.Error("%s, [session.conn.read] = error{%s}", s.sessionToken(), err)
 				// for (Codec)OnErr
 				// s.errFlag = true
 				exit = true
@@ -596,7 +596,7 @@ func (s *session) handleTCPPackage() error {
 				err = ErrMsgTooLong
 			}
 			if err != nil {
-				log.Warn("%s, [session.handleTCPPackage] = len{%d}, error{%+v}", s.sessionToken(), pkgLen, err)
+				log.Warn("%s, [session.handleTCPPackage] = len{%d}, error{%s}", s.sessionToken(), pkgLen, err)
 				// for (Codec)OnErr
 				// s.errFlag = true
 				exit = true
@@ -648,17 +648,17 @@ func (s *session) handleUDPPackage() error {
 			continue
 		}
 		if err != nil {
-			log.Error("%s, [session.handleUDPPackage] = len{%d}, error{%+v}", s.sessionToken(), bufLen, err)
+			log.Error("%s, [session.handleUDPPackage] = len{%d}, error{%s}", s.sessionToken(), bufLen, err)
 			break
 		}
 
 		pkg, pkgLen, err = s.reader.Read(s, buf[:bufLen])
-		gxlog.CInfo("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%#v", pkg, pkgLen, err)
+		gxlog.CInfo("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%s", pkg, pkgLen, err)
 		if err == nil && s.maxMsgLen > 0 && bufLen > int(s.maxMsgLen) {
 			err = ErrMsgTooLong
 		}
 		if err != nil {
-			log.Warn("%s, [session.handleUDPPackage] = len{%d}, error{%+v}", s.sessionToken(), pkgLen, err)
+			log.Warn("%s, [session.handleUDPPackage] = len{%d}, error{%s}", s.sessionToken(), pkgLen, err)
 			continue
 		}
 		s.UpdateActive()
@@ -691,7 +691,7 @@ func (s *session) handleWSPackage() error {
 			continue
 		}
 		if err != nil {
-			log.Warn("%s, [session.handleWSPackage] = error{%+v}", s.sessionToken(), err)
+			log.Warn("%s, [session.handleWSPackage] = error{%s}", s.sessionToken(), err)
 			// s.errFlag = true
 			return err
 		}
@@ -702,7 +702,7 @@ func (s *session) handleWSPackage() error {
 				err = ErrMsgTooLong
 			}
 			if err != nil {
-				log.Warn("%s, [session.handleWSPackage] = len{%d}, error{%+v}", s.sessionToken(), length, err)
+				log.Warn("%s, [session.handleWSPackage] = len{%d}, error{%s}", s.sessionToken(), length, err)
 				continue
 			}
 			s.rQ <- unmarshalPkg

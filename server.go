@@ -119,7 +119,7 @@ func (s *server) stop() {
 				if err = s.server.Shutdown(ctx); err != nil {
 					// 如果下面内容输出为：server shutdown ctx: context deadline exceeded，
 					// 则说明有未处理完的active connections。
-					log.Error("server shutdown ctx:%#v", err)
+					log.Error("server shutdown ctx:%s error:%s", ctx, err)
 				}
 			}
 			s.server = nil
@@ -309,7 +309,7 @@ func (s *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Warn("upgrader.Upgrader(http.Request{%#v}) = error{%#v}", r, err)
+		log.Warn("upgrader.Upgrader(http.Request{%#v}) = error{%s}", r, err)
 		return
 	}
 	if conn.RemoteAddr().String() == conn.LocalAddr().String() {
@@ -321,7 +321,7 @@ func (s *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 	err = s.newSession(ss)
 	if err != nil {
 		conn.Close()
-		log.Warn("server{%s}.newSession(ss{%#v}) = err {%#v}", s.server.addr, ss, err)
+		log.Warn("server{%s}.newSession(ss{%#v}) = err {%s}", s.server.addr, ss, err)
 		return
 	}
 	if ss.(*session).maxMsgLen > 0 {
@@ -355,7 +355,7 @@ func (s *server) runWSEventLoop(newSession NewSessionCallback) {
 		s.lock.Unlock()
 		err = server.Serve(s.streamListener)
 		if err != nil {
-			log.Error("http.server.Serve(addr{%s}) = err{%#v}", s.addr, err)
+			log.Error("http.server.Serve(addr{%s}) = err{%s}", s.addr, err)
 			// panic(err)
 		}
 	}()
@@ -378,7 +378,7 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 		defer s.wg.Done()
 
 		if certificate, err = tls.LoadX509KeyPair(s.cert, s.privateKey); err != nil {
-			panic(fmt.Sprintf("tls.LoadX509KeyPair(cert{%s}, privateKey{%s}) = err{%#v}", s.cert, s.privateKey, err))
+			panic(fmt.Sprintf("tls.LoadX509KeyPair(cert{%s}, privateKey{%s}) = err{%s}", s.cert, s.privateKey, err))
 			return
 		}
 		config = &tls.Config{
@@ -391,7 +391,7 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 		if s.caCert != "" {
 			certPem, err = ioutil.ReadFile(s.caCert)
 			if err != nil {
-				panic(fmt.Errorf("ioutil.ReadFile(certFile{%s}) = err{%#v}", s.caCert, err))
+				panic(fmt.Errorf("ioutil.ReadFile(certFile{%s}) = err{%s}", s.caCert, err))
 			}
 			certPool = x509.NewCertPool()
 			if ok := certPool.AppendCertsFromPEM(certPem); !ok {
@@ -416,7 +416,7 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 		s.lock.Unlock()
 		err = server.Serve(tls.NewListener(s.streamListener, config))
 		if err != nil {
-			log.Error("http.server.Serve(addr{%s}) = err{%#v}", s.addr, err)
+			log.Error("http.server.Serve(addr{%s}) = err{%s}", s.addr, err)
 			panic(err)
 		}
 	}()
@@ -426,7 +426,7 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 // @newSession: new connection callback
 func (s *server) RunEventLoop(newSession NewSessionCallback) {
 	if err := s.listen(); err != nil {
-		panic(fmt.Errorf("server.listen() = error:%#v", err))
+		panic(fmt.Errorf("server.listen() = error:%s", err))
 	}
 
 	switch s.endPointType {

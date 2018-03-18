@@ -246,7 +246,7 @@ func (t *gettyTCPConn) read(p []byte) (int, error) {
 	}
 
 	length, err = t.reader.Read(p)
-	log.Debug("now:%s, length:%d, err:%#v", currentTime, length, err)
+	log.Debug("now:%s, length:%d, err:%s", currentTime, length, err)
 	atomic.AddUint32(&t.readCount, uint32(length))
 	return length, err
 }
@@ -278,7 +278,7 @@ func (t *gettyTCPConn) Write(pkg interface{}) (int, error) {
 
 	atomic.AddUint32(&t.writeCount, (uint32)(len(p)))
 	length, err := t.writer.Write(p)
-	log.Debug("now:%s, length:%d, err:%#v", currentTime, length, err)
+	log.Debug("now:%s, length:%d, err:%s", currentTime, length, err)
 	return length, err
 }
 
@@ -291,7 +291,7 @@ func (t *gettyTCPConn) close(waitSec int) {
 	if t.conn != nil {
 		if writer, ok := t.writer.(*snappy.Writer); ok {
 			if err := writer.Close(); err != nil {
-				log.Error("snappy.Writer.Close() = error{%v}", err)
+				log.Error("snappy.Writer.Close() = error{%s}", err)
 			}
 		}
 		t.conn.(*net.TCPConn).SetLinger(waitSec)
@@ -392,7 +392,7 @@ func (u *gettyUDPConn) read(p []byte) (int, *net.UDPAddr, error) {
 	} else {
 		length, addr, err = u.conn.ReadFromUDP(p)
 	}
-	log.Debug("now:%s, length:%d, err:%#v", currentTime, length, err)
+	log.Debug("now:%s, length:%d, err:%s", currentTime, length, err)
 	if err == nil {
 		atomic.AddUint32(&u.readCount, uint32(length))
 	}
