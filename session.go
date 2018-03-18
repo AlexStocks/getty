@@ -77,7 +77,7 @@ type session struct {
 }
 
 func newSession(endPointType EndPointType, conn Connection) *session {
-	session := &session{
+	ss := &session{
 		name:         defaultSessionName,
 		endPointType: endPointType,
 		maxMsgLen:    maxReadBufLen,
@@ -88,11 +88,11 @@ func newSession(endPointType EndPointType, conn Connection) *session {
 		attrs:        gxcontext.NewValuesContext(nil),
 	}
 
-	session.Connection.setSession(session)
-	session.SetWriteTimeout(netIOTimeout)
-	session.SetReadTimeout(netIOTimeout)
+	ss.Connection.setSession(ss)
+	ss.SetWriteTimeout(netIOTimeout)
+	ss.SetReadTimeout(netIOTimeout)
 
-	return session
+	return ss
 }
 
 func newTCPSession(conn net.Conn, endPointType EndPointType) Session {
@@ -150,7 +150,7 @@ func (s *session) Conn() net.Conn {
 	return nil
 }
 
-func (s *session) Type() EndPointType {
+func (s *session) EndPointType() EndPointType {
 	return s.endPointType
 }
 

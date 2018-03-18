@@ -387,7 +387,7 @@ func (u *gettyUDPConn) read(p []byte) (int, *net.UDPAddr, error) {
 		}
 	}
 
-	if u.ss.Type() == CONNECTED_UDP_CLIENT {
+	if u.ss.EndPointType() == UDP_CLIENT {
 		length, err = u.conn.Read(p)
 	} else {
 		length, addr, err = u.conn.ReadFromUDP(p)
@@ -418,7 +418,7 @@ func (u *gettyUDPConn) Write(udpCtx interface{}) (int, error) {
 	if buf, ok = ctx.Pkg.([]byte); !ok {
 		return 0, fmt.Errorf("illegal @udpCtx.Pkg{%#v} type", udpCtx)
 	}
-	if u.ss.Type() == UDP_SERVER || u.ss.Type() == UNCONNECTED_UDP_CLIENT {
+	if u.ss.EndPointType() == UDP_CLIENT {
 		peerAddr = ctx.PeerAddr
 		if peerAddr == nil {
 			return 0, ErrNullPeerAddr

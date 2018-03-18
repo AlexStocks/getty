@@ -66,7 +66,7 @@ func newClient(t EndPointType, opts ...ClientOption) *client {
 
 	c.init(opts...)
 
-	if t != UNCONNECTED_UDP_CLIENT && c.number <= 0 || c.addr == "" {
+	if c.number <= 0 || c.addr == "" {
 		panic(fmt.Sprintf("@connNum:%d, @serverAddr:%s", c.number, c.addr))
 	}
 
@@ -80,20 +80,9 @@ func NewTCPClient(opts ...ClientOption) Client {
 	return newClient(TCP_CLIENT, opts...)
 }
 
-// NewUdpClient function builds a udp client
+// NewUdpClient function builds a connected udp client
 func NewUDPClient(opts ...ClientOption) Client {
-	c := newClient(UNCONNECTED_UDP_CLIENT, opts...)
-
-	if len(c.addr) != 0 {
-		if c.number <= 0 {
-			panic(fmt.Sprintf("getty will build a preconected connection by @serverAddr:%s while @connNum is %d",
-				c.addr, c.number))
-		}
-
-		c.endPointType = CONNECTED_UDP_CLIENT
-	}
-
-	return c
+	return newClient(UDP_CLIENT, opts...)
 }
 
 // NewWsClient function builds a ws client.
@@ -121,7 +110,7 @@ func NewWSSClient(opts ...ClientOption) Client {
 	return c
 }
 
-func (c client) Type() EndPointType {
+func (c client) EndPointType() EndPointType {
 	return c.endPointType
 }
 
@@ -162,13 +151,9 @@ func (c *client) dialUDP() Session {
 		if c.IsClosed() {
 			return nil
 		}
-		if UNCONNECTED_UDP_CLIENT == c.endPointType {
-			conn, err = net.ListenUDP("udp", localAddr)
-		} else {
-			conn, err = net.DialUDP("udp", localAddr, peerAddr)
-			if err == nil && conn.LocalAddr().String() == conn.RemoteAddr().String() {
-				err = errSelfConnect
-			}
+		conn, err = net.DialUDP("udp", localAddr, peerAddr)
+		if err == nil && conn.LocalAddr().String() == conn.RemoteAddr().String() {
+			err = errSelfConnect
 		}
 		if err == nil {
 			return newUDPSession(conn, c.endPointType)
@@ -292,7 +277,7 @@ func (c *client) dial() Session {
 	switch c.endPointType {
 	case TCP_CLIENT:
 		return c.dialTCP()
-	case UNCONNECTED_UDP_CLIENT, CONNECTED_UDP_CLIENT:
+	case UDP_CLIENT:
 		return c.dialUDP()
 	case WS_CLIENT:
 		return c.dialWS()
@@ -378,9 +363,9 @@ func (c *client) RunEventLoop(newSession NewSessionCallback) {
 			}
 			times = 0
 			c.connect()
-			if c.endPointType == UNCONNECTED_UDP_CLIENT || c.endPointType == CONNECTED_UDP_CLIENT {
-				break
-			}
+			//if c.endPointType == UDP_CLIENT {
+			//	break
+			//}
 			// time.Sleep(c.interval) // build c.number connections asap
 		}
 	}()

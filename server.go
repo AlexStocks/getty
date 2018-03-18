@@ -75,9 +75,9 @@ func NewTCPServer(opts ...ServerOption) Server {
 	return newServer(TCP_SERVER, opts...)
 }
 
-// NewUDPServer builds a unconnected udp server.
-func NewUDPPServer(opts ...ServerOption) Server {
-	return newServer(UDP_SERVER, opts...)
+// NewUDPEndPoint builds a unconnected udp server.
+func NewUDPPEndPoint(opts ...ServerOption) Server {
+	return newServer(UDP_ENDPOINT, opts...)
 }
 
 // NewWSServer builds a websocket server.
@@ -97,7 +97,7 @@ func NewWSSServer(opts ...ServerOption) Server {
 	return s
 }
 
-func (s server) Type() EndPointType {
+func (s server) EndPointType() EndPointType {
 	return s.endPointType
 }
 
@@ -195,7 +195,7 @@ func (s *server) listen() error {
 	switch s.endPointType {
 	case TCP_SERVER, WS_SERVER, WSS_SERVER:
 		return s.listenTCP()
-	case UDP_SERVER:
+	case UDP_ENDPOINT:
 		return s.listenUDP()
 	}
 
@@ -432,7 +432,7 @@ func (s *server) RunEventLoop(newSession NewSessionCallback) {
 	switch s.endPointType {
 	case TCP_SERVER:
 		s.runTcpEventLoop(newSession)
-	case UDP_SERVER:
+	case UDP_ENDPOINT:
 		s.runUDPEventLoop(newSession)
 	case WS_SERVER:
 		s.runWSEventLoop(newSession)

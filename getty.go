@@ -126,7 +126,7 @@ type Session interface {
 	Stat() string
 	IsClosed() bool
 	// get endpoint type
-	Type() EndPointType
+	EndPointType() EndPointType
 
 	SetMaxMsgLen(int)
 	SetName(string)
@@ -157,7 +157,7 @@ type Session interface {
 
 type EndPoint interface {
 	// get endpoint type
-	Type() EndPointType
+	EndPointType() EndPointType
 	// run event loop and serves client request.
 	RunEventLoop(newSession NewSessionCallback)
 	// check the endpoint has been closed
