@@ -169,6 +169,7 @@ func (c *client) dialUDP() Session {
 		copy(buf, []byte(pingPacket))
 		conn.SetWriteDeadline(wheel.Now().Add(1e9))
 		if length, err = conn.Write(buf[:len(pingPacket)]); err != nil {
+			conn.Close()
 			log.Warn("conn.Write(%s) = {length:%d, err:%s}", pingPacket, length, err)
 			time.Sleep(connInterval)
 			continue
@@ -180,6 +181,7 @@ func (c *client) dialUDP() Session {
 		}
 		if err != nil {
 			log.Info("conn{%#v}.Read() = {length:%d, err:%s}", conn, length, err)
+			conn.Close()
 			time.Sleep(connInterval)
 			continue
 		}
