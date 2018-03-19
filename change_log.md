@@ -14,6 +14,11 @@
 ## develop history ##
 ---
 
+- 2018/03/18
+    > improvement
+    * nerr -> netError
+    * check udp connection alive after connect()
+    
 - 2018/03/17
     > improvement
     * add end point type
@@ -284,7 +289,7 @@
     >
     > 4 reconstruct session output token string session.go:(Session)sessionToken
     >
-    > 5 use err instead of nerr in session.go:(Session)handlePackage:defer:OnError
+    > 5 use err instead of netError in session.go:(Session)handlePackage:defer:OnError
     >
     > 6 version: 0.2.07
 

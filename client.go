@@ -22,6 +22,7 @@ import (
 )
 
 import (
+	"github.com/AlexStocks/goext/log"
 	"github.com/AlexStocks/goext/sync"
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
@@ -31,6 +32,7 @@ const (
 	connInterval   = 3e9 // 3s
 	connectTimeout = 5e9
 	maxTimes       = 10
+	pingPacket     = "ping"
 )
 
 /////////////////////////////////////////
@@ -143,8 +145,11 @@ func (c *client) dialUDP() Session {
 		conn      *net.UDPConn
 		localAddr *net.UDPAddr
 		peerAddr  *net.UDPAddr
+		length    int
+		buf       []byte
 	)
 
+	buf = make([]byte, 128)
 	localAddr = &net.UDPAddr{IP: net.IPv4zero, Port: 0}
 	peerAddr, _ = net.ResolveUDPAddr("udp", c.addr)
 	for {
@@ -154,6 +159,23 @@ func (c *client) dialUDP() Session {
 		conn, err = net.DialUDP("udp", localAddr, peerAddr)
 		if err == nil && conn.LocalAddr().String() == conn.RemoteAddr().String() {
 			err = errSelfConnect
+		}
+
+		// check connection alive by write/read action
+		copy(buf, []byte(pingPacket))
+		conn.SetWriteDeadline(wheel.Now().Add(1e9))
+		if length, err = conn.Write(buf[:len(pingPacket)]); err != nil {
+			log.Warn("conn.Write(%s) = {length:%d, err:%s}", pingPacket, length, err)
+			continue
+		}
+		conn.SetReadDeadline(wheel.Now().Add(1e9))
+		length, err = conn.Read(buf)
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			err = nil
+		}
+		if err != nil {
+			log.Info("conn{%#v}.Read() = err{%s}", conn, err)
+			continue
 		}
 		if err == nil {
 			return newUDPSession(conn, c.endPointType)
