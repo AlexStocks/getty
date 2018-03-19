@@ -11,6 +11,7 @@ package main
 
 import (
 	"math/rand"
+	"net"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,7 +20,6 @@ import (
 import (
 	"github.com/AlexStocks/getty"
 	log "github.com/AlexStocks/log4go"
-	"net"
 )
 
 var (
@@ -51,18 +51,18 @@ func (this *EchoClient) isAvailable() bool {
 }
 
 func (this *EchoClient) close() {
-	client.lock.Lock()
-	if client.gettyClient != nil {
+	this.lock.Lock()
+	if this.gettyClient != nil {
 		for _, s := range this.sessions {
 			log.Info("close client session{%s, last active:%s, request number:%d}",
 				s.session.Stat(), s.session.GetActive().String(), s.reqNum)
 			s.session.Close()
 		}
-		client.gettyClient.Close()
-		client.gettyClient = nil
-		client.sessions = client.sessions[:0]
+		this.gettyClient.Close()
+		this.gettyClient = nil
+		this.sessions = this.sessions[:0]
 	}
-	client.lock.Unlock()
+	this.lock.Unlock()
 }
 
 func (this *EchoClient) selectSession() getty.Session {
@@ -86,6 +86,7 @@ func (this *EchoClient) addSession(session getty.Session) {
 
 	this.lock.Lock()
 	this.sessions = append(this.sessions, &clientEchoSession{session: session})
+	log.Debug("after add session{%s}, session number:%d", session.Stat(), len(this.sessions))
 	this.lock.Unlock()
 }
 
@@ -170,4 +171,5 @@ func (this *EchoClient) heartbeat(session getty.Session) {
 
 		this.removeSession(session)
 	}
+	log.Debug("session.WritePkg(session{%s}, context{%#v})", session.Stat(), ctx)
 }

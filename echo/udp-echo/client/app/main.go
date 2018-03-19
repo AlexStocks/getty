@@ -36,11 +36,12 @@ const (
 )
 
 const (
-	WritePkgTimeout = 1e8
+	WritePkgTimeout = 1e9
 )
 
 var (
-	client EchoClient
+	connectedClient   EchoClient
+	unconnectedClient EchoClient
 )
 
 ////////////////////////////////////////////////////////////////////
@@ -53,8 +54,8 @@ func main() {
 	initProfiling()
 
 	initClient()
-	gxlog.CInfo("%s starts successfull! its version=%s\n", conf.AppName, Version)
 	log.Info("%s starts successfull! its version=%s\n", conf.AppName, Version)
+	gxlog.CInfo("%s starts successfull! its version=%s\n", conf.AppName, Version)
 
 	go test()
 
@@ -75,25 +76,42 @@ func initProfiling() {
 
 func newSession(session getty.Session) error {
 	var (
-		ok      bool
-		udpConn *net.UDPConn
+		ok          bool
+		udpConn     *net.UDPConn
+		gettyClient getty.Client
+		client      *EchoClient
 	)
+
+	if gettyClient, ok = session.EndPoint().(getty.Client); !ok {
+		panic(fmt.Sprintf("the endpoint type of session{%#v} is not getty.Client", session))
+	}
+
+	switch gettyClient {
+	case connectedClient.gettyClient:
+		client = &connectedClient
+
+	case unconnectedClient.gettyClient:
+		client = &unconnectedClient
+
+	default:
+		panic(fmt.Sprintf("illegal session{%#v} endpoint", session))
+	}
 
 	if conf.GettySessionParam.CompressEncoding {
 		session.SetCompressType(getty.CompressZip)
 	}
 
 	if udpConn, ok = session.Conn().(*net.UDPConn); !ok {
-		panic(fmt.Sprintf("%s, session.conn{%#v} is not tcp connection\n", session.Stat(), session.Conn()))
+		panic(fmt.Sprintf("%s, session.conn{%#v} is not udp connection\n", session.Stat(), session.Conn()))
 	}
 
 	udpConn.SetReadBuffer(conf.GettySessionParam.UdpRBufSize)
 	udpConn.SetWriteBuffer(conf.GettySessionParam.UdpWBufSize)
 
-	session.SetMaxMsgLen(conf.MaxMsgLen)
 	session.SetName(conf.GettySessionParam.SessionName)
+	session.SetMaxMsgLen(conf.GettySessionParam.MaxMsgLen)
 	session.SetPkgHandler(NewEchoPackageHandler())
-	session.SetEventListener(newEchoMessageHandler())
+	session.SetEventListener(newEchoMessageHandler(client))
 	session.SetRQLen(conf.GettySessionParam.PkgRQSize)
 	session.SetWQLen(conf.GettySessionParam.PkgWQSize)
 	session.SetReadTimeout(conf.GettySessionParam.udpReadTimeout)
@@ -101,21 +119,28 @@ func newSession(session getty.Session) error {
 	session.SetCronPeriod((int)(conf.heartbeatPeriod.Nanoseconds() / 1e6))
 	session.SetWaitTime(conf.GettySessionParam.waitTimeout)
 	log.Debug("client new session:%s\n", session.Stat())
+	gxlog.CDebug("client new session:%s\n", session.Stat())
 
 	return nil
 }
 
 func initClient() {
-	client.gettyClient = getty.NewUDPClient(
+	unconnectedClient.gettyClient = getty.NewUDPPEndPoint(
+		getty.WithLocalAddress(gxnet.HostAddress(net.IPv4zero.String(), 0)),
+	)
+	unconnectedClient.gettyClient.RunEventLoop(newSession)
+	unconnectedClient.serverAddr = net.UDPAddr{IP: net.ParseIP(conf.ServerHost), Port: conf.ServerPort}
+
+	connectedClient.gettyClient = getty.NewUDPClient(
 		getty.WithServerAddress(gxnet.HostAddress(conf.ServerHost, conf.ServerPort)),
 		getty.WithConnectionNumber((int)(conf.ConnectionNum)),
 	)
-	client.gettyClient.RunEventLoop(newSession)
-	client.serverAddr = net.UDPAddr{IP: net.ParseIP(conf.ServerHost), Port: conf.ServerPort}
+	connectedClient.gettyClient.RunEventLoop(newSession)
 }
 
 func uninitClient() {
-	client.close()
+	connectedClient.close()
+	unconnectedClient.close()
 }
 
 func initSignal() {
@@ -147,7 +172,7 @@ func initSignal() {
 	}
 }
 
-func echo(serverAddr *net.UDPAddr) {
+func echo(client *EchoClient) {
 	var (
 		pkg EchoPackage
 		ctx getty.UDPContext
@@ -162,7 +187,7 @@ func echo(serverAddr *net.UDPAddr) {
 	pkg.H.Len = (uint16)(len(pkg.B)) + 1
 
 	ctx.Pkg = &pkg
-	ctx.PeerAddr = serverAddr
+	ctx.PeerAddr = &(client.serverAddr)
 
 	if session := client.selectSession(); session != nil {
 		err := session.WritePkg(ctx, WritePkgTimeout)
@@ -174,27 +199,29 @@ func echo(serverAddr *net.UDPAddr) {
 	}
 }
 
-func test() {
+func testEchoClient(client *EchoClient) {
 	var (
-		cost       int64
-		serverAddr net.UDPAddr
-		counter    gxtime.CountWatch
+		cost    int64
+		counter gxtime.CountWatch
 	)
 
 	for {
-		if client.isAvailable() {
+		if unconnectedClient.isAvailable() {
 			break
 		}
-		time.Sleep(1e6)
+		time.Sleep(3e9)
 	}
-
-	serverAddr = net.UDPAddr{IP: net.ParseIP(conf.ServerHost), Port: conf.ServerPort}
 
 	counter.Start()
 	for i := 0; i < conf.EchoTimes; i++ {
-		echo(&serverAddr)
+		echo(&unconnectedClient)
 	}
 	cost = counter.Count()
-	log.Info("after loop %d times, echo cost %d ms", conf.EchoTimes, cost/1e6)
-	gxlog.CInfo("after loop %d times, echo cost %d ms", conf.EchoTimes, cost/1e6)
+	log.Info("after loop %d times, client:%s echo cost %d ms",
+		conf.EchoTimes, client.gettyClient.EndPointType(), cost/1e6)
+}
+
+func test() {
+	testEchoClient(&unconnectedClient)
+	testEchoClient(&connectedClient)
 }

@@ -140,6 +140,10 @@ func (this *EchoPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
 		return 0, nil
 	}
 	this.B = (string)(buf.Next((int)(len)))
+	//if strings.HasPrefix(this.B, "Hello, getty!") {
+	//	gxlog.CError("idx:%d, body:%s", idx, this.B)
+	//	idx++
+	//}
 
 	return (int)(this.H.Len) + echoPkgHeaderLen, nil
 }

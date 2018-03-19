@@ -58,7 +58,7 @@ type (
 		ServerPort  int    `default:"10000"`
 		ProfilePort int    `default:"10086"`
 
-		// session pool
+		// client session pool
 		ConnectionNum int `default:"16"`
 
 		// heartbeat

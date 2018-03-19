@@ -33,26 +33,27 @@ type clientEchoSession struct {
 }
 
 type EchoMessageHandler struct {
+	client *EchoClient
 }
 
-func newEchoMessageHandler() *EchoMessageHandler {
-	return &EchoMessageHandler{}
+func newEchoMessageHandler(client *EchoClient) *EchoMessageHandler {
+	return &EchoMessageHandler{client: client}
 }
 
 func (this *EchoMessageHandler) OnOpen(session getty.Session) error {
-	client.addSession(session)
+	this.client.addSession(session)
 
 	return nil
 }
 
 func (this *EchoMessageHandler) OnError(session getty.Session, err error) {
 	log.Info("session{%s} got error{%v}, will be closed.", session.Stat(), err)
-	client.removeSession(session)
+	this.client.removeSession(session)
 }
 
 func (this *EchoMessageHandler) OnClose(session getty.Session) {
 	log.Info("session{%s} is closing......", session.Stat())
-	client.removeSession(session)
+	this.client.removeSession(session)
 }
 
 func (this *EchoMessageHandler) OnMessage(session getty.Session, udpCtx interface{}) {
@@ -68,11 +69,12 @@ func (this *EchoMessageHandler) OnMessage(session getty.Session, udpCtx interfac
 	}
 
 	log.Debug("get echo package{%s}", p)
-	client.updateSession(session)
+
+	this.client.updateSession(session)
 }
 
 func (this *EchoMessageHandler) OnCron(session getty.Session) {
-	clientEchoSession, err := client.getClientEchoSession(session)
+	clientEchoSession, err := this.client.getClientEchoSession(session)
 	if err != nil {
 		log.Error("client.getClientSession(session{%s}) = error{%#v}", session.Stat(), err)
 		return
@@ -80,9 +82,9 @@ func (this *EchoMessageHandler) OnCron(session getty.Session) {
 	if conf.sessionTimeout.Nanoseconds() < time.Since(session.GetActive()).Nanoseconds() {
 		log.Warn("session{%s} timeout{%s}, reqNum{%d}",
 			session.Stat(), time.Since(session.GetActive()).String(), clientEchoSession.reqNum)
-		// client.removeSession(session)
-		// return
+		this.client.removeSession(session)
+		return
 	}
 
-	client.heartbeat(session)
+	this.client.heartbeat(session)
 }
