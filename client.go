@@ -22,7 +22,6 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/goext/log"
 	"github.com/AlexStocks/goext/sync"
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
@@ -160,12 +159,18 @@ func (c *client) dialUDP() Session {
 		if err == nil && conn.LocalAddr().String() == conn.RemoteAddr().String() {
 			err = errSelfConnect
 		}
+		if err != nil {
+			log.Warn("net.DialTimeout(addr:%s, timeout:%v) = error{%s}", c.addr, err)
+			time.Sleep(connInterval)
+			continue
+		}
 
 		// check connection alive by write/read action
 		copy(buf, []byte(pingPacket))
 		conn.SetWriteDeadline(wheel.Now().Add(1e9))
 		if length, err = conn.Write(buf[:len(pingPacket)]); err != nil {
 			log.Warn("conn.Write(%s) = {length:%d, err:%s}", pingPacket, length, err)
+			time.Sleep(connInterval)
 			continue
 		}
 		conn.SetReadDeadline(wheel.Now().Add(1e9))
@@ -175,14 +180,12 @@ func (c *client) dialUDP() Session {
 		}
 		if err != nil {
 			log.Info("conn{%#v}.Read() = err{%s}", conn, err)
+			time.Sleep(connInterval)
 			continue
 		}
-		if err == nil {
-			return newUDPSession(conn, c.endPointType)
-		}
-
-		log.Info("net.DialTimeout(addr:%s, timeout:%v) = error{%s}", c.addr, err)
-		time.Sleep(connInterval)
+		//if err == nil {
+		return newUDPSession(conn, c.endPointType)
+		//}
 	}
 }
 
