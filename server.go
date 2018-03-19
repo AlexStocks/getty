@@ -22,15 +22,16 @@ import (
 )
 
 import (
+	"github.com/AlexStocks/goext/net"
 	"github.com/AlexStocks/goext/sync"
 	"github.com/AlexStocks/goext/time"
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
-	"github.com/pkg/errors"
+	jerrors "github.com/juju/errors"
 )
 
 var (
-	errSelfConnect        = errors.New("connect self!")
+	errSelfConnect        = jerrors.New("connect self!")
 	serverFastFailTimeout = gxtime.TimeSecondDuration(1)
 )
 
@@ -89,7 +90,7 @@ func NewWSServer(opts ...ServerOption) Server {
 func NewWSSServer(opts ...ServerOption) Server {
 	s := newServer(WSS_SERVER, opts...)
 
-	if s.addr == "" || s.cert == "" || s.privateKey == "" || s.caCert == "" {
+	if s.addr == "" || s.cert == "" || s.privateKey == "" {
 		panic(fmt.Sprintf("@addr:%s, @cert:%s, @privateKey:%s, @caCert:%s",
 			s.addr, s.cert, s.privateKey, s.caCert))
 	}
@@ -117,16 +118,15 @@ func (s *server) stop() {
 			if s.server != nil {
 				ctx, _ = context.WithTimeout(context.Background(), serverFastFailTimeout)
 				if err = s.server.Shutdown(ctx); err != nil {
-					// 如果下面内容输出为：server shutdown ctx: context deadline exceeded，
-					// 则说明有未处理完的active connections。
+					// if the log output is "shutdown ctx: context deadline exceeded"， it means that
+					// there are still some active connections.
 					log.Error("server shutdown ctx:%s error:%s", ctx, err)
 				}
 			}
 			s.server = nil
 			s.lock.Unlock()
 			if s.streamListener != nil {
-				// 把streamListener.Close放在这里，既能防止多次关闭调用，
-				// 又能及时让Server因accept返回错误而从RunEventLoop退出
+				// let the server exit asap when got error from RunEventLoop.
 				s.streamListener.Close()
 				s.streamListener = nil
 			}
@@ -158,7 +158,7 @@ func (s *server) listenTCP() error {
 
 	streamListener, err = net.Listen("tcp", s.addr)
 	if err != nil {
-		return errors.Wrapf(err, "net.Listen(tcp, addr:%s))", s.addr)
+		return jerrors.Annotatef(err, "net.Listen(tcp, addr:%s))", s.addr)
 	}
 
 	s.streamListener = streamListener
@@ -175,11 +175,11 @@ func (s *server) listenUDP() error {
 
 	localAddr, err = net.ResolveUDPAddr("udp", s.addr)
 	if err != nil {
-		return errors.Wrapf(err, "net.ResolveUDPAddr(udp, addr:%s)", s.addr)
+		return jerrors.Annotatef(err, "net.ResolveUDPAddr(udp, addr:%s)", s.addr)
 	}
 	pktListener, err = net.ListenUDP("udp", localAddr)
 	if err != nil {
-		return errors.Wrapf(err, "net.ListenUDP((udp, localAddr:%#v)", localAddr)
+		return jerrors.Annotatef(err, "net.ListenUDP((udp, localAddr:%#v)", localAddr)
 	}
 	// if err = setUDPSocketOptions(pktListener); err != nil {
 	//  	return errors.Wrapf(err, "setUDPSocketOptions(pktListener:%#v)", pktListener)
@@ -194,9 +194,9 @@ func (s *server) listenUDP() error {
 func (s *server) listen() error {
 	switch s.endPointType {
 	case TCP_SERVER, WS_SERVER, WSS_SERVER:
-		return s.listenTCP()
+		return jerrors.Trace(s.listenTCP())
 	case UDP_ENDPOINT:
-		return s.listenUDP()
+		return jerrors.Trace(s.listenUDP())
 	}
 
 	return nil
@@ -205,9 +205,9 @@ func (s *server) listen() error {
 func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 	conn, err := s.streamListener.Accept()
 	if err != nil {
-		return nil, err
+		return nil, jerrors.Trace(err)
 	}
-	if conn.RemoteAddr().String() == conn.LocalAddr().String() {
+	if gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 		log.Warn("conn.localAddr{%s} == conn.RemoteAddr", conn.LocalAddr().String(), conn.RemoteAddr().String())
 		return nil, errSelfConnect
 	}
@@ -216,7 +216,7 @@ func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 	err = newSession(ss)
 	if err != nil {
 		conn.Close()
-		return nil, err
+		return nil, jerrors.Trace(err)
 	}
 
 	return ss, nil
@@ -237,7 +237,8 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 				return
 			}
 			if delay != 0 {
-				time.Sleep(delay)
+				// time.Sleep(delay)
+				<-wheel.After(delay)
 			}
 			client, err = s.accept(newSession)
 			if err != nil {
@@ -252,7 +253,7 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 					}
 					continue
 				}
-				log.Warn("server{%s}.Accept() = err {%#v}", s.addr, err)
+				log.Warn("server{%s}.Accept() = err {%#v}", s.addr, jerrors.ErrorStack(err))
 				continue
 			}
 			delay = 0
@@ -355,7 +356,7 @@ func (s *server) runWSEventLoop(newSession NewSessionCallback) {
 		s.lock.Unlock()
 		err = server.Serve(s.streamListener)
 		if err != nil {
-			log.Error("http.server.Serve(addr{%s}) = err{%s}", s.addr, err)
+			log.Error("http.server.Serve(addr{%s}) = err{%s}", s.addr, jerrors.ErrorStack(err))
 			// panic(err)
 		}
 	}()
@@ -378,11 +379,12 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 		defer s.wg.Done()
 
 		if certificate, err = tls.LoadX509KeyPair(s.cert, s.privateKey); err != nil {
-			panic(fmt.Sprintf("tls.LoadX509KeyPair(cert{%s}, privateKey{%s}) = err{%s}", s.cert, s.privateKey, err))
+			panic(fmt.Sprintf("tls.LoadX509KeyPair(cert{%s}, privateKey{%s}) = err{%s}",
+				s.cert, s.privateKey, jerrors.ErrorStack(err)))
 			return
 		}
 		config = &tls.Config{
-			InsecureSkipVerify: true, // 不对对端的证书进行校验
+			InsecureSkipVerify: true, // do not verify peer cert
 			ClientAuth:         tls.NoClientCert,
 			NextProtos:         []string{"http/1.1"},
 			Certificates:       []tls.Certificate{certificate},
@@ -391,7 +393,7 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 		if s.caCert != "" {
 			certPem, err = ioutil.ReadFile(s.caCert)
 			if err != nil {
-				panic(fmt.Errorf("ioutil.ReadFile(certFile{%s}) = err{%s}", s.caCert, err))
+				panic(fmt.Errorf("ioutil.ReadFile(certFile{%s}) = err{%s}", s.caCert, jerrors.ErrorStack(err)))
 			}
 			certPool = x509.NewCertPool()
 			if ok := certPool.AppendCertsFromPEM(certPem); !ok {
@@ -416,7 +418,7 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 		s.lock.Unlock()
 		err = server.Serve(tls.NewListener(s.streamListener, config))
 		if err != nil {
-			log.Error("http.server.Serve(addr{%s}) = err{%s}", s.addr, err)
+			log.Error("http.server.Serve(addr{%s}) = err{%s}", s.addr, jerrors.ErrorStack(err))
 			panic(err)
 		}
 	}()
@@ -426,7 +428,7 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 // @newSession: new connection callback
 func (s *server) RunEventLoop(newSession NewSessionCallback) {
 	if err := s.listen(); err != nil {
-		panic(fmt.Errorf("server.listen() = error:%s", err))
+		panic(fmt.Errorf("server.listen() = error:%s", jerrors.ErrorStack(err)))
 	}
 
 	switch s.endPointType {

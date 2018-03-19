@@ -25,6 +25,7 @@ import (
 	"github.com/AlexStocks/goext/time"
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
+	jerrors "github.com/juju/errors"
 )
 
 const (
@@ -37,7 +38,7 @@ const (
 	defaultUDPSessionName = "udp-session"
 	defaultWSSessionName  = "ws-session"
 	defaultWSSSessionName = "wss-session"
-	outputFormat          = "session %s, Read Count: %d, Write Count: %d, Read Pkg Count: %d, Write Pkg Count: %d"
+	outputFormat          = "session %s, Read Bytes: %d, Write Bytes: %d, Read Pkgs: %d, Write Pkgs: %d"
 )
 
 /////////////////////////////////////////
@@ -47,6 +48,10 @@ const (
 var (
 	wheel = gxtime.NewWheel(gxtime.TimeMillisecondDuration(100), 1200) // wheel longest span is 2 minute
 )
+
+func GetTimeWheel() *gxtime.Wheel {
+	return wheel
+}
 
 // getty base session
 type session struct {
@@ -73,6 +78,8 @@ type session struct {
 	// goroutines sync
 	grNum int32
 	lock  sync.RWMutex
+
+	pool *Pool
 }
 
 func newSession(endPoint EndPoint, conn Connection) *session {
@@ -178,10 +185,10 @@ func (s *session) Stat() string {
 	return fmt.Sprintf(
 		outputFormat,
 		s.sessionToken(),
-		atomic.LoadUint32(&(conn.readCount)),
-		atomic.LoadUint32(&(conn.writeCount)),
-		atomic.LoadUint32(&(conn.readPkgCount)),
-		atomic.LoadUint32(&(conn.writePkgCount)),
+		atomic.LoadUint32(&(conn.readBytes)),
+		atomic.LoadUint32(&(conn.writeBytes)),
+		atomic.LoadUint32(&(conn.readPkgNum)),
+		atomic.LoadUint32(&(conn.writePkgNum)),
 	)
 }
 
@@ -244,6 +251,7 @@ func (s *session) SetRQLen(readQLen int) {
 	s.lock.Lock()
 	s.rQ = make(chan interface{}, readQLen)
 	log.Info("%s, [session.SetRQLen] rQ{len:%d, cap:%d}", s.Stat(), len(s.rQ), cap(s.rQ))
+	s.pool = NewPool(readQLen/2, 2, 1)
 	s.lock.Unlock()
 }
 
@@ -272,10 +280,14 @@ func (s *session) SetWaitTime(waitTime time.Duration) {
 
 // set attribute of key @session:key
 func (s *session) GetAttribute(key interface{}) interface{} {
-	var ret interface{}
 	s.lock.RLock()
-	ret = s.attrs.Get(key)
+	ret, flag := s.attrs.Get(key)
 	s.lock.RUnlock()
+
+	if !flag {
+		return nil
+	}
+
 	return ret
 }
 
@@ -294,11 +306,10 @@ func (s *session) RemoveAttribute(key interface{}) {
 }
 
 func (s *session) sessionToken() string {
-	return fmt.Sprintf("{%s:%s:%d:%s<->%s}", s.name, s.EndPoint().EndPointType(), s.ID(), s.LocalAddr(), s.RemoteAddr())
+	return fmt.Sprintf("{%s:%s:%d:%s<->%s}",
+		s.name, s.EndPoint().EndPointType(), s.ID(), s.LocalAddr(), s.RemoteAddr())
 }
 
-// Queued Write, for handler.
-// For udp session, the @pkg should be UDPContext.
 func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 	if s.IsClosed() {
 		return ErrSessionClosed
@@ -313,8 +324,13 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 		}
 	}()
 
+	var err error
 	if timeout <= 0 {
-		timeout = netIOTimeout
+		if err = s.writer.Write(s, pkg); err != nil {
+			s.incWritePkgNum()
+			// gxlog.CError("after incWritePkgNum, ss:%s", s.Stat())
+		}
+		return jerrors.Trace(err)
 	}
 	select {
 	case s.wQ <- pkg:
@@ -335,8 +351,13 @@ func (s *session) WriteBytes(pkg []byte) error {
 	}
 
 	// s.conn.SetWriteTimeout(time.Now().Add(s.wTimeout))
-	_, err := s.Connection.Write(pkg)
-	return err
+	if _, err := s.Connection.Write(pkg); err != nil {
+		return jerrors.Annotatef(err, "s.Connection.Write(pkg len:%d)", len(pkg))
+	}
+
+	s.incWritePkgNum()
+
+	return nil
 }
 
 // Write multiple packages at once
@@ -345,7 +366,6 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 		return ErrSessionClosed
 	}
 	// s.conn.SetWriteTimeout(time.Now().Add(s.wTimeout))
-
 	if len(pkgs) == 1 {
 		// return s.Connection.Write(pkgs[0])
 		return s.WriteBytes(pkgs[0])
@@ -354,6 +374,7 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 	// get len
 	var (
 		l      int
+		err    error
 		length uint32
 		arr    []byte
 	)
@@ -371,7 +392,17 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 	}
 
 	// return s.Connection.Write(arr)
-	return s.WriteBytes(arr)
+	if err = s.WriteBytes(arr); err != nil {
+		return jerrors.Trace(err)
+	}
+
+	num := len(pkgs) - 1
+	for i := 0; i < num; i++ {
+		s.incWritePkgNum()
+		// gxlog.CError("after write, ss:%s", s.Stat())
+	}
+
+	return nil
 }
 
 // func (s *session) RunEventLoop() {
@@ -442,7 +473,7 @@ LOOP:
 		// It choose one at random if multiple are ready. Otherwise it choose default branch if none is ready.
 		select {
 		case <-s.done:
-			// 这个分支确保(session)handleLoop gr在(session)handlePackage gr之后退出
+			// this case branch assure the (session)handleLoop gr will exit before (session)handlePackage gr.
 			// once.Do(func() { ticker.Stop() }) // use wheel instead, 2016/09/26
 			if atomic.LoadInt32(&(s.grNum)) == 1 { // make sure @(session)handlePackage goroutine has been closed.
 				if len(s.rQ) == 0 && len(s.wQ) == 0 {
@@ -458,11 +489,14 @@ LOOP:
 			}
 
 		case inPkg = <-s.rQ:
-			// 这个条件分支通过(session)rQ排空确保(session)handlePackage gr不会阻塞在(session)rQ上
+			// read the s.rQ and assure (session)handlePackage gr will not block by (session)rQ.
 			if flag {
 				log.Debug("%#v <-s.rQ", inPkg)
-				s.listener.OnMessage(s, inPkg)
-				s.incReadPkgCount()
+				pkg := inPkg
+				s.pool.ScheduleTimeout(s.wait, func() {
+					s.listener.OnMessage(s, pkg)
+				})
+				s.incReadPkgNum()
 			} else {
 				log.Info("[session.handleLoop] drop readin package{%#v}", inPkg)
 			}
@@ -470,12 +504,13 @@ LOOP:
 		case outPkg = <-s.wQ:
 			if flag {
 				if err = s.writer.Write(s, outPkg); err != nil {
-					log.Error("%s, [session.handleLoop] = error{%s}", s.sessionToken(), err)
+					log.Error("%s, [session.handleLoop] = error{%s}", s.sessionToken(), jerrors.ErrorStack(err))
 					s.stop()
 					flag = false
 					// break LOOP
 				}
-				s.incWritePkgCount()
+				s.incWritePkgNum()
+				// gxlog.CError("outPkg:%#v, after incWritePkgNum, ss:%s", outPkg, s.Stat())
 			} else {
 				log.Info("[session.handleLoop] drop writeout package{%#v}", outPkg)
 			}
@@ -515,7 +550,7 @@ func (s *session) handlePackage() {
 		log.Info("%s, [session.handlePackage] gr will exit now, left gr num %d", s.sessionToken(), grNum)
 		s.stop()
 		if err != nil {
-			log.Error("%s, [session.handlePackage] error{%s}", s.sessionToken(), err)
+			log.Error("%s, [session.handlePackage] error{%s}", s.sessionToken(), jerrors.ErrorStack(err))
 			s.listener.OnError(s, err)
 		}
 	}()
@@ -558,7 +593,9 @@ func (s *session) handleTCPPackage() error {
 	for {
 		if s.IsClosed() {
 			err = nil
-			break // 退出前不再读取任何packet，buf中剩余的stream bytes也不可能凑够一个package, 所以直接退出
+			// do not handle the left stream in pktBuf and exit asap.
+			// it is impossible packing a package by the left stream.
+			break
 		}
 
 		bufLen = 0
@@ -567,10 +604,10 @@ func (s *session) handleTCPPackage() error {
 			// s.conn.SetReadTimeout(time.Now().Add(s.rTimeout))
 			bufLen, err = conn.read(buf)
 			if err != nil {
-				if netError, ok = err.(net.Error); ok && netError.Timeout() {
+				if netError, ok = jerrors.Cause(err).(net.Error); ok && netError.Timeout() {
 					break
 				}
-				log.Error("%s, [session.conn.read] = error{%s}", s.sessionToken(), err)
+				log.Error("%s, [session.conn.read] = error{%s}", s.sessionToken(), jerrors.ErrorStack(err))
 				// for (Codec)OnErr
 				// s.errFlag = true
 				exit = true
@@ -591,10 +628,11 @@ func (s *session) handleTCPPackage() error {
 			// pkg, err = s.pkgHandler.Read(s, pktBuf)
 			pkg, pkgLen, err = s.reader.Read(s, pktBuf.Bytes())
 			if err == nil && s.maxMsgLen > 0 && pkgLen > int(s.maxMsgLen) {
-				err = ErrMsgTooLong
+				err = jerrors.Errorf("Message Too Long, pkgLen %d, session max message len %d", pkgLen, s.maxMsgLen)
 			}
 			if err != nil {
-				log.Warn("%s, [session.handleTCPPackage] = len{%d}, error{%s}", s.sessionToken(), pkgLen, err)
+				log.Warn("%s, [session.handleTCPPackage] = len{%d}, error{%s}",
+					s.sessionToken(), pkgLen, jerrors.ErrorStack(err))
 				// for (Codec)OnErr
 				// s.errFlag = true
 				exit = true
@@ -612,7 +650,7 @@ func (s *session) handleTCPPackage() error {
 		}
 	}
 
-	return err
+	return jerrors.Trace(err)
 }
 
 // get package from udp packet
@@ -641,29 +679,47 @@ func (s *session) handleUDPPackage() error {
 		}
 
 		bufLen, addr, err = conn.read(buf)
-		log.Debug("conn.read() = bufLen:%d, addr:%#v, err:%s", bufLen, addr, err)
-		if netError, ok = err.(net.Error); ok && netError.Timeout() {
+		log.Debug("conn.read() = bufLen:%d, addr:%#v, err:%s", bufLen, addr, jerrors.ErrorStack(err))
+		if netError, ok = jerrors.Cause(err).(net.Error); ok && netError.Timeout() {
 			continue
 		}
 		if err != nil {
-			log.Error("%s, [session.handleUDPPackage] = len{%d}, error{%s}", s.sessionToken(), bufLen, err)
+			log.Error("%s, [session.handleUDPPackage] = len{%d}, error{%s}",
+				s.sessionToken(), bufLen, jerrors.ErrorStack(err))
+			err = jerrors.Annotatef(err, "conn.read()")
 			break
 		}
 
-		pkg, pkgLen, err = s.reader.Read(s, buf[:bufLen])
-		log.Debug("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%s", pkg, pkgLen, err)
-		if err == nil && s.maxMsgLen > 0 && bufLen > int(s.maxMsgLen) {
-			err = ErrMsgTooLong
-		}
-		if err != nil {
-			log.Warn("%s, [session.handleUDPPackage] = len{%d}, error{%s}", s.sessionToken(), pkgLen, err)
+		if bufLen == 0 {
+			log.Error("conn.read() = bufLen:%d, addr:%s, err:%s", bufLen, addr, jerrors.ErrorStack(err))
 			continue
 		}
+
+		if bufLen == len(connectPingPackage) && bytes.Equal(connectPingPackage, buf[:bufLen]) {
+			log.Info("got %s connectPingPackage", addr)
+			continue
+		}
+
+		pkg, pkgLen, err = s.reader.Read(s, buf[:bufLen])
+		log.Debug("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%s", pkg, pkgLen, jerrors.ErrorStack(err))
+		if err == nil && s.maxMsgLen > 0 && bufLen > int(s.maxMsgLen) {
+			err = jerrors.Errorf("Message Too Long, bufLen %d, session max message len %d", bufLen, s.maxMsgLen)
+		}
+		if err != nil {
+			log.Warn("%s, [session.handleUDPPackage] = len{%d}, error{%s}",
+				s.sessionToken(), pkgLen, jerrors.ErrorStack(err))
+			continue
+		}
+		if pkgLen == 0 {
+			log.Error("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%s", pkg, pkgLen, jerrors.ErrorStack(err))
+			continue
+		}
+
 		s.UpdateActive()
 		s.rQ <- UDPContext{Pkg: pkg, PeerAddr: addr}
 	}
 
-	return err
+	return jerrors.Trace(err)
 }
 
 // get package from websocket stream
@@ -684,22 +740,24 @@ func (s *session) handleWSPackage() error {
 			break
 		}
 		pkg, err = conn.read()
-		if netError, ok = err.(net.Error); ok && netError.Timeout() {
+		if netError, ok = jerrors.Cause(err).(net.Error); ok && netError.Timeout() {
 			continue
 		}
 		if err != nil {
-			log.Warn("%s, [session.handleWSPackage] = error{%s}", s.sessionToken(), err)
+			log.Warn("%s, [session.handleWSPackage] = error{%s}",
+				s.sessionToken(), jerrors.ErrorStack(err))
 			// s.errFlag = true
-			return err
+			return jerrors.Trace(err)
 		}
 		s.UpdateActive()
 		if s.reader != nil {
 			unmarshalPkg, length, err = s.reader.Read(s, pkg)
 			if err == nil && s.maxMsgLen > 0 && length > int(s.maxMsgLen) {
-				err = ErrMsgTooLong
+				err = jerrors.Errorf("Message Too Long, length %d, session max message len %d", length, s.maxMsgLen)
 			}
 			if err != nil {
-				log.Warn("%s, [session.handleWSPackage] = len{%d}, error{%s}", s.sessionToken(), length, err)
+				log.Warn("%s, [session.handleWSPackage] = len{%d}, error{%s}",
+					s.sessionToken(), length, jerrors.ErrorStack(err))
 				continue
 			}
 			s.rQ <- unmarshalPkg

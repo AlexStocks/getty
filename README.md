@@ -1,9 +1,8 @@
-# getty #
----
+# getty
+
  *a netty like asynchronous network I/O library*
 
-## introdction ##
----
+## INTRO
 
 Getty is a asynchronous network I/O library in golang. Getty is based on "ngo" whose author is [sanbit](https://github.com/sanbit). Getty works on tcp/udp/websocket network protocol and supplies [a uniform interface](https://github.com/alexstocks/getty/blob/master/getty.go#L45).
 
@@ -15,7 +14,29 @@ Whatever if you use websocket, you do not need to care about hearbeat request/re
 
 You can get code example in https://github.com/AlexStocks/getty-examples.
 
-## LICENCE ##
----
+## RPC
+
+A open source, Go based, RPC framework.
+
+Feature list:
+
+- 1 Transport: TCP(√), UDP, Websocket
+- 2 Codec: ProtoBuf(√), JSON(√)
+- 3 Service Discovery: Service Publish(X), Service Watch(X), Service Notify(X)
+- 4 Registry: ZooKeeper(X), Etcd(x)
+- 5 Strategy: Failover(√), Failfast(√)
+- 6 Load Balance: Random(X), RoundRobin(X)
+- 7 Metrics:  Invoke Statistics(x), User Auth(x)
+
+Code example:
+
+The rpc dir of [getty-examples](https://github.com/alexstocks/getty-examples/) shows how to build rpc client/rpc server.
+
+##
+
+
+
+## LICENCE
+
 Apache License 2.0
 

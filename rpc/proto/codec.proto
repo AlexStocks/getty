@@ -1,0 +1,41 @@
+syntax = "proto2";
+
+package rpc;
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+option (gogoproto.gostring_all) = true;
+option (gogoproto.equal_all) = true;
+option (gogoproto.verbose_equal_all) = true;
+// option (gogoproto.goproto_stringer_all) = false;
+// option (gogoproto.stringer_all) =  true;
+// option (gogoproto.populate_all) = true;
+// option (gogoproto.testgen_all) = true;
+// option (gogoproto.benchgen_all) = true;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.sizer_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+option (gogoproto.goproto_getters_all) = false;
+option (gogoproto.goproto_enum_prefix_all) = false;
+
+
+//////////////////////////////////////////
+// Request Header
+//////////////////////////////////////////
+
+enum CallType {
+	CT_UNKOWN        = 0;
+	CT_OneWay        = 1;
+	CT_TwoWay        = 2;
+	CT_TwoWayNoReply = 3;
+}
+
+message GettyRPCRequestHeader {
+	optional string Service = 1 [(gogoproto.nullable) = false];
+	optional string Method = 2 [(gogoproto.nullable) = false];
+	optional CallType CallType = 3 [(gogoproto.nullable) = false];
+}
+
+message GettyRPCResponseHeader {
+	optional string Error = 1 [(gogoproto.nullable) = false];
+}

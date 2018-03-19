@@ -22,16 +22,21 @@ import (
 )
 
 import (
+	"github.com/AlexStocks/goext/net"
 	"github.com/AlexStocks/goext/sync"
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
+	jerrors "github.com/juju/errors"
 )
 
 const (
 	connInterval   = 3e9 // 3s
 	connectTimeout = 5e9
 	maxTimes       = 10
-	pingPacket     = "ping"
+)
+
+var (
+	connectPingPackage = []byte("connect-ping")
 )
 
 /////////////////////////////////////////
@@ -126,7 +131,7 @@ func (c *client) dialTCP() Session {
 			return nil
 		}
 		conn, err = net.DialTimeout("tcp", c.addr, connectTimeout)
-		if err == nil && conn.LocalAddr().String() == conn.RemoteAddr().String() {
+		if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 			conn.Close()
 			err = errSelfConnect
 		}
@@ -134,8 +139,9 @@ func (c *client) dialTCP() Session {
 			return newTCPSession(conn, c)
 		}
 
-		log.Info("net.DialTimeout(addr:%s, timeout:%v) = error{%s}", c.addr, err)
-		time.Sleep(connInterval)
+		log.Info("net.DialTimeout(addr:%s, timeout:%v) = error{%s}", c.addr, jerrors.ErrorStack(err))
+		// time.Sleep(connInterval)
+		<-wheel.After(connInterval)
 	}
 }
 
@@ -157,34 +163,36 @@ func (c *client) dialUDP() Session {
 			return nil
 		}
 		conn, err = net.DialUDP("udp", localAddr, peerAddr)
-		if err == nil && conn.LocalAddr().String() == conn.RemoteAddr().String() {
+		if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 			conn.Close()
 			err = errSelfConnect
 		}
 		if err != nil {
-			log.Warn("net.DialTimeout(addr:%s, timeout:%v) = error{%s}", c.addr, err)
-			time.Sleep(connInterval)
+			log.Warn("net.DialTimeout(addr:%s, timeout:%v) = error{%s}", c.addr, jerrors.ErrorStack(err))
+			// time.Sleep(connInterval)
+			<-wheel.After(connInterval)
 			continue
 		}
 
 		// check connection alive by write/read action
-		copy(buf, []byte(pingPacket))
 		conn.SetWriteDeadline(wheel.Now().Add(1e9))
-		if length, err = conn.Write(buf[:len(pingPacket)]); err != nil {
+		if length, err = conn.Write(connectPingPackage[:]); err != nil {
 			conn.Close()
-			log.Warn("conn.Write(%s) = {length:%d, err:%s}", pingPacket, length, err)
-			time.Sleep(connInterval)
+			log.Warn("conn.Write(%s) = {length:%d, err:%s}", string(connectPingPackage), length, jerrors.ErrorStack(err))
+			// time.Sleep(connInterval)
+			<-wheel.After(connInterval)
 			continue
 		}
 		conn.SetReadDeadline(wheel.Now().Add(1e9))
 		length, err = conn.Read(buf)
-		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+		if netErr, ok := jerrors.Cause(err).(net.Error); ok && netErr.Timeout() {
 			err = nil
 		}
 		if err != nil {
-			log.Info("conn{%#v}.Read() = {length:%d, err:%s}", conn, length, err)
+			log.Info("conn{%#v}.Read() = {length:%d, err:%s}", conn, length, jerrors.ErrorStack(err))
 			conn.Close()
-			time.Sleep(connInterval)
+			// time.Sleep(connInterval)
+			<-wheel.After(connInterval)
 			continue
 		}
 		//if err == nil {
@@ -207,8 +215,8 @@ func (c *client) dialWS() Session {
 			return nil
 		}
 		conn, _, err = dialer.Dial(c.addr, nil)
-		log.Info("websocket.dialer.Dial(addr:%s) = error:%s", c.addr, err)
-		if err == nil && conn.LocalAddr().String() == conn.RemoteAddr().String() {
+		log.Info("websocket.dialer.Dial(addr:%s) = error:%s", c.addr, jerrors.ErrorStack(err))
+		if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 			conn.Close()
 			err = errSelfConnect
 		}
@@ -221,8 +229,9 @@ func (c *client) dialWS() Session {
 			return ss
 		}
 
-		log.Info("websocket.dialer.Dial(addr:%s) = error:%s", c.addr, err)
-		time.Sleep(connInterval)
+		log.Info("websocket.dialer.Dial(addr:%s) = error:%s", c.addr, jerrors.ErrorStack(err))
+		// time.Sleep(connInterval)
+		<-wheel.After(connInterval)
 	}
 }
 
@@ -247,7 +256,7 @@ func (c *client) dialWSS() Session {
 	if c.cert != "" {
 		certPEMBlock, err := ioutil.ReadFile(c.cert)
 		if err != nil {
-			panic(fmt.Sprintf("ioutil.ReadFile(cert:%s) = error{%s}", c.cert, err))
+			panic(fmt.Sprintf("ioutil.ReadFile(cert:%s) = error{%s}", c.cert, jerrors.ErrorStack(err)))
 		}
 
 		var cert tls.Certificate
@@ -269,7 +278,7 @@ func (c *client) dialWSS() Session {
 	for _, c := range config.Certificates {
 		roots, err = x509.ParseCertificates(c.Certificate[len(c.Certificate)-1])
 		if err != nil {
-			panic(fmt.Sprintf("error parsing server's root cert: %s\n", err))
+			panic(fmt.Sprintf("error parsing server's root cert: %s\n", jerrors.ErrorStack(err)))
 		}
 		for _, root = range roots {
 			certPool.AddCert(root)
@@ -285,7 +294,7 @@ func (c *client) dialWSS() Session {
 			return nil
 		}
 		conn, _, err = dialer.Dial(c.addr, nil)
-		if err == nil && conn.LocalAddr().String() == conn.RemoteAddr().String() {
+		if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 			conn.Close()
 			err = errSelfConnect
 		}
@@ -299,8 +308,9 @@ func (c *client) dialWSS() Session {
 			return ss
 		}
 
-		log.Info("websocket.dialer.Dial(addr:%s) = error{%s}", c.addr, err)
-		time.Sleep(connInterval)
+		log.Info("websocket.dialer.Dial(addr:%s) = error{%s}", c.addr, jerrors.ErrorStack(err))
+		// time.Sleep(connInterval)
+		<-wheel.After(connInterval)
 	}
 }
 
@@ -361,11 +371,19 @@ func (c *client) connect() {
 	}
 }
 
+// there are two methods to keep connection pool. the first approch is like
+// redigo's lazy connection pool(https://github.com/gomodule/redigo/blob/master/redis/pool.go:),
+// in which you should apply testOnBorrow to check alive of the connection.
+// the second way is as follows. @RunEventLoop detects the aliveness of the connection
+// in regular time interval.
+// the active method maybe overburden the cpu slightly.
+// however, you can get a active tcp connection very quickly.
 func (c *client) RunEventLoop(newSession NewSessionCallback) {
 	c.Lock()
 	c.newSession = newSession
 	c.Unlock()
 
+	log.Info("run")
 	c.wg.Add(1)
 	// a for-loop goroutine to make sure the connection is valid
 	go func() {
@@ -389,7 +407,8 @@ func (c *client) RunEventLoop(newSession NewSessionCallback) {
 				if maxTimes < times {
 					times = maxTimes
 				}
-				time.Sleep(time.Duration(int64(times) * connInterval))
+				// time.Sleep(time.Duration(int64(times) * connInterval))
+				<-wheel.After(time.Duration(int64(times) * connInterval))
 				continue
 			}
 			times = 0

@@ -14,6 +14,38 @@
 ## develop history ##
 ---
 
+- 2018/08/07
+    > Improvement
+    * RPC package format:  {2 Bytes Header len + Header + 2 Body len + Body} ---> {Header + Body}
+    > Bug Fix
+    * do not encode body if package body is nil
+
+- 2018/07/01
+    > Feature
+    * Add RPC
+
+- 2018/06/25
+    > buf fix
+    * Using juju/errors.Cause on read/write in case of network i/o timeout
+
+- 2018/03/29
+    > improvement
+    * use juju/errors instead of pkg/errors
+
+- 2018/03/20
+    > bug fix
+    * ignore connectPingPackage
+
+- 2018/03/19
+    > improvement
+    * use gxnet.IsSameAddr
+    * send out pkg asap in WritePkg when the second parameter @timeout is not greater then 0.
+    * delete Chinese commenting
+    * gettyConn:readCount -> gettyConn:readBytes
+    * gettyConn:writeCount -> gettyConn:writeBytes
+    * gettyConn:readPkgCount -> gettyConn:readPkgNum
+    * gettyConn:writePkgCount -> gettyConn:writePkgNum
+
 - 2018/03/18
     > improvement
     * nerr -> netError
@@ -22,6 +54,8 @@
     * close net.UDPConn when connected failed
     * close net.Conn when connected failed
     * Session::EndPointType() ->  Session::EndPoint()
+    * time.Sleep() -> wheel.After()
+    * do not check server.go:server::caCert
 
 - 2018/03/17
     > improvement
@@ -287,9 +321,9 @@
 - 2016/08/29
     > 1 rename reconnect to errFlag in function session.go:(Session)handlePackage
     >
-    > 2 session.go:(gettyConn)readCount is reconsidered as read in tcp stream bytes
+    > 2 session.go:(gettyConn)readBytes is reconsidered as read in tcp stream bytes
     >
-    > 3 session.go:(gettyConn)writeCount is reconsidered as write out tcp stream bytes
+    > 3 session.go:(gettyConn)writeBytes is reconsidered as write out tcp stream bytes
     >
     > 4 reconstruct session output token string session.go:(Session)sessionToken
     >
