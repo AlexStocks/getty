@@ -18,6 +18,7 @@
     > improvement
     * nerr -> netError
     * check udp connection alive after connect()
+    * use ReadFromUDP as the uniform UDP read interface
     
 - 2018/03/17
     > improvement

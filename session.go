@@ -641,7 +641,7 @@ func (s *session) handleUDPPackage() error {
 		}
 
 		bufLen, addr, err = conn.read(buf)
-		log.Debug("conn.read() = bufLen:%d, addr:%#v, err:%s", bufLen, pkgLen, err)
+		log.Debug("conn.read() = bufLen:%d, addr:%#v, err:%s", bufLen, addr, err)
 		if netError, ok = err.(net.Error); ok && netError.Timeout() {
 			continue
 		}
