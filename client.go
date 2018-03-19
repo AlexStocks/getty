@@ -135,7 +135,8 @@ func (c *client) dialTCP() Session {
 		}
 
 		log.Info("net.DialTimeout(addr:%s, timeout:%v) = error{%s}", c.addr, err)
-		time.Sleep(connInterval)
+		// time.Sleep(connInterval)
+		<-wheel.After(connInterval)
 	}
 }
 
@@ -163,7 +164,8 @@ func (c *client) dialUDP() Session {
 		}
 		if err != nil {
 			log.Warn("net.DialTimeout(addr:%s, timeout:%v) = error{%s}", c.addr, err)
-			time.Sleep(connInterval)
+			// time.Sleep(connInterval)
+			<-wheel.After(connInterval)
 			continue
 		}
 
@@ -173,7 +175,8 @@ func (c *client) dialUDP() Session {
 		if length, err = conn.Write(buf[:len(pingPacket)]); err != nil {
 			conn.Close()
 			log.Warn("conn.Write(%s) = {length:%d, err:%s}", pingPacket, length, err)
-			time.Sleep(connInterval)
+			// time.Sleep(connInterval)
+			<-wheel.After(connInterval)
 			continue
 		}
 		conn.SetReadDeadline(wheel.Now().Add(1e9))
@@ -184,7 +187,8 @@ func (c *client) dialUDP() Session {
 		if err != nil {
 			log.Info("conn{%#v}.Read() = {length:%d, err:%s}", conn, length, err)
 			conn.Close()
-			time.Sleep(connInterval)
+			// time.Sleep(connInterval)
+			<-wheel.After(connInterval)
 			continue
 		}
 		//if err == nil {
@@ -222,7 +226,8 @@ func (c *client) dialWS() Session {
 		}
 
 		log.Info("websocket.dialer.Dial(addr:%s) = error:%s", c.addr, err)
-		time.Sleep(connInterval)
+		// time.Sleep(connInterval)
+		<-wheel.After(connInterval)
 	}
 }
 
@@ -300,7 +305,8 @@ func (c *client) dialWSS() Session {
 		}
 
 		log.Info("websocket.dialer.Dial(addr:%s) = error{%s}", c.addr, err)
-		time.Sleep(connInterval)
+		// time.Sleep(connInterval)
+		<-wheel.After(connInterval)
 	}
 }
 
@@ -389,7 +395,8 @@ func (c *client) RunEventLoop(newSession NewSessionCallback) {
 				if maxTimes < times {
 					times = maxTimes
 				}
-				time.Sleep(time.Duration(int64(times) * connInterval))
+				// time.Sleep(time.Duration(int64(times) * connInterval))
+				<-wheel.After(time.Duration(int64(times) * connInterval))
 				continue
 			}
 			times = 0

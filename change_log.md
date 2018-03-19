@@ -22,6 +22,8 @@
     * close net.UDPConn when connected failed
     * close net.Conn when connected failed
     * Session::EndPointType() ->  Session::EndPoint()
+    * time.Sleep() -> wheel.After()
+    * do not check server.go:server::caCert
 
 - 2018/03/17
     > improvement
