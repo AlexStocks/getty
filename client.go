@@ -127,6 +127,7 @@ func (c *client) dialTCP() Session {
 		}
 		conn, err = net.DialTimeout("tcp", c.addr, connectTimeout)
 		if err == nil && conn.LocalAddr().String() == conn.RemoteAddr().String() {
+			conn.Close()
 			err = errSelfConnect
 		}
 		if err == nil {
@@ -207,6 +208,7 @@ func (c *client) dialWS() Session {
 		conn, _, err = dialer.Dial(c.addr, nil)
 		log.Info("websocket.dialer.Dial(addr:%s) = error:%s", c.addr, err)
 		if err == nil && conn.LocalAddr().String() == conn.RemoteAddr().String() {
+			conn.Close()
 			err = errSelfConnect
 		}
 		if err == nil {
@@ -283,6 +285,7 @@ func (c *client) dialWSS() Session {
 		}
 		conn, _, err = dialer.Dial(c.addr, nil)
 		if err == nil && conn.LocalAddr().String() == conn.RemoteAddr().String() {
+			conn.Close()
 			err = errSelfConnect
 		}
 		if err == nil {

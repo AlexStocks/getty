@@ -20,6 +20,7 @@
     * check udp connection alive after connect()
     * use ReadFromUDP as the uniform UDP read interface
 	* close net.UDPConn when connected failed
+	* close net.Conn when connected failed
 
 - 2018/03/17
     > improvement
