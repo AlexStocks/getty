@@ -179,7 +179,7 @@ func (c *client) dialUDP() Session {
 			err = nil
 		}
 		if err != nil {
-			log.Info("conn{%#v}.Read() = err{%s}", conn, err)
+			log.Info("conn{%#v}.Read() = {length:%d, err:%s}", conn, length, err)
 			time.Sleep(connInterval)
 			continue
 		}
