@@ -50,9 +50,9 @@ var (
 
 // getty base session
 type session struct {
-	name         string
-	endPointType EndPointType
-	maxMsgLen    int32
+	name      string
+	endPoint  EndPoint
+	maxMsgLen int32
 	// net read Write
 	Connection
 	// pkgHandler ReadWriter
@@ -75,16 +75,16 @@ type session struct {
 	lock  sync.RWMutex
 }
 
-func newSession(endPointType EndPointType, conn Connection) *session {
+func newSession(endPoint EndPoint, conn Connection) *session {
 	ss := &session{
-		name:         defaultSessionName,
-		endPointType: endPointType,
-		maxMsgLen:    maxReadBufLen,
-		Connection:   conn,
-		done:         make(chan gxsync.Empty),
-		period:       period,
-		wait:         pendingDuration,
-		attrs:        gxcontext.NewValuesContext(nil),
+		name:       defaultSessionName,
+		endPoint:   endPoint,
+		maxMsgLen:  maxReadBufLen,
+		Connection: conn,
+		done:       make(chan gxsync.Empty),
+		period:     period,
+		wait:       pendingDuration,
+		attrs:      gxcontext.NewValuesContext(nil),
 	}
 
 	ss.Connection.setSession(ss)
@@ -94,25 +94,25 @@ func newSession(endPointType EndPointType, conn Connection) *session {
 	return ss
 }
 
-func newTCPSession(conn net.Conn, endPointType EndPointType) Session {
+func newTCPSession(conn net.Conn, endPoint EndPoint) Session {
 	c := newGettyTCPConn(conn)
-	session := newSession(endPointType, c)
+	session := newSession(endPoint, c)
 	session.name = defaultTCPSessionName
 
 	return session
 }
 
-func newUDPSession(conn *net.UDPConn, endPointType EndPointType) Session {
+func newUDPSession(conn *net.UDPConn, endPoint EndPoint) Session {
 	c := newGettyUDPConn(conn)
-	session := newSession(endPointType, c)
+	session := newSession(endPoint, c)
 	session.name = defaultUDPSessionName
 
 	return session
 }
 
-func newWSSession(conn *websocket.Conn, endPointType EndPointType) Session {
+func newWSSession(conn *websocket.Conn, endPoint EndPoint) Session {
 	c := newGettyWSConn(conn)
-	session := newSession(endPointType, c)
+	session := newSession(endPoint, c)
 	session.name = defaultWSSessionName
 
 	return session
@@ -149,8 +149,8 @@ func (s *session) Conn() net.Conn {
 	return nil
 }
 
-func (s *session) EndPointType() EndPointType {
-	return s.endPointType
+func (s *session) EndPoint() EndPoint {
+	return s.endPoint
 }
 
 func (s *session) gettyConn() *gettyConn {
@@ -294,7 +294,7 @@ func (s *session) RemoveAttribute(key interface{}) {
 }
 
 func (s *session) sessionToken() string {
-	return fmt.Sprintf("{%s:%d:%s<->%s}", s.name, s.ID(), s.LocalAddr(), s.RemoteAddr())
+	return fmt.Sprintf("{%s:%s:%d:%s<->%s}", s.name, s.EndPoint().EndPointType(), s.ID(), s.LocalAddr(), s.RemoteAddr())
 }
 
 // Queued Write, for handler.

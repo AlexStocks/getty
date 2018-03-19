@@ -126,7 +126,7 @@ type Session interface {
 	Stat() string
 	IsClosed() bool
 	// get endpoint type
-	EndPointType() EndPointType
+	EndPoint() EndPoint
 
 	SetMaxMsgLen(int)
 	SetName(string)

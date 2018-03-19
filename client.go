@@ -68,7 +68,7 @@ func newClient(t EndPointType, opts ...ClientOption) *client {
 	c.init(opts...)
 
 	if c.number <= 0 || c.addr == "" {
-		panic(fmt.Sprintf("@connNum:%d, @serverAddr:%s", c.number, c.addr))
+		panic(fmt.Sprintf("client type:%s, @connNum:%d, @serverAddr:%s", t, c.number, c.addr))
 	}
 
 	c.ssMap = make(map[Session]gxsync.Empty, c.number)
@@ -131,7 +131,7 @@ func (c *client) dialTCP() Session {
 			err = errSelfConnect
 		}
 		if err == nil {
-			return newTCPSession(conn, c.endPointType)
+			return newTCPSession(conn, c)
 		}
 
 		log.Info("net.DialTimeout(addr:%s, timeout:%v) = error{%s}", c.addr, err)
@@ -158,6 +158,7 @@ func (c *client) dialUDP() Session {
 		}
 		conn, err = net.DialUDP("udp", localAddr, peerAddr)
 		if err == nil && conn.LocalAddr().String() == conn.RemoteAddr().String() {
+			conn.Close()
 			err = errSelfConnect
 		}
 		if err != nil {
@@ -187,7 +188,7 @@ func (c *client) dialUDP() Session {
 			continue
 		}
 		//if err == nil {
-		return newUDPSession(conn, c.endPointType)
+		return newUDPSession(conn, c)
 		//}
 	}
 }
@@ -212,7 +213,7 @@ func (c *client) dialWS() Session {
 			err = errSelfConnect
 		}
 		if err == nil {
-			ss = newWSSession(conn, c.endPointType)
+			ss = newWSSession(conn, c)
 			if ss.(*session).maxMsgLen > 0 {
 				conn.SetReadLimit(int64(ss.(*session).maxMsgLen))
 			}
@@ -289,7 +290,7 @@ func (c *client) dialWSS() Session {
 			err = errSelfConnect
 		}
 		if err == nil {
-			ss = newWSSession(conn, c.endPointType)
+			ss = newWSSession(conn, c)
 			if ss.(*session).maxMsgLen > 0 {
 				conn.SetReadLimit(int64(ss.(*session).maxMsgLen))
 			}

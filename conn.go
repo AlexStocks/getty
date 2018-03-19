@@ -414,7 +414,7 @@ func (u *gettyUDPConn) Write(udpCtx interface{}) (int, error) {
 	if buf, ok = ctx.Pkg.([]byte); !ok {
 		return 0, fmt.Errorf("illegal @udpCtx.Pkg{%#v} type", udpCtx)
 	}
-	if u.ss.EndPointType() == UDP_ENDPOINT {
+	if u.ss.EndPoint().EndPointType() == UDP_ENDPOINT {
 		peerAddr = ctx.PeerAddr
 		if peerAddr == nil {
 			return 0, ErrNullPeerAddr
