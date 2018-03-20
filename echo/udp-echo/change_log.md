@@ -12,6 +12,10 @@
 
 - 2018/03/17
     > improvement
+    * UDP_ENDPOINT session should be long live.
+
+- 2018/03/17
+    > improvement
     * use getty v0.8.2
 
 - 2018/03/16

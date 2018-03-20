@@ -82,7 +82,10 @@ func (this *EchoMessageHandler) OnCron(session getty.Session) {
 	if conf.sessionTimeout.Nanoseconds() < time.Since(session.GetActive()).Nanoseconds() {
 		log.Warn("session{%s} timeout{%s}, reqNum{%d}",
 			session.Stat(), time.Since(session.GetActive()).String(), clientEchoSession.reqNum)
-		this.client.removeSession(session)
+		// UDP_ENDPOINT session should be long live.
+		if this.client != &unconnectedClient {
+			this.client.removeSession(session)
+		}
 		return
 	}
 
