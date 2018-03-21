@@ -22,6 +22,7 @@ import (
 )
 
 import (
+	"github.com/AlexStocks/goext/net"
 	"github.com/AlexStocks/goext/sync"
 	"github.com/AlexStocks/goext/time"
 	log "github.com/AlexStocks/log4go"
@@ -117,16 +118,15 @@ func (s *server) stop() {
 			if s.server != nil {
 				ctx, _ = context.WithTimeout(context.Background(), serverFastFailTimeout)
 				if err = s.server.Shutdown(ctx); err != nil {
-					// 如果下面内容输出为：server shutdown ctx: context deadline exceeded，
-					// 则说明有未处理完的active connections。
+					// if the log output is "shutdown ctx: context deadline exceeded"， it means that
+					// there are still some active connections.
 					log.Error("server shutdown ctx:%s error:%s", ctx, err)
 				}
 			}
 			s.server = nil
 			s.lock.Unlock()
 			if s.streamListener != nil {
-				// 把streamListener.Close放在这里，既能防止多次关闭调用，
-				// 又能及时让Server因accept返回错误而从RunEventLoop退出
+				// let the server exit asap when got error from RunEventLoop.
 				s.streamListener.Close()
 				s.streamListener = nil
 			}
@@ -207,7 +207,7 @@ func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	if conn.RemoteAddr().String() == conn.LocalAddr().String() {
+	if gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 		log.Warn("conn.localAddr{%s} == conn.RemoteAddr", conn.LocalAddr().String(), conn.RemoteAddr().String())
 		return nil, errSelfConnect
 	}
@@ -383,7 +383,7 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 			return
 		}
 		config = &tls.Config{
-			InsecureSkipVerify: true, // 不对对端的证书进行校验
+			InsecureSkipVerify: true, // do not verify peer cert
 			ClientAuth:         tls.NoClientCert,
 			NextProtos:         []string{"http/1.1"},
 			Certificates:       []tls.Certificate{certificate},

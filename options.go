@@ -71,9 +71,9 @@ type ClientOptions struct {
 	addr   string
 	number int
 
-	// for wss client
-	// 服务端的证书文件（包含了公钥以及服务端其他一些验证信息：服务端域名、
-	// 服务端ip、起始有效日期、有效时长、hash算法、秘钥长度等）
+	// the cert file of wss server which may contain server domain, server ip, the starting effective date, effective
+	// duration, the hash alg, the len of the private key.
+	// wss client will use it.
 	cert string
 }
 

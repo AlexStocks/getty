@@ -16,6 +16,12 @@
 
 - 2018/03/18
     > improvement
+    * use gxnet.IsSameAddr
+    * send out pkg asap in WritePkg when the second parameter @timeout is not greater then 0.
+    * delete Chinese commenting
+
+- 2018/03/18
+    > improvement
     * nerr -> netError
     * check udp connection alive after connect()
     * use ReadFromUDP as the uniform UDP read interface

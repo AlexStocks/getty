@@ -297,7 +297,7 @@ func (s *session) sessionToken() string {
 	return fmt.Sprintf("{%s:%s:%d:%s<->%s}", s.name, s.EndPoint().EndPointType(), s.ID(), s.LocalAddr(), s.RemoteAddr())
 }
 
-// Queued Write, for handler.
+// Queued Write, for handler. Pls attention that if timeout is less than 0, WritePkg will send @pkg asap.
 // For udp session, the @pkg should be UDPContext.
 func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 	if s.IsClosed() {
@@ -314,7 +314,8 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 	}()
 
 	if timeout <= 0 {
-		timeout = netIOTimeout
+		_, err := s.Connection.Write(pkg)
+		return err
 	}
 	select {
 	case s.wQ <- pkg:
@@ -442,7 +443,7 @@ LOOP:
 		// It choose one at random if multiple are ready. Otherwise it choose default branch if none is ready.
 		select {
 		case <-s.done:
-			// 这个分支确保(session)handleLoop gr在(session)handlePackage gr之后退出
+			// this case branch assure the (session)handleLoop gr will exit before (session)handlePackage gr.
 			// once.Do(func() { ticker.Stop() }) // use wheel instead, 2016/09/26
 			if atomic.LoadInt32(&(s.grNum)) == 1 { // make sure @(session)handlePackage goroutine has been closed.
 				if len(s.rQ) == 0 && len(s.wQ) == 0 {
@@ -458,7 +459,7 @@ LOOP:
 			}
 
 		case inPkg = <-s.rQ:
-			// 这个条件分支通过(session)rQ排空确保(session)handlePackage gr不会阻塞在(session)rQ上
+			// read the s.rQ and assure (session)handlePackage gr will not block by (session)rQ.
 			if flag {
 				log.Debug("%#v <-s.rQ", inPkg)
 				s.listener.OnMessage(s, inPkg)
@@ -558,7 +559,9 @@ func (s *session) handleTCPPackage() error {
 	for {
 		if s.IsClosed() {
 			err = nil
-			break // 退出前不再读取任何packet，buf中剩余的stream bytes也不可能凑够一个package, 所以直接退出
+			// do not handle the left stream in pktBuf and exit asap.
+			// it is impossible packing a package by the left stream.
+			break
 		}
 
 		bufLen = 0

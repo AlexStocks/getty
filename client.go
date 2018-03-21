@@ -22,6 +22,7 @@ import (
 )
 
 import (
+	"github.com/AlexStocks/goext/net"
 	"github.com/AlexStocks/goext/sync"
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
@@ -126,7 +127,7 @@ func (c *client) dialTCP() Session {
 			return nil
 		}
 		conn, err = net.DialTimeout("tcp", c.addr, connectTimeout)
-		if err == nil && conn.LocalAddr().String() == conn.RemoteAddr().String() {
+		if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 			conn.Close()
 			err = errSelfConnect
 		}
@@ -158,7 +159,7 @@ func (c *client) dialUDP() Session {
 			return nil
 		}
 		conn, err = net.DialUDP("udp", localAddr, peerAddr)
-		if err == nil && conn.LocalAddr().String() == conn.RemoteAddr().String() {
+		if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 			conn.Close()
 			err = errSelfConnect
 		}
@@ -212,7 +213,7 @@ func (c *client) dialWS() Session {
 		}
 		conn, _, err = dialer.Dial(c.addr, nil)
 		log.Info("websocket.dialer.Dial(addr:%s) = error:%s", c.addr, err)
-		if err == nil && conn.LocalAddr().String() == conn.RemoteAddr().String() {
+		if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 			conn.Close()
 			err = errSelfConnect
 		}
@@ -290,7 +291,7 @@ func (c *client) dialWSS() Session {
 			return nil
 		}
 		conn, _, err = dialer.Dial(c.addr, nil)
-		if err == nil && conn.LocalAddr().String() == conn.RemoteAddr().String() {
+		if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 			conn.Close()
 			err = errSelfConnect
 		}
