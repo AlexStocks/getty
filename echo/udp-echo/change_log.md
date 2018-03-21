@@ -12,6 +12,10 @@
 
 - 2018/03/17
     > improvement
+    * set the timeout parameter of WritePkg 0 to send out package asap.
+
+- 2018/03/17
+    > improvement
     * UDP_ENDPOINT session should be long live.
 
 - 2018/03/17

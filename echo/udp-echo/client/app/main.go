@@ -37,6 +37,7 @@ const (
 
 const (
 	WritePkgTimeout = 1e9
+	WritePkgASAP    = 0e9
 )
 
 var (

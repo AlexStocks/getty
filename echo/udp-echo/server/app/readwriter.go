@@ -77,7 +77,8 @@ func (this *EchoPackageHandler) Write(ss getty.Session, udpCtx interface{}) erro
 		return err
 	}
 
-	_, err = ss.Write(getty.UDPContext{Pkg: buf.Bytes(), PeerAddr: ctx.PeerAddr})
+	// _, err = ss.Write(getty.UDPContext{Pkg: buf.Bytes(), PeerAddr: ctx.PeerAddr})
+	err = ss.WritePkg(getty.UDPContext{Pkg: buf.Bytes(), PeerAddr: ctx.PeerAddr}, WritePkgASAP)
 	log.Info("WriteEchoPkgTimeMs = %s", time.Since(startTime).String())
 
 	return err

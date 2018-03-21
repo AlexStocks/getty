@@ -165,7 +165,8 @@ func (this *EchoClient) heartbeat(session getty.Session) {
 	ctx.Pkg = &pkg
 	ctx.PeerAddr = &(this.serverAddr)
 
-	if err := session.WritePkg(ctx, WritePkgTimeout); err != nil {
+	//if err := session.WritePkg(ctx, WritePkgTimeout); err != nil {
+	if err := session.WritePkg(ctx, WritePkgASAP); err != nil {
 		log.Warn("session.WritePkg(session{%s}, context{%#v}) = error{%v}", session.Stat(), ctx, err)
 		session.Close()
 

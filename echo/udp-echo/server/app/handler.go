@@ -23,6 +23,7 @@ import (
 
 const (
 	WritePkgTimeout = 1e8
+	WritePkgASAP    = 0e9
 )
 
 var (
@@ -55,7 +56,8 @@ func (this *HeartbeatHandler) Handle(session getty.Session, ctx getty.UDPContext
 	rspPkg.B = echoHeartbeatResponseString
 	rspPkg.H.Len = uint16(len(rspPkg.B) + 1)
 
-	return session.WritePkg(getty.UDPContext{Pkg: &rspPkg, PeerAddr: ctx.PeerAddr}, WritePkgTimeout)
+	// return session.WritePkg(getty.UDPContext{Pkg: &rspPkg, PeerAddr: ctx.PeerAddr}, WritePkgTimeout)
+	return session.WritePkg(getty.UDPContext{Pkg: &rspPkg, PeerAddr: ctx.PeerAddr}, WritePkgASAP)
 }
 
 ////////////////////////////////////////////
@@ -67,7 +69,8 @@ type MessageHandler struct{}
 func (this *MessageHandler) Handle(session getty.Session, ctx getty.UDPContext) error {
 	log.Debug("get echo ctx{%#v}", ctx)
 	// write echo message handle logic here.
-	return session.WritePkg(ctx, WritePkgTimeout)
+	// return session.WritePkg(ctx, WritePkgTimeout)
+	return session.WritePkg(ctx, WritePkgASAP)
 }
 
 ////////////////////////////////////////////
