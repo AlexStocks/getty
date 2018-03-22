@@ -32,7 +32,10 @@ const (
 	connInterval   = 3e9 // 3s
 	connectTimeout = 5e9
 	maxTimes       = 10
-	pingPacket     = "ping"
+)
+
+var (
+	connectPingPackage = []byte("connect-ping")
 )
 
 /////////////////////////////////////////
@@ -171,11 +174,10 @@ func (c *client) dialUDP() Session {
 		}
 
 		// check connection alive by write/read action
-		copy(buf, []byte(pingPacket))
 		conn.SetWriteDeadline(wheel.Now().Add(1e9))
-		if length, err = conn.Write(buf[:len(pingPacket)]); err != nil {
+		if length, err = conn.Write(connectPingPackage[:]); err != nil {
 			conn.Close()
-			log.Warn("conn.Write(%s) = {length:%d, err:%s}", pingPacket, length, err)
+			log.Warn("conn.Write(%s) = {length:%d, err:%s}", string(connectPingPackage), length, err)
 			// time.Sleep(connInterval)
 			<-wheel.After(connInterval)
 			continue

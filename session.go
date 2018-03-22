@@ -21,10 +21,12 @@ import (
 
 import (
 	"github.com/AlexStocks/goext/context"
+	"github.com/AlexStocks/goext/log"
 	"github.com/AlexStocks/goext/sync"
 	"github.com/AlexStocks/goext/time"
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -37,7 +39,7 @@ const (
 	defaultUDPSessionName = "udp-session"
 	defaultWSSessionName  = "ws-session"
 	defaultWSSSessionName = "wss-session"
-	outputFormat          = "session %s, Read Count: %d, Write Count: %d, Read Pkg Count: %d, Write Pkg Count: %d"
+	outputFormat          = "session %s, Read Bytes: %d, Write Bytes: %d, Read Pkgs: %d, Write Pkgs: %d"
 )
 
 /////////////////////////////////////////
@@ -178,10 +180,10 @@ func (s *session) Stat() string {
 	return fmt.Sprintf(
 		outputFormat,
 		s.sessionToken(),
-		atomic.LoadUint32(&(conn.readCount)),
-		atomic.LoadUint32(&(conn.writeCount)),
-		atomic.LoadUint32(&(conn.readPkgCount)),
-		atomic.LoadUint32(&(conn.writePkgCount)),
+		atomic.LoadUint32(&(conn.readBytes)),
+		atomic.LoadUint32(&(conn.writeBytes)),
+		atomic.LoadUint32(&(conn.readPkgNum)),
+		atomic.LoadUint32(&(conn.writePkgNum)),
 	)
 }
 
@@ -297,8 +299,6 @@ func (s *session) sessionToken() string {
 	return fmt.Sprintf("{%s:%s:%d:%s<->%s}", s.name, s.EndPoint().EndPointType(), s.ID(), s.LocalAddr(), s.RemoteAddr())
 }
 
-// Queued Write, for handler. Pls attention that if timeout is less than 0, WritePkg will send @pkg asap.
-// For udp session, the @pkg should be UDPContext.
 func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 	if s.IsClosed() {
 		return ErrSessionClosed
@@ -313,10 +313,15 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 		}
 	}()
 
+	var err error
 	if timeout <= 0 {
-		_, err := s.Connection.Write(pkg)
+		if err = s.writer.Write(s, pkg); err == nil {
+			s.incWritePkgNum()
+			gxlog.CError("after incWritePkgNum, ss:%s", s.Stat())
+		}
 		return err
 	}
+	gxlog.CError("fk")
 	select {
 	case s.wQ <- pkg:
 		break // for possible gen a new pkg
@@ -336,8 +341,14 @@ func (s *session) WriteBytes(pkg []byte) error {
 	}
 
 	// s.conn.SetWriteTimeout(time.Now().Add(s.wTimeout))
-	_, err := s.Connection.Write(pkg)
-	return err
+	if _, err := s.Connection.Write(pkg); err != nil {
+		return errors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
+	}
+
+	s.incWritePkgNum()
+	gxlog.CError("after write, ss:%s", s.Stat())
+
+	return nil
 }
 
 // Write multiple packages at once
@@ -355,6 +366,7 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 	// get len
 	var (
 		l      int
+		err    error
 		length uint32
 		arr    []byte
 	)
@@ -372,7 +384,17 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 	}
 
 	// return s.Connection.Write(arr)
-	return s.WriteBytes(arr)
+	if err = s.WriteBytes(arr); err != nil {
+		return err
+	}
+
+	num := len(pkgs) - 1
+	for i := 0; i < num; i++ {
+		s.incWritePkgNum()
+		gxlog.CError("after write, ss:%s", s.Stat())
+	}
+
+	return nil
 }
 
 // func (s *session) RunEventLoop() {
@@ -463,7 +485,7 @@ LOOP:
 			if flag {
 				log.Debug("%#v <-s.rQ", inPkg)
 				s.listener.OnMessage(s, inPkg)
-				s.incReadPkgCount()
+				s.incReadPkgNum()
 			} else {
 				log.Info("[session.handleLoop] drop readin package{%#v}", inPkg)
 			}
@@ -476,7 +498,8 @@ LOOP:
 					flag = false
 					// break LOOP
 				}
-				s.incWritePkgCount()
+				s.incWritePkgNum()
+				gxlog.CError("outPkg:%#v, after incWritePkgNum, ss:%s", outPkg, s.Stat())
 			} else {
 				log.Info("[session.handleLoop] drop writeout package{%#v}", outPkg)
 			}
@@ -650,7 +673,18 @@ func (s *session) handleUDPPackage() error {
 		}
 		if err != nil {
 			log.Error("%s, [session.handleUDPPackage] = len{%d}, error{%s}", s.sessionToken(), bufLen, err)
+			err = errors.Wrapf(err, "conn.read()")
 			break
+		}
+
+		if bufLen == 0 {
+			log.Error("conn.read() = bufLen:%d, addr:%s, err:%s", bufLen, addr, err)
+			continue
+		}
+
+		if bufLen == len(connectPingPackage) && bytes.Equal(connectPingPackage, buf[:bufLen]) {
+			log.Info("got %s connectPingPackage", addr)
+			continue
 		}
 
 		pkg, pkgLen, err = s.reader.Read(s, buf[:bufLen])
@@ -662,6 +696,11 @@ func (s *session) handleUDPPackage() error {
 			log.Warn("%s, [session.handleUDPPackage] = len{%d}, error{%s}", s.sessionToken(), pkgLen, err)
 			continue
 		}
+		if pkgLen == 0 {
+			log.Error("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%s", pkg, pkgLen, err)
+			continue
+		}
+
 		s.UpdateActive()
 		s.rQ <- UDPContext{Pkg: pkg, PeerAddr: addr}
 	}

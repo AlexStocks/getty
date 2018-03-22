@@ -20,6 +20,7 @@ import (
 )
 
 import (
+	"github.com/AlexStocks/goext/log"
 	log "github.com/AlexStocks/log4go"
 	"github.com/golang/snappy"
 	"github.com/gorilla/websocket"
@@ -46,10 +47,10 @@ type gettyConn struct {
 	compress      CompressType
 	padding1      uint8
 	padding2      uint16
-	readCount     uint32        // read count
-	writeCount    uint32        // write count
-	readPkgCount  uint32        // send pkg count
-	writePkgCount uint32        // recv pkg count
+	readBytes     uint32        // read bytes
+	writeBytes    uint32        // write bytes
+	readPkgNum    uint32        // send pkg number
+	writePkgNum   uint32        // recv pkg number
 	active        int64         // last active, in milliseconds
 	rTimeout      time.Duration // network current limiting
 	wTimeout      time.Duration
@@ -72,12 +73,12 @@ func (c *gettyConn) RemoteAddr() string {
 	return c.peer
 }
 
-func (c *gettyConn) incReadPkgCount() {
-	atomic.AddUint32(&c.readPkgCount, 1)
+func (c *gettyConn) incReadPkgNum() {
+	atomic.AddUint32(&c.readPkgNum, 1)
 }
 
-func (c *gettyConn) incWritePkgCount() {
-	atomic.AddUint32(&c.writePkgCount, 1)
+func (c *gettyConn) incWritePkgNum() {
+	atomic.AddUint32(&c.writePkgNum, 1)
 }
 
 func (c *gettyConn) UpdateActive() {
@@ -247,7 +248,7 @@ func (t *gettyTCPConn) read(p []byte) (int, error) {
 
 	length, err = t.reader.Read(p)
 	log.Debug("now:%s, length:%d, err:%s", currentTime, length, err)
-	atomic.AddUint32(&t.readCount, uint32(length))
+	atomic.AddUint32(&t.readBytes, uint32(length))
 	return length, err
 }
 
@@ -258,6 +259,7 @@ func (t *gettyTCPConn) Write(pkg interface{}) (int, error) {
 		currentTime time.Time
 		ok          bool
 		p           []byte
+		length      int
 	)
 
 	if p, ok = pkg.([]byte); !ok {
@@ -276,8 +278,9 @@ func (t *gettyTCPConn) Write(pkg interface{}) (int, error) {
 		}
 	}
 
-	atomic.AddUint32(&t.writeCount, (uint32)(len(p)))
-	length, err := t.writer.Write(p)
+	if length, err = t.writer.Write(p); err == nil {
+		atomic.AddUint32(&t.writeBytes, (uint32)(len(p)))
+	}
 	log.Debug("now:%s, length:%d, err:%s", currentTime, length, err)
 	return length, err
 }
@@ -307,6 +310,10 @@ func (t *gettyTCPConn) close(waitSec int) {
 type UDPContext struct {
 	Pkg      interface{}
 	PeerAddr *net.UDPAddr
+}
+
+func (c UDPContext) String() string {
+	return fmt.Sprintf("{pkg:%#v, peer addr:%s}", c.Pkg, c.PeerAddr)
 }
 
 type gettyUDPConn struct {
@@ -390,7 +397,7 @@ func (u *gettyUDPConn) read(p []byte) (int, *net.UDPAddr, error) {
 	length, addr, err = u.conn.ReadFromUDP(p) // connected udp also can get return @addr
 	log.Debug("ReadFromUDP() = {length:%d, peerAddr:%s, error:%s}", length, addr, err)
 	if err == nil {
-		atomic.AddUint32(&u.readCount, uint32(length))
+		atomic.AddUint32(&u.readBytes, uint32(length))
 	}
 
 	return length, addr, err
@@ -409,7 +416,7 @@ func (u *gettyUDPConn) Write(udpCtx interface{}) (int, error) {
 	)
 
 	if ctx, ok = udpCtx.(UDPContext); !ok {
-		return 0, fmt.Errorf("illegal @udpCtx{%#v} type", udpCtx)
+		return 0, fmt.Errorf("illegal @udpCtx{%s} type, @udpCtx type:%T", udpCtx, udpCtx)
 	}
 	if buf, ok = ctx.Pkg.([]byte); !ok {
 		return 0, fmt.Errorf("illegal @udpCtx.Pkg{%#v} type", udpCtx)
@@ -434,9 +441,10 @@ func (u *gettyUDPConn) Write(udpCtx interface{}) (int, error) {
 		}
 	}
 
-	atomic.AddUint32(&u.writeCount, (uint32)(len(buf)))
-
-	length, _, err = u.conn.WriteMsgUDP(buf, nil, peerAddr)
+	if length, _, err = u.conn.WriteMsgUDP(buf, nil, peerAddr); err == nil {
+		atomic.AddUint32(&u.writeBytes, (uint32)(len(buf)))
+		gxlog.CError("write count:%d,  write:%d", len(buf), u.writeBytes)
+	}
 	log.Debug("WriteMsgUDP(peerAddr:%s) = {length:%d, error:%s}", peerAddr, length, err)
 
 	return length, err
@@ -529,7 +537,7 @@ func (w *gettyWSConn) read() ([]byte, error) {
 	// gorilla/websocket/conn.go:NextReader will always fail when got a timeout error.
 	_, b, e := w.conn.ReadMessage() // the first return value is message type.
 	if e == nil {
-		atomic.AddUint32(&w.readPkgCount, 1)
+		w.incReadPkgNum()
 	} else {
 		if websocket.IsUnexpectedCloseError(e, websocket.CloseGoingAway) {
 			log.Warn("websocket unexpected close error: %v", e)
@@ -564,18 +572,20 @@ func (w *gettyWSConn) updateWriteDeadline() error {
 // websocket connection write
 func (w *gettyWSConn) Write(pkg interface{}) (int, error) {
 	var (
-		ok bool
-		p  []byte
+		err error
+		ok  bool
+		p   []byte
 	)
 
 	if p, ok = pkg.([]byte); !ok {
 		return 0, fmt.Errorf("illegal @pkg{%#v} type", pkg)
 	}
 
-	// atomic.AddUint32(&w.writeCount, 1)
-	atomic.AddUint32(&w.writeCount, (uint32)(len(p)))
 	w.updateWriteDeadline()
-	return len(p), w.conn.WriteMessage(websocket.BinaryMessage, p)
+	if err = w.conn.WriteMessage(websocket.BinaryMessage, p); err == nil {
+		atomic.AddUint32(&w.writeBytes, (uint32)(len(p)))
+	}
+	return len(p), err
 }
 
 func (w *gettyWSConn) writePing() error {

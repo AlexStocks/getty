@@ -88,8 +88,8 @@ type Connection interface {
 	SetCompressType(CompressType)
 	LocalAddr() string
 	RemoteAddr() string
-	incReadPkgCount()
-	incWritePkgCount()
+	incReadPkgNum()
+	incWritePkgNum()
 	// update session's active time
 	UpdateActive()
 	// get session's active time
@@ -143,9 +143,9 @@ type Session interface {
 	SetAttribute(interface{}, interface{})
 	RemoveAttribute(interface{})
 
-	// the Writer will invoke this function.
-	// for udp session, the first parameter should be UDPContext. Otherwise its type is []byte.
-	WritePkg(interface{}, time.Duration) error
+	// the Writer will invoke this function. Pls attention that if timeout is less than 0, WritePkg will send @pkg asap.
+	// for udp session, the first parameter should be UDPContext.
+	WritePkg(pkg interface{}, timeout time.Duration) error
 	WriteBytes([]byte) error
 	WriteBytesArray(...[]byte) error
 	Close()

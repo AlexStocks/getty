@@ -15,10 +15,18 @@
 ---
 
 - 2018/03/18
+    > bug fix
+    * ignore connectPingPackage
+
+- 2018/03/18
     > improvement
     * use gxnet.IsSameAddr
     * send out pkg asap in WritePkg when the second parameter @timeout is not greater then 0.
     * delete Chinese commenting
+    * gettyConn:readCount -> gettyConn:readBytes
+    * gettyConn:writeCount -> gettyConn:writeBytes
+    * gettyConn:readPkgCount -> gettyConn:readPkgNum
+    * gettyConn:writePkgCount -> gettyConn:writePkgNum
 
 - 2018/03/18
     > improvement
@@ -295,9 +303,9 @@
 - 2016/08/29
     > 1 rename reconnect to errFlag in function session.go:(Session)handlePackage
     >
-    > 2 session.go:(gettyConn)readCount is reconsidered as read in tcp stream bytes
+    > 2 session.go:(gettyConn)readBytes is reconsidered as read in tcp stream bytes
     >
-    > 3 session.go:(gettyConn)writeCount is reconsidered as write out tcp stream bytes
+    > 3 session.go:(gettyConn)writeBytes is reconsidered as write out tcp stream bytes
     >
     > 4 reconstruct session output token string session.go:(Session)sessionToken
     >
