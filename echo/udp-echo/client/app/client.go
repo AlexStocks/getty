@@ -150,6 +150,7 @@ func (this *EchoClient) getClientEchoSession(session getty.Session) (clientEchoS
 
 func (this *EchoClient) heartbeat(session getty.Session) {
 	var (
+		err error
 		pkg EchoPackage
 		ctx getty.UDPContext
 	)
@@ -166,7 +167,7 @@ func (this *EchoClient) heartbeat(session getty.Session) {
 	ctx.PeerAddr = &(this.serverAddr)
 
 	//if err := session.WritePkg(ctx, WritePkgTimeout); err != nil {
-	if err := session.WritePkg(ctx, WritePkgASAP); err != nil {
+	if err = session.WritePkg(ctx, WritePkgASAP); err != nil {
 		log.Warn("session.WritePkg(session{%s}, context{%#v}) = error{%v}", session.Stat(), ctx, err)
 		session.Close()
 

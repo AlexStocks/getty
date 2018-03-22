@@ -26,7 +26,7 @@ SessionTimeout          = "20s"
 # client echo request string
 EchoString              = "Hello, getty!"
 # 发送echo请求次数
-EchoTimes               = 10000
+EchoTimes               = 100000
 
 # app fail fast
 FailFastTimeout         = "3s"

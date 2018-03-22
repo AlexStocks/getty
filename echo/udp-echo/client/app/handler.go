@@ -16,6 +16,7 @@ import (
 
 import (
 	"github.com/AlexStocks/getty"
+	"github.com/AlexStocks/goext/log"
 	log "github.com/AlexStocks/log4go"
 )
 
@@ -69,6 +70,7 @@ func (this *EchoMessageHandler) OnMessage(session getty.Session, udpCtx interfac
 	}
 
 	log.Debug("get echo package{%s}", p)
+	gxlog.CError("session:%s, get echo package{%s}", session.Stat(), p)
 
 	this.client.updateSession(session)
 }

@@ -11,12 +11,12 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 )
 
 import (
-	"fmt"
 	"github.com/AlexStocks/getty"
 	log "github.com/AlexStocks/log4go"
 )
@@ -42,8 +42,9 @@ type HeartbeatHandler struct{}
 
 func (this *HeartbeatHandler) Handle(session getty.Session, ctx getty.UDPContext) error {
 	var (
-		pkg *EchoPackage
-		ok  bool
+		ok     bool
+		pkg    *EchoPackage
+		rspPkg EchoPackage
 	)
 
 	log.Debug("get echo heartbeat udp context{%#v}", ctx)
@@ -51,7 +52,6 @@ func (this *HeartbeatHandler) Handle(session getty.Session, ctx getty.UDPContext
 		return fmt.Errorf("illegal @ctx.Pkg:%#v", ctx.Pkg)
 	}
 
-	var rspPkg EchoPackage
 	rspPkg.H = pkg.H
 	rspPkg.B = echoHeartbeatResponseString
 	rspPkg.H.Len = uint16(len(rspPkg.B) + 1)

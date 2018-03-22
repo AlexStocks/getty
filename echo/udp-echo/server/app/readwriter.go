@@ -67,7 +67,7 @@ func (this *EchoPackageHandler) Write(ss getty.Session, udpCtx interface{}) erro
 
 	startTime = time.Now()
 	if echoPkg, ok = ctx.Pkg.(*EchoPackage); !ok {
-		log.Error("illegal pkg:%+v\n", ctx.Pkg)
+		log.Error("illegal pkg:%+v, addr:%s\n", ctx.Pkg, ctx.PeerAddr)
 		return errors.New("invalid echo package!")
 	}
 
@@ -77,8 +77,7 @@ func (this *EchoPackageHandler) Write(ss getty.Session, udpCtx interface{}) erro
 		return err
 	}
 
-	// _, err = ss.Write(getty.UDPContext{Pkg: buf.Bytes(), PeerAddr: ctx.PeerAddr})
-	err = ss.WritePkg(getty.UDPContext{Pkg: buf.Bytes(), PeerAddr: ctx.PeerAddr}, WritePkgASAP)
+	_, err = ss.Write(getty.UDPContext{Pkg: buf.Bytes(), PeerAddr: ctx.PeerAddr})
 	log.Info("WriteEchoPkgTimeMs = %s", time.Since(startTime).String())
 
 	return err

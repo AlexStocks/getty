@@ -17,7 +17,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
-	// "strings"
+
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -81,6 +81,7 @@ func newSession(session getty.Session) error {
 		udpConn     *net.UDPConn
 		gettyClient getty.Client
 		client      *EchoClient
+		sessionName string
 	)
 
 	if gettyClient, ok = session.EndPoint().(getty.Client); !ok {
@@ -90,9 +91,11 @@ func newSession(session getty.Session) error {
 	switch gettyClient {
 	case connectedClient.gettyClient:
 		client = &connectedClient
+		sessionName = "connected-" + conf.GettySessionParam.SessionName
 
 	case unconnectedClient.gettyClient:
 		client = &unconnectedClient
+		sessionName = "unconnected-" + conf.GettySessionParam.SessionName
 
 	default:
 		panic(fmt.Sprintf("illegal session{%#v} endpoint", session))
@@ -109,7 +112,7 @@ func newSession(session getty.Session) error {
 	udpConn.SetReadBuffer(conf.GettySessionParam.UdpRBufSize)
 	udpConn.SetWriteBuffer(conf.GettySessionParam.UdpWBufSize)
 
-	session.SetName(conf.GettySessionParam.SessionName)
+	session.SetName(sessionName)
 	session.SetMaxMsgLen(conf.GettySessionParam.MaxMsgLen)
 	session.SetPkgHandler(NewEchoPackageHandler())
 	session.SetEventListener(newEchoMessageHandler(client))
@@ -175,6 +178,7 @@ func initSignal() {
 
 func echo(client *EchoClient) {
 	var (
+		err error
 		pkg EchoPackage
 		ctx getty.UDPContext
 	)
@@ -191,7 +195,8 @@ func echo(client *EchoClient) {
 	ctx.PeerAddr = &(client.serverAddr)
 
 	if session := client.selectSession(); session != nil {
-		err := session.WritePkg(ctx, WritePkgTimeout)
+		// err := session.WritePkg(ctx, WritePkgTimeout)
+		err = session.WritePkg(ctx, WritePkgASAP)
 		if err != nil {
 			log.Warn("session.WritePkg(session{%s}, UDPContext{%#v}) = error{%v}", session.Stat(), ctx, err)
 			session.Close()
@@ -207,7 +212,7 @@ func testEchoClient(client *EchoClient) {
 	)
 
 	for {
-		if unconnectedClient.isAvailable() {
+		if client.isAvailable() {
 			break
 		}
 		time.Sleep(3e9)
@@ -215,11 +220,10 @@ func testEchoClient(client *EchoClient) {
 
 	counter.Start()
 	for i := 0; i < conf.EchoTimes; i++ {
-		echo(&unconnectedClient)
+		echo(client)
 	}
 	cost = counter.Count()
-	log.Info("after loop %d times, client:%s echo cost %d ms",
-		conf.EchoTimes, client.gettyClient.EndPointType(), cost/1e6)
+	log.Info("after loop %d times, echo cost %d ms", conf.EchoTimes, cost/1e6)
 }
 
 func test() {
