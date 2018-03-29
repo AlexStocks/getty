@@ -158,7 +158,7 @@ func (s *server) listenTCP() error {
 
 	streamListener, err = net.Listen("tcp", s.addr)
 	if err != nil {
-		return errors.Wrapf(err, "net.Listen(tcp, addr:%s))", s.addr)
+		return errors.Annotatef(err, "net.Listen(tcp, addr:%s))", s.addr)
 	}
 
 	s.streamListener = streamListener
@@ -175,11 +175,11 @@ func (s *server) listenUDP() error {
 
 	localAddr, err = net.ResolveUDPAddr("udp", s.addr)
 	if err != nil {
-		return errors.Wrapf(err, "net.ResolveUDPAddr(udp, addr:%s)", s.addr)
+		return errors.Annotatef(err, "net.ResolveUDPAddr(udp, addr:%s)", s.addr)
 	}
 	pktListener, err = net.ListenUDP("udp", localAddr)
 	if err != nil {
-		return errors.Wrapf(err, "net.ListenUDP((udp, localAddr:%#v)", localAddr)
+		return errors.Annotatef(err, "net.ListenUDP((udp, localAddr:%#v)", localAddr)
 	}
 	// if err = setUDPSocketOptions(pktListener); err != nil {
 	//  	return errors.Wrapf(err, "setUDPSocketOptions(pktListener:%#v)", pktListener)
