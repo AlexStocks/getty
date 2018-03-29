@@ -26,7 +26,7 @@ import (
 	"github.com/AlexStocks/goext/time"
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
-	"github.com/pkg/errors"
+	"github.com/juju/errors"
 )
 
 const (
@@ -342,7 +342,7 @@ func (s *session) WriteBytes(pkg []byte) error {
 
 	// s.conn.SetWriteTimeout(time.Now().Add(s.wTimeout))
 	if _, err := s.Connection.Write(pkg); err != nil {
-		return errors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
+		return errors.Annotatef(err, "s.Connection.Write(pkg len:%d)", len(pkg))
 	}
 
 	s.incWritePkgNum()
@@ -673,7 +673,7 @@ func (s *session) handleUDPPackage() error {
 		}
 		if err != nil {
 			log.Error("%s, [session.handleUDPPackage] = len{%d}, error{%s}", s.sessionToken(), bufLen, err)
-			err = errors.Wrapf(err, "conn.read()")
+			err = errors.Annotatef(err, "conn.read()")
 			break
 		}
 

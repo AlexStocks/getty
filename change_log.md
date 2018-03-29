@@ -14,11 +14,15 @@
 ## develop history ##
 ---
 
-- 2018/03/18
+- 2018/03/29
+    > improvement
+    * use juju/errors instead of pkg/errors
+
+- 2018/03/20
     > bug fix
     * ignore connectPingPackage
 
-- 2018/03/18
+- 2018/03/19
     > improvement
     * use gxnet.IsSameAddr
     * send out pkg asap in WritePkg when the second parameter @timeout is not greater then 0.

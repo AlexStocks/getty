@@ -27,7 +27,7 @@ import (
 	"github.com/AlexStocks/goext/time"
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
-	"github.com/pkg/errors"
+	"github.com/juju/errors"
 )
 
 var (
