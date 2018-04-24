@@ -274,10 +274,14 @@ func (s *session) SetWaitTime(waitTime time.Duration) {
 
 // set attribute of key @session:key
 func (s *session) GetAttribute(key interface{}) interface{} {
-	var ret interface{}
 	s.lock.RLock()
-	ret = s.attrs.Get(key)
+	ret, flag := s.attrs.Get(key)
 	s.lock.RUnlock()
+
+	if !flag {
+		return nil
+	}
+
 	return ret
 }
 
