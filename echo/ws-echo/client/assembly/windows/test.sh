@@ -15,15 +15,13 @@ set -e
 export GOOS=windows
 export GOARCH=amd64
 
-PROFILE=test
-
-PROJECT_HOME=`pwd`
+export PROFILE="test"
+export PROJECT_HOME=`pwd`
 
 if [ -f "${PROJECT_HOME}/assembly/common/app.properties" ]; then
-. ${PROJECT_HOME}/assembly/common/app.properties
+  . ${PROJECT_HOME}/assembly/common/app.properties
 fi
 
-
 if [ -f "${PROJECT_HOME}/assembly/common/build.sh" ]; then
-. ${PROJECT_HOME}/assembly/common/build.sh
+  sh ${PROJECT_HOME}/assembly/common/build.sh
 fi
