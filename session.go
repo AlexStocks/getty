@@ -26,7 +26,7 @@ import (
 	"github.com/AlexStocks/goext/time"
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
-	"github.com/juju/errors"
+	jerrors "github.com/juju/errors"
 )
 
 const (
@@ -300,7 +300,8 @@ func (s *session) RemoveAttribute(key interface{}) {
 }
 
 func (s *session) sessionToken() string {
-	return fmt.Sprintf("{%s:%s:%d:%s<->%s}", s.name, s.EndPoint().EndPointType(), s.ID(), s.LocalAddr(), s.RemoteAddr())
+	return fmt.Sprintf("{%s:%s:%d:%s<->%s}",
+		s.name, s.EndPoint().EndPointType(), s.ID(), s.LocalAddr(), s.RemoteAddr())
 }
 
 func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
@@ -346,7 +347,7 @@ func (s *session) WriteBytes(pkg []byte) error {
 
 	// s.conn.SetWriteTimeout(time.Now().Add(s.wTimeout))
 	if _, err := s.Connection.Write(pkg); err != nil {
-		return errors.Annotatef(err, "s.Connection.Write(pkg len:%d)", len(pkg))
+		return jerrors.Annotatef(err, "s.Connection.Write(pkg len:%d)", len(pkg))
 	}
 
 	s.incWritePkgNum()
@@ -361,7 +362,6 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 		return ErrSessionClosed
 	}
 	// s.conn.SetWriteTimeout(time.Now().Add(s.wTimeout))
-
 	if len(pkgs) == 1 {
 		// return s.Connection.Write(pkgs[0])
 		return s.WriteBytes(pkgs[0])
@@ -389,7 +389,7 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 
 	// return s.Connection.Write(arr)
 	if err = s.WriteBytes(arr); err != nil {
-		return err
+		return jerrors.Trace(err)
 	}
 
 	num := len(pkgs) - 1
@@ -600,7 +600,7 @@ func (s *session) handleTCPPackage() error {
 				if netError, ok = err.(net.Error); ok && netError.Timeout() {
 					break
 				}
-				log.Error("%s, [session.conn.read] = error{%s}", s.sessionToken(), err)
+				log.Error("%s, [session.conn.read] = error{%s}", s.sessionToken(), jerrors.ErrorStack(err))
 				// for (Codec)OnErr
 				// s.errFlag = true
 				exit = true
@@ -624,7 +624,8 @@ func (s *session) handleTCPPackage() error {
 				err = ErrMsgTooLong
 			}
 			if err != nil {
-				log.Warn("%s, [session.handleTCPPackage] = len{%d}, error{%s}", s.sessionToken(), pkgLen, err)
+				log.Warn("%s, [session.handleTCPPackage] = len{%d}, error{%s}",
+					s.sessionToken(), pkgLen, jerrors.ErrorStack(err))
 				// for (Codec)OnErr
 				// s.errFlag = true
 				exit = true
@@ -671,18 +672,19 @@ func (s *session) handleUDPPackage() error {
 		}
 
 		bufLen, addr, err = conn.read(buf)
-		log.Debug("conn.read() = bufLen:%d, addr:%#v, err:%s", bufLen, addr, err)
+		log.Debug("conn.read() = bufLen:%d, addr:%#v, err:%s", bufLen, addr, jerrors.ErrorStack(err))
 		if netError, ok = err.(net.Error); ok && netError.Timeout() {
 			continue
 		}
 		if err != nil {
-			log.Error("%s, [session.handleUDPPackage] = len{%d}, error{%s}", s.sessionToken(), bufLen, err)
-			err = errors.Annotatef(err, "conn.read()")
+			log.Error("%s, [session.handleUDPPackage] = len{%d}, error{%s}",
+				s.sessionToken(), bufLen, jerrors.ErrorStack(err))
+			err = jerrors.Annotatef(err, "conn.read()")
 			break
 		}
 
 		if bufLen == 0 {
-			log.Error("conn.read() = bufLen:%d, addr:%s, err:%s", bufLen, addr, err)
+			log.Error("conn.read() = bufLen:%d, addr:%s, err:%s", bufLen, addr, jerrors.ErrorStack(err))
 			continue
 		}
 
@@ -692,16 +694,17 @@ func (s *session) handleUDPPackage() error {
 		}
 
 		pkg, pkgLen, err = s.reader.Read(s, buf[:bufLen])
-		log.Debug("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%s", pkg, pkgLen, err)
+		log.Debug("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%s", pkg, pkgLen, jerrors.ErrorStack(err))
 		if err == nil && s.maxMsgLen > 0 && bufLen > int(s.maxMsgLen) {
 			err = ErrMsgTooLong
 		}
 		if err != nil {
-			log.Warn("%s, [session.handleUDPPackage] = len{%d}, error{%s}", s.sessionToken(), pkgLen, err)
+			log.Warn("%s, [session.handleUDPPackage] = len{%d}, error{%s}",
+				s.sessionToken(), pkgLen, jerrors.ErrorStack(err))
 			continue
 		}
 		if pkgLen == 0 {
-			log.Error("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%s", pkg, pkgLen, err)
+			log.Error("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%s", pkg, pkgLen, jerrors.ErrorStack(err))
 			continue
 		}
 
@@ -734,7 +737,8 @@ func (s *session) handleWSPackage() error {
 			continue
 		}
 		if err != nil {
-			log.Warn("%s, [session.handleWSPackage] = error{%s}", s.sessionToken(), err)
+			log.Warn("%s, [session.handleWSPackage] = error{%s}",
+				s.sessionToken(), jerrors.ErrorStack(err))
 			// s.errFlag = true
 			return err
 		}
@@ -745,7 +749,8 @@ func (s *session) handleWSPackage() error {
 				err = ErrMsgTooLong
 			}
 			if err != nil {
-				log.Warn("%s, [session.handleWSPackage] = len{%d}, error{%s}", s.sessionToken(), length, err)
+				log.Warn("%s, [session.handleWSPackage] = len{%d}, error{%s}",
+					s.sessionToken(), length, jerrors.ErrorStack(err))
 				continue
 			}
 			s.rQ <- unmarshalPkg

@@ -20,10 +20,10 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/goext/log"
 	log "github.com/AlexStocks/log4go"
 	"github.com/golang/snappy"
 	"github.com/gorilla/websocket"
+	jerrors "github.com/juju/errors"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 )
@@ -190,10 +190,10 @@ func (t *writeFlusher) Write(p []byte) (int, error) {
 
 	n, err = t.flusher.Write(p)
 	if err != nil {
-		return n, err
+		return n, jerrors.Trace(err)
 	}
 	if err := t.flusher.Flush(); err != nil {
-		return 0, err
+		return 0, jerrors.Trace(err)
 	}
 
 	return n, nil
@@ -240,7 +240,7 @@ func (t *gettyTCPConn) read(p []byte) (int, error) {
 		currentTime = wheel.Now()
 		if currentTime.Sub(t.rLastDeadline) > (t.rTimeout >> 2) {
 			if err = t.conn.SetReadDeadline(currentTime.Add(t.rTimeout)); err != nil {
-				return 0, err
+				return 0, jerrors.Trace(err)
 			}
 			t.rLastDeadline = currentTime
 		}
@@ -249,7 +249,7 @@ func (t *gettyTCPConn) read(p []byte) (int, error) {
 	length, err = t.reader.Read(p)
 	log.Debug("now:%s, length:%d, err:%s", currentTime, length, err)
 	atomic.AddUint32(&t.readBytes, uint32(length))
-	return length, err
+	return length, jerrors.Trace(err)
 }
 
 // tcp connection write
@@ -263,7 +263,7 @@ func (t *gettyTCPConn) Write(pkg interface{}) (int, error) {
 	)
 
 	if p, ok = pkg.([]byte); !ok {
-		return 0, fmt.Errorf("illegal @pkg{%#v} type", pkg)
+		return 0, jerrors.Errorf("illegal @pkg{%#v} type", pkg)
 	}
 	if t.compress == CompressNone && t.wTimeout > 0 {
 		// Optimization: update write deadline only if more than 25%
@@ -272,7 +272,7 @@ func (t *gettyTCPConn) Write(pkg interface{}) (int, error) {
 		currentTime = wheel.Now()
 		if currentTime.Sub(t.wLastDeadline) > (t.wTimeout >> 2) {
 			if err = t.conn.SetWriteDeadline(currentTime.Add(t.wTimeout)); err != nil {
-				return 0, err
+				return 0, jerrors.Trace(err)
 			}
 			t.wLastDeadline = currentTime
 		}
@@ -282,7 +282,7 @@ func (t *gettyTCPConn) Write(pkg interface{}) (int, error) {
 		atomic.AddUint32(&t.writeBytes, (uint32)(len(p)))
 	}
 	log.Debug("now:%s, length:%d, err:%s", currentTime, length, err)
-	return length, err
+	return length, jerrors.Trace(err)
 }
 
 // close tcp connection
@@ -294,7 +294,7 @@ func (t *gettyTCPConn) close(waitSec int) {
 	if t.conn != nil {
 		if writer, ok := t.writer.(*snappy.Writer); ok {
 			if err := writer.Close(); err != nil {
-				log.Error("snappy.Writer.Close() = error{%s}", err)
+				log.Error("snappy.Writer.Close() = error{%s}", jerrors.ErrorStack(err))
 			}
 		}
 		t.conn.(*net.TCPConn).SetLinger(waitSec)
@@ -328,7 +328,7 @@ func setUDPSocketOptions(conn *net.UDPConn) error {
 	err6 := ipv6.NewPacketConn(conn).SetControlMessage(ipv6.FlagDst|ipv6.FlagInterface, true)
 	err4 := ipv4.NewPacketConn(conn).SetControlMessage(ipv4.FlagDst|ipv4.FlagInterface, true)
 	if err6 != nil && err4 != nil {
-		return err4
+		return jerrors.Trace(err4)
 	}
 	return nil
 }
@@ -388,7 +388,7 @@ func (u *gettyUDPConn) read(p []byte) (int, *net.UDPAddr, error) {
 		currentTime = wheel.Now()
 		if currentTime.Sub(u.rLastDeadline) > (u.rTimeout >> 2) {
 			if err = u.conn.SetReadDeadline(currentTime.Add(u.rTimeout)); err != nil {
-				return 0, nil, err
+				return 0, nil, jerrors.Trace(err)
 			}
 			u.rLastDeadline = currentTime
 		}
@@ -400,7 +400,7 @@ func (u *gettyUDPConn) read(p []byte) (int, *net.UDPAddr, error) {
 		atomic.AddUint32(&u.readBytes, uint32(length))
 	}
 
-	return length, addr, err
+	return length, addr, jerrors.Trace(err)
 }
 
 // write udp packet, @ctx should be of type UDPContext
@@ -416,10 +416,10 @@ func (u *gettyUDPConn) Write(udpCtx interface{}) (int, error) {
 	)
 
 	if ctx, ok = udpCtx.(UDPContext); !ok {
-		return 0, fmt.Errorf("illegal @udpCtx{%s} type, @udpCtx type:%T", udpCtx, udpCtx)
+		return 0, jerrors.Errorf("illegal @udpCtx{%s} type, @udpCtx type:%T", udpCtx, udpCtx)
 	}
 	if buf, ok = ctx.Pkg.([]byte); !ok {
-		return 0, fmt.Errorf("illegal @udpCtx.Pkg{%#v} type", udpCtx)
+		return 0, jerrors.Errorf("illegal @udpCtx.Pkg{%#v} type", udpCtx)
 	}
 	if u.ss.EndPoint().EndPointType() == UDP_ENDPOINT {
 		peerAddr = ctx.PeerAddr
@@ -435,7 +435,7 @@ func (u *gettyUDPConn) Write(udpCtx interface{}) (int, error) {
 		currentTime = wheel.Now()
 		if currentTime.Sub(u.wLastDeadline) > (u.wTimeout >> 2) {
 			if err = u.conn.SetWriteDeadline(currentTime.Add(u.wTimeout)); err != nil {
-				return 0, err
+				return 0, jerrors.Trace(err)
 			}
 			u.wLastDeadline = currentTime
 		}
@@ -443,11 +443,10 @@ func (u *gettyUDPConn) Write(udpCtx interface{}) (int, error) {
 
 	if length, _, err = u.conn.WriteMsgUDP(buf, nil, peerAddr); err == nil {
 		atomic.AddUint32(&u.writeBytes, (uint32)(len(buf)))
-		gxlog.CError("write count:%d,  write:%d", len(buf), u.writeBytes)
 	}
 	log.Debug("WriteMsgUDP(peerAddr:%s) = {length:%d, error:%s}", peerAddr, length, err)
 
-	return length, err
+	return length, jerrors.Trace(err)
 }
 
 // close udp connection
@@ -523,7 +522,7 @@ func (w *gettyWSConn) handlePing(message string) error {
 		w.UpdateActive()
 	}
 
-	return err
+	return jerrors.Trace(err)
 }
 
 func (w *gettyWSConn) handlePong(string) error {
@@ -544,7 +543,7 @@ func (w *gettyWSConn) read() ([]byte, error) {
 		}
 	}
 
-	return b, e
+	return b, jerrors.Trace(e)
 }
 
 func (w *gettyWSConn) updateWriteDeadline() error {
@@ -560,7 +559,7 @@ func (w *gettyWSConn) updateWriteDeadline() error {
 		currentTime = wheel.Now()
 		if currentTime.Sub(w.wLastDeadline) > (w.wTimeout >> 2) {
 			if err = w.conn.SetWriteDeadline(currentTime.Add(w.wTimeout)); err != nil {
-				return err
+				return jerrors.Trace(err)
 			}
 			w.wLastDeadline = currentTime
 		}
@@ -578,24 +577,24 @@ func (w *gettyWSConn) Write(pkg interface{}) (int, error) {
 	)
 
 	if p, ok = pkg.([]byte); !ok {
-		return 0, fmt.Errorf("illegal @pkg{%#v} type", pkg)
+		return 0, jerrors.Errorf("illegal @pkg{%#v} type", pkg)
 	}
 
 	w.updateWriteDeadline()
 	if err = w.conn.WriteMessage(websocket.BinaryMessage, p); err == nil {
 		atomic.AddUint32(&w.writeBytes, (uint32)(len(p)))
 	}
-	return len(p), err
+	return len(p), jerrors.Trace(err)
 }
 
 func (w *gettyWSConn) writePing() error {
 	w.updateWriteDeadline()
-	return w.conn.WriteMessage(websocket.PingMessage, []byte{})
+	return jerrors.Trace(w.conn.WriteMessage(websocket.PingMessage, []byte{}))
 }
 
 func (w *gettyWSConn) writePong(message []byte) error {
 	w.updateWriteDeadline()
-	return w.conn.WriteMessage(websocket.PongMessage, message)
+	return jerrors.Trace(w.conn.WriteMessage(websocket.PongMessage, message))
 }
 
 // close websocket connection

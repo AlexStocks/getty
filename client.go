@@ -26,6 +26,7 @@ import (
 	"github.com/AlexStocks/goext/sync"
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
+	jerrors "github.com/juju/errors"
 )
 
 const (
@@ -138,7 +139,7 @@ func (c *client) dialTCP() Session {
 			return newTCPSession(conn, c)
 		}
 
-		log.Info("net.DialTimeout(addr:%s, timeout:%v) = error{%s}", c.addr, err)
+		log.Info("net.DialTimeout(addr:%s, timeout:%v) = error{%s}", c.addr, jerrors.ErrorStack(err))
 		// time.Sleep(connInterval)
 		<-wheel.After(connInterval)
 	}
@@ -167,7 +168,7 @@ func (c *client) dialUDP() Session {
 			err = errSelfConnect
 		}
 		if err != nil {
-			log.Warn("net.DialTimeout(addr:%s, timeout:%v) = error{%s}", c.addr, err)
+			log.Warn("net.DialTimeout(addr:%s, timeout:%v) = error{%s}", c.addr, jerrors.ErrorStack(err))
 			// time.Sleep(connInterval)
 			<-wheel.After(connInterval)
 			continue
@@ -177,7 +178,7 @@ func (c *client) dialUDP() Session {
 		conn.SetWriteDeadline(wheel.Now().Add(1e9))
 		if length, err = conn.Write(connectPingPackage[:]); err != nil {
 			conn.Close()
-			log.Warn("conn.Write(%s) = {length:%d, err:%s}", string(connectPingPackage), length, err)
+			log.Warn("conn.Write(%s) = {length:%d, err:%s}", string(connectPingPackage), length, jerrors.ErrorStack(err))
 			// time.Sleep(connInterval)
 			<-wheel.After(connInterval)
 			continue
@@ -188,7 +189,7 @@ func (c *client) dialUDP() Session {
 			err = nil
 		}
 		if err != nil {
-			log.Info("conn{%#v}.Read() = {length:%d, err:%s}", conn, length, err)
+			log.Info("conn{%#v}.Read() = {length:%d, err:%s}", conn, length, jerrors.ErrorStack(err))
 			conn.Close()
 			// time.Sleep(connInterval)
 			<-wheel.After(connInterval)
@@ -214,7 +215,7 @@ func (c *client) dialWS() Session {
 			return nil
 		}
 		conn, _, err = dialer.Dial(c.addr, nil)
-		log.Info("websocket.dialer.Dial(addr:%s) = error:%s", c.addr, err)
+		log.Info("websocket.dialer.Dial(addr:%s) = error:%s", c.addr, jerrors.ErrorStack(err))
 		if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 			conn.Close()
 			err = errSelfConnect
@@ -228,7 +229,7 @@ func (c *client) dialWS() Session {
 			return ss
 		}
 
-		log.Info("websocket.dialer.Dial(addr:%s) = error:%s", c.addr, err)
+		log.Info("websocket.dialer.Dial(addr:%s) = error:%s", c.addr, jerrors.ErrorStack(err))
 		// time.Sleep(connInterval)
 		<-wheel.After(connInterval)
 	}
@@ -255,7 +256,7 @@ func (c *client) dialWSS() Session {
 	if c.cert != "" {
 		certPEMBlock, err := ioutil.ReadFile(c.cert)
 		if err != nil {
-			panic(fmt.Sprintf("ioutil.ReadFile(cert:%s) = error{%s}", c.cert, err))
+			panic(fmt.Sprintf("ioutil.ReadFile(cert:%s) = error{%s}", c.cert, jerrors.ErrorStack(err)))
 		}
 
 		var cert tls.Certificate
@@ -277,7 +278,7 @@ func (c *client) dialWSS() Session {
 	for _, c := range config.Certificates {
 		roots, err = x509.ParseCertificates(c.Certificate[len(c.Certificate)-1])
 		if err != nil {
-			panic(fmt.Sprintf("error parsing server's root cert: %s\n", err))
+			panic(fmt.Sprintf("error parsing server's root cert: %s\n", jerrors.ErrorStack(err)))
 		}
 		for _, root = range roots {
 			certPool.AddCert(root)
@@ -307,7 +308,7 @@ func (c *client) dialWSS() Session {
 			return ss
 		}
 
-		log.Info("websocket.dialer.Dial(addr:%s) = error{%s}", c.addr, err)
+		log.Info("websocket.dialer.Dial(addr:%s) = error{%s}", c.addr, jerrors.ErrorStack(err))
 		// time.Sleep(connInterval)
 		<-wheel.After(connInterval)
 	}
