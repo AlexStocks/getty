@@ -2,7 +2,7 @@
 ---
  *a netty like asynchronous network I/O library*
 
-## introdction ##
+## INTRODUCTION ##
 ---
 
 Getty is a asynchronous network I/O library in golang. Getty is based on "ngo" whose author is [sanbit](https://github.com/sanbit). Getty works on tcp/udp/websocket network protocol and supplies [a uniform interface](https://github.com/alexstocks/getty/blob/master/getty.go#L45).
