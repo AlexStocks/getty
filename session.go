@@ -408,9 +408,9 @@ func (s *session) run() {
 		log.Error(errStr)
 		panic(errStr)
 	}
-	if s.Connection == nil {
-		errStr := fmt.Sprintf("session{name:%s, conn:%#v}",
-			s.name, s.Connection)
+	if s.Connection == nil || s.eventListener() == nil || s.writer() == nil {
+		errStr := fmt.Sprintf("session{name:%s, conn:%#v, listener:%#v, writer:%#v}",
+			s.name, s.Connection, s.eventListener(), s.writer())
 		log.Error(errStr)
 		panic(errStr)
 	}
