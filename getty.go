@@ -19,7 +19,11 @@ import (
 // NewSessionCallback will be invoked when server accepts a new client connection or client connects to server successfully.
 // If there are too many client connections or u do not want to connect a server again, u can return non-nil error. And
 // then getty will close the new session.
-type NewSessionCallback func(Session) error
+// type NewSessionCallback func(Session) error // delete after version 0.8.4
+// retype interface
+type SessionHandler interface {
+	init(Session) error
+}
 
 // Reader is used to unmarshal a complete pkg from buffer
 type Reader interface {
@@ -130,10 +134,13 @@ type Session interface {
 
 	SetMaxMsgLen(int)
 	SetName(string)
-	SetEventListener(EventListener)
-	SetPkgHandler(ReadWriter)
-	SetReader(Reader)
-	SetWriter(Writer)
+
+	//delete after version 0.8.4
+	//SetEventListener(EventListener)
+	//SetPkgHandler(ReadWriter)
+	//SetReader(Reader)
+	//SetWriter(Writer)
+
 	SetCronPeriod(int)
 	SetRQLen(int)
 	SetWQLen(int)
@@ -159,11 +166,22 @@ type EndPoint interface {
 	// get endpoint type
 	EndPointType() EndPointType
 	// run event loop and serves client request.
-	RunEventLoop(newSession NewSessionCallback)
+	RunEventLoop()
 	// check the endpoint has been closed
 	IsClosed() bool
 	// close the endpoint and free its resource
 	Close()
+	// set ReaderWriter
+	SetReaderWriter(ReadWriter)
+	// set Reader
+	SetReader(Reader)
+	Reader() Reader
+	// set Writer
+	SetWriter(Writer)
+	Writer() Writer
+	// set eventLisntener
+	SetEventListener(EventListener)
+	EventListener() EventListener
 }
 
 type Client interface {

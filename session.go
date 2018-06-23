@@ -58,11 +58,14 @@ type session struct {
 	// net read Write
 	Connection
 	// pkgHandler ReadWriter
-	reader   Reader // @reader should be nil when @conn is a gettyWSConn object.
-	writer   Writer
-	listener EventListener
-	once     sync.Once
-	done     chan gxsync.Empty
+
+	//delete after version 0.8.4
+	//reader   Reader // @reader should be nil when @conn is a gettyWSConn object.
+	//writer   Writer
+	//listener EventListener
+
+	once sync.Once
+	done chan gxsync.Empty
 	// errFlag  bool
 
 	period time.Duration
@@ -204,26 +207,22 @@ func (s *session) SetMaxMsgLen(length int) { s.maxMsgLen = int32(length) }
 // set session name
 func (s *session) SetName(name string) { s.name = name }
 
-// set EventListener
-func (s *session) SetEventListener(listener EventListener) {
-	s.listener = listener
+// get session reader
+// add after version 0.8.4
+func (s *session) reader() Reader {
+	return s.endPoint.Reader()
 }
 
-// set package handler
-func (s *session) SetPkgHandler(handler ReadWriter) {
-	s.reader = handler
-	s.writer = handler
-	// s.pkgHandler = handler
+// get session writer
+// add after version 0.8.4
+func (s *session) writer() Writer {
+	return s.endPoint.Writer()
 }
 
-// set Reader
-func (s *session) SetReader(reader Reader) {
-	s.reader = reader
-}
-
-// set Writer
-func (s *session) SetWriter(writer Writer) {
-	s.writer = writer
+// get session listener
+// add after version 0.8.4
+func (s *session) eventListener() EventListener {
+	return s.endPoint.EventListener()
 }
 
 // period is in millisecond. Websocket session will send ping frame automatically every peroid.
@@ -320,7 +319,7 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 
 	var err error
 	if timeout <= 0 {
-		if err = s.writer.Write(s, pkg); err == nil {
+		if err = s.writer().Write(s, pkg); err == nil {
 			s.incWritePkgNum()
 			gxlog.CError("after incWritePkgNum, ss:%s", s.Stat())
 		}
@@ -409,16 +408,16 @@ func (s *session) run() {
 		log.Error(errStr)
 		panic(errStr)
 	}
-	if s.Connection == nil || s.listener == nil || s.writer == nil {
-		errStr := fmt.Sprintf("session{name:%s, conn:%#v, listener:%#v, writer:%#v}",
-			s.name, s.Connection, s.listener, s.writer)
+	if s.Connection == nil {
+		errStr := fmt.Sprintf("session{name:%s, conn:%#v}",
+			s.name, s.Connection)
 		log.Error(errStr)
 		panic(errStr)
 	}
 
 	// call session opened
 	s.UpdateActive()
-	if err := s.listener.OnOpen(s); err != nil {
+	if err := s.eventListener().OnOpen(s); err != nil {
 		s.Close()
 		return
 	}
@@ -454,7 +453,7 @@ func (s *session) handleLoop() {
 
 		grNum = atomic.AddInt32(&(s.grNum), -1)
 		// if !s.errFlag {
-		s.listener.OnClose(s)
+		s.eventListener().OnClose(s)
 		// }
 		log.Info("%s, [session.handleLoop] goroutine exit now, left gr num %d", s.Stat(), grNum)
 		s.gc()
@@ -488,7 +487,7 @@ LOOP:
 			// read the s.rQ and assure (session)handlePackage gr will not block by (session)rQ.
 			if flag {
 				log.Debug("%#v <-s.rQ", inPkg)
-				s.listener.OnMessage(s, inPkg)
+				s.eventListener().OnMessage(s, inPkg)
 				s.incReadPkgNum()
 			} else {
 				log.Info("[session.handleLoop] drop readin package{%#v}", inPkg)
@@ -496,7 +495,7 @@ LOOP:
 
 		case outPkg = <-s.wQ:
 			if flag {
-				if err = s.writer.Write(s, outPkg); err != nil {
+				if err = s.writer().Write(s, outPkg); err != nil {
 					log.Error("%s, [session.handleLoop] = error{%s}", s.sessionToken(), err)
 					s.stop()
 					flag = false
@@ -508,7 +507,7 @@ LOOP:
 				log.Info("[session.handleLoop] drop writeout package{%#v}", outPkg)
 			}
 
-		// case <-ticker.C: // use wheel instead, 2016/09/26
+			// case <-ticker.C: // use wheel instead, 2016/09/26
 		case <-wheel.After(s.period):
 			if flag {
 				if wsFlag {
@@ -517,7 +516,7 @@ LOOP:
 						log.Warn("wsConn.writePing() = error{%s}", err)
 					}
 				}
-				s.listener.OnCron(s)
+				s.eventListener().OnCron(s)
 			}
 		}
 	}
@@ -544,17 +543,19 @@ func (s *session) handlePackage() {
 		s.stop()
 		if err != nil {
 			log.Error("%s, [session.handlePackage] error{%s}", s.sessionToken(), err)
-			s.listener.OnError(s, err)
+			s.eventListener().OnError(s, err)
 		}
 	}()
 
-	if _, ok := s.Connection.(*gettyTCPConn); ok {
-		if s.reader == nil {
-			errStr := fmt.Sprintf("session{name:%s, conn:%#v, reader:%#v}", s.name, s.Connection, s.reader)
+	if _, ok := s.Connection.(*gettyWSConn); !ok {
+		if s.reader() == nil {
+			errStr := fmt.Sprintf("session{name:%s, conn:%#v, reader:%#v}", s.name, s.Connection, s.reader())
 			log.Error(errStr)
 			panic(errStr)
 		}
+	}
 
+	if _, ok := s.Connection.(*gettyTCPConn); ok {
 		err = s.handleTCPPackage()
 	} else if _, ok := s.Connection.(*gettyWSConn); ok {
 		err = s.handleWSPackage()
@@ -619,7 +620,7 @@ func (s *session) handleTCPPackage() error {
 				break
 			}
 			// pkg, err = s.pkgHandler.Read(s, pktBuf)
-			pkg, pkgLen, err = s.reader.Read(s, pktBuf.Bytes())
+			pkg, pkgLen, err = s.reader().Read(s, pktBuf.Bytes())
 			if err == nil && s.maxMsgLen > 0 && pkgLen > int(s.maxMsgLen) {
 				err = ErrMsgTooLong
 			}
@@ -693,7 +694,7 @@ func (s *session) handleUDPPackage() error {
 			continue
 		}
 
-		pkg, pkgLen, err = s.reader.Read(s, buf[:bufLen])
+		pkg, pkgLen, err = s.reader().Read(s, buf[:bufLen])
 		log.Debug("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%s", pkg, pkgLen, jerrors.ErrorStack(err))
 		if err == nil && s.maxMsgLen > 0 && bufLen > int(s.maxMsgLen) {
 			err = ErrMsgTooLong
@@ -743,8 +744,8 @@ func (s *session) handleWSPackage() error {
 			return err
 		}
 		s.UpdateActive()
-		if s.reader != nil {
-			unmarshalPkg, length, err = s.reader.Read(s, pkg)
+		if s.reader() != nil {
+			unmarshalPkg, length, err = s.reader().Read(s, pkg)
 			if err == nil && s.maxMsgLen > 0 && length > int(s.maxMsgLen) {
 				err = ErrMsgTooLong
 			}

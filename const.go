@@ -57,3 +57,13 @@ func (x EndPointType) String() string {
 
 	return strconv.Itoa(int(x))
 }
+
+func (x EndPointType) IsServer() bool {
+	if x == UDP_ENDPOINT || x == TCP_SERVER || x == WS_SERVER || x == WSS_SERVER {
+		return true
+	}
+	return false
+}
+func (x EndPointType) IsClient() bool {
+	return !x.IsServer()
+}

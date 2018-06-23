@@ -50,8 +50,13 @@ type client struct {
 	sync.Mutex
 	endPointType EndPointType
 
-	newSession NewSessionCallback
-	ssMap      map[Session]gxsync.Empty
+	// handler
+	reader         Reader // @reader should be nil when @conn is a gettyWSConn object.
+	writer         Writer
+	eventListener  EventListener
+	sessionHandler SessionHandler
+
+	ssMap map[Session]gxsync.Empty
 
 	sync.Once
 	done chan gxsync.Empty
@@ -118,6 +123,16 @@ func NewWSSClient(opts ...ClientOption) Client {
 
 func (c client) EndPointType() EndPointType {
 	return c.endPointType
+}
+
+func (c *client) initSession(session Session) error {
+	if c.sessionHandler != nil {
+		err := c.sessionHandler.init(session)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (c *client) dialTCP() Session {
@@ -356,7 +371,7 @@ func (c *client) connect() {
 			// client has been closed
 			break
 		}
-		err = c.newSession(ss)
+		err = c.initSession(ss)
 		if err == nil {
 			// ss.RunEventLoop()
 			ss.(*session).run()
@@ -371,11 +386,7 @@ func (c *client) connect() {
 	}
 }
 
-func (c *client) RunEventLoop(newSession NewSessionCallback) {
-	c.Lock()
-	c.newSession = newSession
-	c.Unlock()
-
+func (c *client) RunEventLoop() {
 	c.wg.Add(1)
 	// a for-loop goroutine to make sure the connection is valid
 	go func() {
@@ -442,4 +453,39 @@ func (c *client) IsClosed() bool {
 func (c *client) Close() {
 	c.stop()
 	c.wg.Wait()
+}
+
+func (c *client) SetReaderWriter(rw ReadWriter) {
+	if rw == nil {
+		panic(fmt.Errorf("server.pkg reader and writer should't be nil"))
+	}
+	c.reader = rw
+	c.writer = rw
+}
+
+func (c *client) SetReader(r Reader) {
+	if r == nil {
+		panic(fmt.Errorf("server.pkg reader should't be nil"))
+	}
+	c.reader = r
+}
+func (c *client) Reader() Reader {
+	return c.reader
+}
+
+func (c *client) SetWriter(w Writer) {
+	if w == nil {
+		panic("server.pkg writer should't be nil")
+	}
+	c.writer = w
+}
+func (c *client) Writer() Writer {
+	return c.writer
+}
+
+func (c *client) SetEventListener(listener EventListener) {
+	c.eventListener = listener
+}
+func (c *client) EventListener() EventListener {
+	return c.eventListener
 }

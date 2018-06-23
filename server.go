@@ -45,6 +45,12 @@ type server struct {
 	endPointType   EndPointType
 	server         *http.Server // for ws or wss server
 
+	// handler
+	reader         Reader // @reader should be nil when @conn is a gettyWSConn object.
+	writer         Writer
+	eventListener  EventListener
+	sessionHandler SessionHandler
+
 	sync.Once
 	done chan gxsync.Empty
 	wg   sync.WaitGroup
@@ -100,6 +106,16 @@ func NewWSSServer(opts ...ServerOption) Server {
 
 func (s server) EndPointType() EndPointType {
 	return s.endPointType
+}
+
+func (s *server) initSession(session Session) error {
+	if s.sessionHandler != nil {
+		err := s.sessionHandler.init(session)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *server) stop() {
@@ -202,7 +218,7 @@ func (s *server) listen() error {
 	return nil
 }
 
-func (s *server) accept(newSession NewSessionCallback) (Session, error) {
+func (s *server) accept() (Session, error) {
 	conn, err := s.streamListener.Accept()
 	if err != nil {
 		return nil, jerrors.Trace(err)
@@ -213,7 +229,7 @@ func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 	}
 
 	ss := newTCPSession(conn, s)
-	err = newSession(ss)
+	err = s.initSession(ss)
 	if err != nil {
 		conn.Close()
 		return nil, jerrors.Trace(err)
@@ -222,7 +238,7 @@ func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 	return ss, nil
 }
 
-func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
+func (s *server) runTcpEventLoop() {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
@@ -240,7 +256,7 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 				// time.Sleep(delay)
 				<-wheel.After(delay)
 			}
-			client, err = s.accept(newSession)
+			client, err = s.accept()
 			if err != nil {
 				if netErr, ok := err.(net.Error); ok && netErr.Temporary() {
 					if delay == 0 {
@@ -263,29 +279,25 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 	}()
 }
 
-func (s *server) runUDPEventLoop(newSession NewSessionCallback) {
+func (s *server) runUDPEventLoop() {
 	var (
 		ss Session
 	)
 
 	ss = newUDPSession(s.pktListener.(*net.UDPConn), s)
-	if err := newSession(ss); err != nil {
-		panic(err.Error())
-	}
+
 	ss.(*session).run()
 }
 
 type wsHandler struct {
 	http.ServeMux
-	server     *server
-	newSession NewSessionCallback
-	upgrader   websocket.Upgrader
+	server   *server
+	upgrader websocket.Upgrader
 }
 
-func newWSHandler(server *server, newSession NewSessionCallback) *wsHandler {
+func newWSHandler(server *server) *wsHandler {
 	return &wsHandler{
-		server:     server,
-		newSession: newSession,
+		server: server,
 		upgrader: websocket.Upgrader{
 			// in default, ReadBufferSize & WriteBufferSize is 4k
 			// HandshakeTimeout: server.HTTPTimeout,
@@ -319,7 +331,7 @@ func (s *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	// conn.SetReadLimit(int64(handler.maxMsgLen))
 	ss := newWSSession(conn, s.server)
-	err = s.newSession(ss)
+	err = s.server.initSession(ss)
 	if err != nil {
 		conn.Close()
 		log.Warn("server{%s}.newSession(ss{%#v}) = err {%s}", s.server.addr, ss, err)
@@ -334,7 +346,7 @@ func (s *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 
 // runWSEventLoop serve websocket client request
 // @newSession: new websocket connection callback
-func (s *server) runWSEventLoop(newSession NewSessionCallback) {
+func (s *server) runWSEventLoop() {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
@@ -343,7 +355,7 @@ func (s *server) runWSEventLoop(newSession NewSessionCallback) {
 			handler *wsHandler
 			server  *http.Server
 		)
-		handler = newWSHandler(s, newSession)
+		handler = newWSHandler(s)
 		handler.HandleFunc(s.path, handler.serveWSRequest)
 		server = &http.Server{
 			Addr:    s.addr,
@@ -364,7 +376,7 @@ func (s *server) runWSEventLoop(newSession NewSessionCallback) {
 
 // serve websocket client request
 // RunWSSEventLoop serve websocket client request
-func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
+func (s *server) runWSSEventLoop() {
 	s.wg.Add(1)
 	go func() {
 		var (
@@ -404,7 +416,7 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 			config.InsecureSkipVerify = false
 		}
 
-		handler = newWSHandler(s, newSession)
+		handler = newWSHandler(s)
 		handler.HandleFunc(s.path, handler.serveWSRequest)
 		server = &http.Server{
 			Addr:    s.addr,
@@ -426,20 +438,29 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 
 // RunEventLoop serves client request.
 // @newSession: new connection callback
-func (s *server) RunEventLoop(newSession NewSessionCallback) {
+func (s *server) RunEventLoop() {
 	if err := s.listen(); err != nil {
 		panic(fmt.Errorf("server.listen() = error:%s", jerrors.ErrorStack(err)))
+	}
+	if s.writer == nil || s.eventListener == nil {
+		panic(fmt.Sprintf("server params is not init, server{writer:%#v,enentlistener:%#v}", s.writer, s.eventListener))
 	}
 
 	switch s.endPointType {
 	case TCP_SERVER:
-		s.runTcpEventLoop(newSession)
+		if s.reader == nil {
+			panic("tcp server reader is nil")
+		}
+		s.runTcpEventLoop()
 	case UDP_ENDPOINT:
-		s.runUDPEventLoop(newSession)
+		if s.reader == nil {
+			panic("tcp server reader is nil")
+		}
+		s.runUDPEventLoop()
 	case WS_SERVER:
-		s.runWSEventLoop(newSession)
+		s.runWSEventLoop()
 	case WSS_SERVER:
-		s.runWSSEventLoop(newSession)
+		s.runWSSEventLoop()
 	default:
 		panic(fmt.Sprintf("illegal server type %s", s.endPointType.String()))
 	}
@@ -452,4 +473,39 @@ func (s *server) Listener() net.Listener {
 func (s *server) Close() {
 	s.stop()
 	s.wg.Wait()
+}
+
+func (s *server) SetReaderWriter(rw ReadWriter) {
+	if rw == nil {
+		panic(fmt.Errorf("server.pkg reader and writer should't be nil"))
+	}
+	s.reader = rw
+	s.writer = rw
+}
+
+func (s *server) SetReader(r Reader) {
+	if r == nil {
+		panic(fmt.Errorf("server.pkg reader should't be nil"))
+	}
+	s.reader = r
+}
+func (s *server) Reader() Reader {
+	return s.reader
+}
+
+func (s *server) SetWriter(w Writer) {
+	if w == nil {
+		panic("server.pkg writer should't be nil")
+	}
+	s.writer = w
+}
+func (s *server) Writer() Writer {
+	return s.writer
+}
+
+func (s *server) SetEventListener(listener EventListener) {
+	s.eventListener = listener
+}
+func (s *server) EventListener() EventListener {
+	return s.eventListener
 }
