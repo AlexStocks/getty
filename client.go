@@ -27,6 +27,7 @@ import (
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
 	jerrors "github.com/juju/errors"
+	"math/rand"
 )
 
 const (
@@ -50,13 +51,8 @@ type client struct {
 	sync.Mutex
 	endPointType EndPointType
 
-	// handler
-	reader         Reader // @reader should be nil when @conn is a gettyWSConn object.
-	writer         Writer
-	eventListener  EventListener
-	sessionHandler SessionHandler
-
-	ssMap map[Session]gxsync.Empty
+	ssMap  map[Session]gxsync.Empty
+	ssList []Session
 
 	sync.Once
 	done chan gxsync.Empty
@@ -82,6 +78,7 @@ func newClient(t EndPointType, opts ...ClientOption) *client {
 	}
 
 	c.ssMap = make(map[Session]gxsync.Empty, c.number)
+	c.ssList = make([]Session, 0, c.number)
 
 	return c
 }
@@ -127,7 +124,7 @@ func (c client) EndPointType() EndPointType {
 
 func (c *client) initSession(session Session) error {
 	if c.sessionHandler != nil {
-		err := c.sessionHandler.init(session)
+		err := c.sessionHandler.Initialize(session)
 		if err != nil {
 			return err
 		}
@@ -377,6 +374,7 @@ func (c *client) connect() {
 			ss.(*session).run()
 			c.Lock()
 			c.ssMap[ss] = gxsync.Empty{}
+			c.ssList = append(c.ssList, ss)
 			c.Unlock()
 			break
 		}
@@ -436,6 +434,7 @@ func (c *client) stop() {
 				s.Close()
 			}
 			c.ssMap = nil
+			c.ssList = nil
 			c.Unlock()
 		})
 	}
@@ -455,37 +454,70 @@ func (c *client) Close() {
 	c.wg.Wait()
 }
 
-func (c *client) SetReaderWriter(rw ReadWriter) {
-	if rw == nil {
-		panic(fmt.Errorf("server.pkg reader and writer should't be nil"))
-	}
-	c.reader = rw
-	c.writer = rw
-}
-
-func (c *client) SetReader(r Reader) {
-	if r == nil {
-		panic(fmt.Errorf("server.pkg reader should't be nil"))
-	}
-	c.reader = r
-}
 func (c *client) Reader() Reader {
 	return c.reader
 }
 
-func (c *client) SetWriter(w Writer) {
-	if w == nil {
-		panic("server.pkg writer should't be nil")
-	}
-	c.writer = w
-}
 func (c *client) Writer() Writer {
 	return c.writer
 }
 
-func (c *client) SetEventListener(listener EventListener) {
-	c.eventListener = listener
-}
 func (c *client) EventListener() EventListener {
 	return c.eventListener
+}
+
+func (c *client) SelectSession() Session {
+	for {
+		num := len(c.ssList)
+		if num == 0 {
+			return nil
+		}
+		index := rand.Intn(num)
+		c.Lock()
+		num = len(c.ssList)
+		if index < len(c.ssList) {
+			ss := c.ssList[index]
+			if ss.IsClosed() {
+				delete(c.ssMap, ss)
+				if index == num-1 {
+					c.ssList = c.ssList[0:index]
+				} else if index == 0 {
+					c.ssList = c.ssList[1:]
+				} else {
+					c.ssList = append(c.ssList[0:index], c.ssList[index+1:]...)
+				}
+			}
+			c.Unlock()
+			if !ss.IsClosed() {
+				return ss
+			}
+			continue
+		}
+		c.Unlock()
+
+	}
+}
+
+func (c *client) RemoveSession(session Session) {
+	if session == nil {
+		return
+	}
+	session.Close()
+	delete(c.ssMap, session)
+	c.Lock()
+	defer func() {
+		c.Unlock()
+	}()
+	for index, s := range c.ssList {
+		if s == session {
+			if index == len(c.ssList) {
+				c.ssList = c.ssList[0:index]
+			} else if index == 0 {
+				c.ssList = c.ssList[1:]
+			} else {
+				c.ssList = append(c.ssList[0:index], c.ssList[index+1:]...)
+			}
+			break
+		}
+	}
 }

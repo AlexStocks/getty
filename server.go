@@ -45,12 +45,6 @@ type server struct {
 	endPointType   EndPointType
 	server         *http.Server // for ws or wss server
 
-	// handler
-	reader         Reader // @reader should be nil when @conn is a gettyWSConn object.
-	writer         Writer
-	eventListener  EventListener
-	sessionHandler SessionHandler
-
 	sync.Once
 	done chan gxsync.Empty
 	wg   sync.WaitGroup
@@ -110,7 +104,7 @@ func (s server) EndPointType() EndPointType {
 
 func (s *server) initSession(session Session) error {
 	if s.sessionHandler != nil {
-		err := s.sessionHandler.init(session)
+		err := s.sessionHandler.Initialize(session)
 		if err != nil {
 			return err
 		}
@@ -475,37 +469,14 @@ func (s *server) Close() {
 	s.wg.Wait()
 }
 
-func (s *server) SetReaderWriter(rw ReadWriter) {
-	if rw == nil {
-		panic(fmt.Errorf("server.pkg reader and writer should't be nil"))
-	}
-	s.reader = rw
-	s.writer = rw
-}
-
-func (s *server) SetReader(r Reader) {
-	if r == nil {
-		panic(fmt.Errorf("server.pkg reader should't be nil"))
-	}
-	s.reader = r
-}
 func (s *server) Reader() Reader {
 	return s.reader
 }
 
-func (s *server) SetWriter(w Writer) {
-	if w == nil {
-		panic("server.pkg writer should't be nil")
-	}
-	s.writer = w
-}
 func (s *server) Writer() Writer {
 	return s.writer
 }
 
-func (s *server) SetEventListener(listener EventListener) {
-	s.eventListener = listener
-}
 func (s *server) EventListener() EventListener {
 	return s.eventListener
 }

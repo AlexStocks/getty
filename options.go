@@ -24,6 +24,12 @@ type ServerOptions struct {
 	cert       string
 	privateKey string
 	caCert     string
+
+	// handler
+	reader         Reader // @reader should be nil when @conn is a gettyWSConn object.
+	writer         Writer
+	eventListener  EventListener
+	sessionHandler SessionHandler
 }
 
 // @addr server listen address.
@@ -61,6 +67,34 @@ func WithWebsocketServerRootCert(cert string) ServerOption {
 	}
 }
 
+// @reader bytes to pkgmessage
+func WithServerPkgReader(reader Reader) ServerOption {
+	return func(o *ServerOptions) {
+		o.reader = reader
+	}
+}
+
+// @writer pkgmessage to bytes
+func WithServerPkgWriter(writer Writer) ServerOption {
+	return func(o *ServerOptions) {
+		o.writer = writer
+	}
+}
+
+// @listener eventlistener of server
+func WithServerEventListener(listener EventListener) ServerOption {
+	return func(o *ServerOptions) {
+		o.eventListener = listener
+	}
+}
+
+// @hander hander'init will be called when session init
+func WithServerSessionHander(handler SessionHandler) ServerOption {
+	return func(o *ServerOptions) {
+		o.sessionHandler = handler
+	}
+}
+
 /////////////////////////////////////////
 // Client Options
 /////////////////////////////////////////
@@ -75,6 +109,12 @@ type ClientOptions struct {
 	// duration, the hash alg, the len of the private key.
 	// wss client will use it.
 	cert string
+
+	// handler
+	reader         Reader // @reader should be nil when @conn is a gettyWSConn object.
+	writer         Writer
+	eventListener  EventListener
+	sessionHandler SessionHandler
 }
 
 // @addr is server address.
@@ -95,5 +135,33 @@ func WithConnectionNumber(num int) ClientOption {
 func WithRootCertificateFile(cert string) ClientOption {
 	return func(o *ClientOptions) {
 		o.cert = cert
+	}
+}
+
+// @reader bytes to pkgmessage
+func WithClientPkgReader(reader Reader) ClientOption {
+	return func(o *ClientOptions) {
+		o.reader = reader
+	}
+}
+
+// @writer pkgmessage to bytes
+func WithClientPkgWriter(writer Writer) ClientOption {
+	return func(o *ClientOptions) {
+		o.writer = writer
+	}
+}
+
+// @listener eventlistener of server
+func WithClientEventListener(listener EventListener) ClientOption {
+	return func(o *ClientOptions) {
+		o.eventListener = listener
+	}
+}
+
+// @hander hander'init will be called when session init
+func WithClientSessionHander(handler SessionHandler) ClientOption {
+	return func(o *ClientOptions) {
+		o.sessionHandler = handler
 	}
 }

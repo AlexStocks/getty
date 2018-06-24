@@ -22,7 +22,7 @@ import (
 // type NewSessionCallback func(Session) error // delete after version 0.8.4
 // retype interface
 type SessionHandler interface {
-	init(Session) error
+	Initialize(Session) error
 }
 
 // Reader is used to unmarshal a complete pkg from buffer
@@ -171,21 +171,18 @@ type EndPoint interface {
 	IsClosed() bool
 	// close the endpoint and free its resource
 	Close()
-	// set ReaderWriter
-	SetReaderWriter(ReadWriter)
-	// set Reader
-	SetReader(Reader)
+	// get Reader
 	Reader() Reader
-	// set Writer
-	SetWriter(Writer)
+	// get Writer
 	Writer() Writer
-	// set eventLisntener
-	SetEventListener(EventListener)
+	// get eventLisntener
 	EventListener() EventListener
 }
 
 type Client interface {
 	EndPoint
+	SelectSession() Session
+	RemoveSession(Session)
 }
 
 type Server interface {
