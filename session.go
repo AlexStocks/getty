@@ -21,7 +21,6 @@ import (
 
 import (
 	"github.com/AlexStocks/goext/context"
-	"github.com/AlexStocks/goext/log"
 	"github.com/AlexStocks/goext/sync"
 	"github.com/AlexStocks/goext/time"
 	log "github.com/AlexStocks/log4go"
@@ -322,7 +321,7 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 	if timeout <= 0 {
 		if err = s.writer.Write(s, pkg); err != nil {
 			s.incWritePkgNum()
-			gxlog.CError("after incWritePkgNum, ss:%s", s.Stat())
+			// gxlog.CError("after incWritePkgNum, ss:%s", s.Stat())
 		}
 		return err
 	}
@@ -350,7 +349,6 @@ func (s *session) WriteBytes(pkg []byte) error {
 	}
 
 	s.incWritePkgNum()
-	gxlog.CError("after write, ss:%s", s.Stat())
 
 	return nil
 }
@@ -394,7 +392,7 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 	num := len(pkgs) - 1
 	for i := 0; i < num; i++ {
 		s.incWritePkgNum()
-		gxlog.CError("after write, ss:%s", s.Stat())
+		// gxlog.CError("after write, ss:%s", s.Stat())
 	}
 
 	return nil
@@ -502,7 +500,7 @@ LOOP:
 					// break LOOP
 				}
 				s.incWritePkgNum()
-				gxlog.CError("outPkg:%#v, after incWritePkgNum, ss:%s", outPkg, s.Stat())
+				// gxlog.CError("outPkg:%#v, after incWritePkgNum, ss:%s", outPkg, s.Stat())
 			} else {
 				log.Info("[session.handleLoop] drop writeout package{%#v}", outPkg)
 			}
