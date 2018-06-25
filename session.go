@@ -320,13 +320,12 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 
 	var err error
 	if timeout <= 0 {
-		if err = s.writer.Write(s, pkg); err == nil {
+		if err = s.writer.Write(s, pkg); err != nil {
 			s.incWritePkgNum()
 			gxlog.CError("after incWritePkgNum, ss:%s", s.Stat())
 		}
 		return err
 	}
-	gxlog.CError("fk")
 	select {
 	case s.wQ <- pkg:
 		break // for possible gen a new pkg
