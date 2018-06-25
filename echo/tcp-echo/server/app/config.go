@@ -22,8 +22,8 @@ import (
 )
 
 const (
-	APP_CONF_FILE     string = "APP_CONF_FILE"
-	APP_LOG_CONF_FILE string = "APP_LOG_CONF_FILE"
+	APP_CONF_FILE     = "APP_CONF_FILE"
+	APP_LOG_CONF_FILE = "APP_LOG_CONF_FILE"
 )
 
 var (

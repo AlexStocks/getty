@@ -87,29 +87,29 @@ type EchoPackage struct {
 	B string
 }
 
-func (this EchoPackage) String() string {
+func (p EchoPackage) String() string {
 	return fmt.Sprintf("log id:%d, sequence:%d, command:%s, echo string:%s",
-		this.H.LogID, this.H.Sequence, (echoCommand(this.H.Command)).String(), this.B)
+		p.H.LogID, p.H.Sequence, (echoCommand(p.H.Command)).String(), p.B)
 }
 
-func (this EchoPackage) Marshal() (*bytes.Buffer, error) {
+func (p EchoPackage) Marshal() (*bytes.Buffer, error) {
 	var (
 		err error
 		buf *bytes.Buffer
 	)
 
 	buf = &bytes.Buffer{}
-	err = binary.Write(buf, binary.LittleEndian, this.H)
+	err = binary.Write(buf, binary.LittleEndian, p.H)
 	if err != nil {
 		return nil, err
 	}
-	buf.WriteByte((byte)(len(this.B)))
-	buf.WriteString(this.B)
+	buf.WriteByte((byte)(len(p.B)))
+	buf.WriteString(p.B)
 
 	return buf, nil
 }
 
-func (this *EchoPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
+func (p *EchoPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
 	var (
 		err error
 		len byte
@@ -120,18 +120,18 @@ func (this *EchoPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
 	}
 
 	// header
-	err = binary.Read(buf, binary.LittleEndian, &(this.H))
+	err = binary.Read(buf, binary.LittleEndian, &(p.H))
 	if err != nil {
 		return 0, err
 	}
-	if this.H.Magic != echoPkgMagic {
-		log.Error("@this.H.Magic{%x}, right magic{%x}", this.H.Magic, echoPkgMagic)
+	if p.H.Magic != echoPkgMagic {
+		log.Error("@p.H.Magic{%x}, right magic{%x}", p.H.Magic, echoPkgMagic)
 		return 0, ErrIllegalMagic
 	}
-	if buf.Len() < (int)(this.H.Len) {
+	if buf.Len() < (int)(p.H.Len) {
 		return 0, ErrNotEnoughStream
 	}
-	if maxEchoStringLen < this.H.Len-1 {
+	if maxEchoStringLen < p.H.Len-1 {
 		return 0, ErrTooLargePackage
 	}
 
@@ -139,7 +139,7 @@ func (this *EchoPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
 	if err != nil {
 		return 0, nil
 	}
-	this.B = (string)(buf.Next((int)(len)))
+	p.B = (string)(buf.Next((int)(len)))
 
-	return (int)(this.H.Len) + echoPkgHeaderLen, nil
+	return (int)(p.H.Len) + echoPkgHeaderLen, nil
 }

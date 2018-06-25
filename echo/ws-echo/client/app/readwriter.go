@@ -20,14 +20,13 @@ import (
 	log "github.com/AlexStocks/log4go"
 )
 
-type EchoPackageHandler struct {
-}
+type EchoPackageHandler struct{}
 
 func NewEchoPackageHandler() *EchoPackageHandler {
 	return &EchoPackageHandler{}
 }
 
-func (this *EchoPackageHandler) Read(ss getty.Session, data []byte) (interface{}, int, error) {
+func (h *EchoPackageHandler) Read(ss getty.Session, data []byte) (interface{}, int, error) {
 	var (
 		err error
 		len int
@@ -48,7 +47,7 @@ func (this *EchoPackageHandler) Read(ss getty.Session, data []byte) (interface{}
 	return &pkg, len, nil
 }
 
-func (this *EchoPackageHandler) Write(ss getty.Session, pkg interface{}) error {
+func (h *EchoPackageHandler) Write(ss getty.Session, pkg interface{}) error {
 	var (
 		ok        bool
 		err       error

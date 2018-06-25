@@ -22,8 +22,8 @@ import (
 )
 
 const (
-	APP_CONF_FILE     string = "APP_CONF_FILE"
-	APP_LOG_CONF_FILE string = "APP_LOG_CONF_FILE"
+	APP_CONF_FILE     = "APP_CONF_FILE"
+	APP_LOG_CONF_FILE = "APP_LOG_CONF_FILE"
 )
 
 var (
@@ -139,7 +139,7 @@ func initConf() {
 		panic(fmt.Sprintf("time.ParseDuration(WaitTimeout{%#v}) = error{%v}", conf.GettySessionParam.WaitTimeout, err))
 		return
 	}
-	// gxlog.Info("config{%#v}\n", conf)
+	// gxlog.CInfo("config{%#v}\n", conf)
 
 	// log
 	confFile = os.Getenv(APP_LOG_CONF_FILE)

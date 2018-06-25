@@ -40,7 +40,7 @@ type PackageHandler interface {
 
 type HeartbeatHandler struct{}
 
-func (this *HeartbeatHandler) Handle(session getty.Session, ctx getty.UDPContext) error {
+func (h *HeartbeatHandler) Handle(session getty.Session, ctx getty.UDPContext) error {
 	var (
 		ok     bool
 		pkg    *EchoPackage
@@ -66,7 +66,7 @@ func (this *HeartbeatHandler) Handle(session getty.Session, ctx getty.UDPContext
 
 type MessageHandler struct{}
 
-func (this *MessageHandler) Handle(session getty.Session, ctx getty.UDPContext) error {
+func (h *MessageHandler) Handle(session getty.Session, ctx getty.UDPContext) error {
 	log.Debug("get echo ctx{%#v}", ctx)
 	// write echo message handle logic here.
 	// return session.WritePkg(ctx, WritePkgTimeout)
@@ -98,42 +98,42 @@ func newEchoMessageHandler() *EchoMessageHandler {
 	return &EchoMessageHandler{sessionMap: make(map[getty.Session]*clientEchoSession), handlers: handlers}
 }
 
-func (this *EchoMessageHandler) OnOpen(session getty.Session) error {
+func (h *EchoMessageHandler) OnOpen(session getty.Session) error {
 	var (
 		err error
 	)
 
-	this.rwlock.RLock()
-	if conf.SessionNumber < len(this.sessionMap) {
+	h.rwlock.RLock()
+	if conf.SessionNumber < len(h.sessionMap) {
 		err = errTooManySessions
 	}
-	this.rwlock.RUnlock()
+	h.rwlock.RUnlock()
 	if err != nil {
 		return err
 	}
 
 	log.Info("got session:%s", session.Stat())
-	this.rwlock.Lock()
-	this.sessionMap[session] = &clientEchoSession{session: session}
-	this.rwlock.Unlock()
+	h.rwlock.Lock()
+	h.sessionMap[session] = &clientEchoSession{session: session}
+	h.rwlock.Unlock()
 	return nil
 }
 
-func (this *EchoMessageHandler) OnError(session getty.Session, err error) {
+func (h *EchoMessageHandler) OnError(session getty.Session, err error) {
 	log.Info("session{%s} got error{%v}, will be closed.", session.Stat(), err)
-	this.rwlock.Lock()
-	delete(this.sessionMap, session)
-	this.rwlock.Unlock()
+	h.rwlock.Lock()
+	delete(h.sessionMap, session)
+	h.rwlock.Unlock()
 }
 
-func (this *EchoMessageHandler) OnClose(session getty.Session) {
+func (h *EchoMessageHandler) OnClose(session getty.Session) {
 	log.Info("session{%s} is closing......", session.Stat())
-	this.rwlock.Lock()
-	delete(this.sessionMap, session)
-	this.rwlock.Unlock()
+	h.rwlock.Lock()
+	delete(h.sessionMap, session)
+	h.rwlock.Unlock()
 }
 
-func (this *EchoMessageHandler) OnMessage(session getty.Session, udpCtx interface{}) {
+func (h *EchoMessageHandler) OnMessage(session getty.Session, udpCtx interface{}) {
 	ctx, ok := udpCtx.(getty.UDPContext)
 	if !ok {
 		log.Error("illegal UDPContext{%#v}", udpCtx)
@@ -146,42 +146,42 @@ func (this *EchoMessageHandler) OnMessage(session getty.Session, udpCtx interfac
 		return
 	}
 
-	handler, ok := this.handlers[p.H.Command]
+	handler, ok := h.handlers[p.H.Command]
 	if !ok {
 		log.Error("illegal command{%d}", p.H.Command)
 		return
 	}
 	err := handler.Handle(session, ctx)
 	if err != nil {
-		this.rwlock.Lock()
-		if _, ok := this.sessionMap[session]; ok {
-			this.sessionMap[session].active = time.Now()
-			this.sessionMap[session].reqNum++
+		h.rwlock.Lock()
+		if _, ok := h.sessionMap[session]; ok {
+			h.sessionMap[session].active = time.Now()
+			h.sessionMap[session].reqNum++
 		}
-		this.rwlock.Unlock()
+		h.rwlock.Unlock()
 	}
 }
 
-func (this *EchoMessageHandler) OnCron(session getty.Session) {
+func (h *EchoMessageHandler) OnCron(session getty.Session) {
 	var (
 		//flag   bool
 		active time.Time
 	)
-	this.rwlock.RLock()
-	if _, ok := this.sessionMap[session]; ok {
+	h.rwlock.RLock()
+	if _, ok := h.sessionMap[session]; ok {
 		active = session.GetActive()
 		if conf.sessionTimeout.Nanoseconds() < time.Since(active).Nanoseconds() {
 			//flag = true
 			log.Error("session{%s} timeout{%s}, reqNum{%d}",
-				session.Stat(), time.Since(active).String(), this.sessionMap[session].reqNum)
+				session.Stat(), time.Since(active).String(), h.sessionMap[session].reqNum)
 		}
 	}
-	this.rwlock.RUnlock()
+	h.rwlock.RUnlock()
 	// udp session是根据本地udp socket fd生成的，如果关闭则连同socket也一同关闭了
 	//if flag {
-	//	this.rwlock.Lock()
-	//	delete(this.sessionMap, session)
-	//	this.rwlock.Unlock()
+	//	h.rwlock.Lock()
+	//	delete(h.sessionMap, session)
+	//	h.rwlock.Unlock()
 	//	session.Close()
 	//}
 }

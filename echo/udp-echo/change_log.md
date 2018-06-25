@@ -10,6 +10,10 @@
 ## develop history ##
 ---
 
+- 2018/06/24
+    > improvement
+    * delete this, using name abbreviation instead.
+
 - 2018/03/17
     > improvement
     * set the timeout parameter of WritePkg 0 to send out package asap.

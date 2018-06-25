@@ -42,100 +42,100 @@ type EchoClient struct {
 	serverAddr  net.UDPAddr
 }
 
-func (this *EchoClient) isAvailable() bool {
-	if this.selectSession() == nil {
+func (c *EchoClient) isAvailable() bool {
+	if c.selectSession() == nil {
 		return false
 	}
 
 	return true
 }
 
-func (this *EchoClient) close() {
-	this.lock.Lock()
-	if this.gettyClient != nil {
-		for _, s := range this.sessions {
+func (c *EchoClient) close() {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	if c.gettyClient != nil {
+		for _, s := range c.sessions {
 			log.Info("close client session{%s, last active:%s, request number:%d}",
 				s.session.Stat(), s.session.GetActive().String(), s.reqNum)
 			s.session.Close()
 		}
-		this.gettyClient.Close()
-		this.gettyClient = nil
-		this.sessions = this.sessions[:0]
+		c.gettyClient.Close()
+		c.gettyClient = nil
+		c.sessions = c.sessions[:0]
 	}
-	this.lock.Unlock()
 }
 
-func (this *EchoClient) selectSession() getty.Session {
+func (c *EchoClient) selectSession() getty.Session {
 	// get route server session
-	this.lock.RLock()
-	defer this.lock.RUnlock()
-	count := len(this.sessions)
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	count := len(c.sessions)
 	if count == 0 {
 		log.Info("client session array is nil...")
 		return nil
 	}
 
-	return this.sessions[rand.Int31n(int32(count))].session
+	return c.sessions[rand.Int31n(int32(count))].session
 }
 
-func (this *EchoClient) addSession(session getty.Session) {
+func (c *EchoClient) addSession(session getty.Session) {
 	log.Debug("add session{%s}", session.Stat())
 	if session == nil {
 		return
 	}
 
-	this.lock.Lock()
-	this.sessions = append(this.sessions, &clientEchoSession{session: session})
-	log.Debug("after add session{%s}, session number:%d", session.Stat(), len(this.sessions))
-	this.lock.Unlock()
+	c.lock.Lock()
+	c.sessions = append(c.sessions, &clientEchoSession{session: session})
+	log.Debug("after add session{%s}, session number:%d", session.Stat(), len(c.sessions))
+	c.lock.Unlock()
 }
 
-func (this *EchoClient) removeSession(session getty.Session) {
+func (c *EchoClient) removeSession(session getty.Session) {
 	if session == nil {
 		return
 	}
 
-	this.lock.Lock()
+	c.lock.Lock()
 
-	for i, s := range this.sessions {
+	for i, s := range c.sessions {
 		if s.session == session {
-			this.sessions = append(this.sessions[:i], this.sessions[i+1:]...)
+			c.sessions = append(c.sessions[:i], c.sessions[i+1:]...)
 			log.Debug("delete session{%s}, its index{%d}", session.Stat(), i)
 			break
 		}
 	}
-	log.Info("after remove session{%s}, left session number:%d", session.Stat(), len(this.sessions))
+	log.Info("after remove session{%s}, left session number:%d", session.Stat(), len(c.sessions))
 
-	this.lock.Unlock()
+	c.lock.Unlock()
 }
 
-func (this *EchoClient) updateSession(session getty.Session) {
+func (c *EchoClient) updateSession(session getty.Session) {
 	if session == nil {
 		return
 	}
 
-	this.lock.Lock()
+	c.lock.Lock()
 
-	for i, s := range this.sessions {
+	for i, s := range c.sessions {
 		if s.session == session {
-			this.sessions[i].reqNum++
+			c.sessions[i].reqNum++
 			break
 		}
 	}
 
-	this.lock.Unlock()
+	c.lock.Unlock()
 }
 
-func (this *EchoClient) getClientEchoSession(session getty.Session) (clientEchoSession, error) {
+func (c *EchoClient) getClientEchoSession(session getty.Session) (clientEchoSession, error) {
 	var (
 		err         error
 		echoSession clientEchoSession
 	)
 
-	this.lock.Lock()
+	c.lock.Lock()
 
 	err = errSessionNotExist
-	for _, s := range this.sessions {
+	for _, s := range c.sessions {
 		if s.session == session {
 			echoSession = *s
 			err = nil
@@ -143,12 +143,12 @@ func (this *EchoClient) getClientEchoSession(session getty.Session) (clientEchoS
 		}
 	}
 
-	this.lock.Unlock()
+	c.lock.Unlock()
 
 	return echoSession, err
 }
 
-func (this *EchoClient) heartbeat(session getty.Session) {
+func (c *EchoClient) heartbeat(session getty.Session) {
 	var (
 		err error
 		pkg EchoPackage
@@ -164,14 +164,14 @@ func (this *EchoClient) heartbeat(session getty.Session) {
 	pkg.H.Len = (uint16)(len(pkg.B) + 1)
 
 	ctx.Pkg = &pkg
-	ctx.PeerAddr = &(this.serverAddr)
+	ctx.PeerAddr = &(c.serverAddr)
 
 	//if err := session.WritePkg(ctx, WritePkgTimeout); err != nil {
 	if err = session.WritePkg(ctx, WritePkgASAP); err != nil {
 		log.Warn("session.WritePkg(session{%s}, context{%#v}) = error{%v}", session.Stat(), ctx, err)
 		session.Close()
 
-		this.removeSession(session)
+		c.removeSession(session)
 	}
 	log.Debug("session.WritePkg(session{%s}, context{%#v})", session.Stat(), ctx)
 }

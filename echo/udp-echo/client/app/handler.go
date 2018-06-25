@@ -41,23 +41,23 @@ func newEchoMessageHandler(client *EchoClient) *EchoMessageHandler {
 	return &EchoMessageHandler{client: client}
 }
 
-func (this *EchoMessageHandler) OnOpen(session getty.Session) error {
-	this.client.addSession(session)
+func (h *EchoMessageHandler) OnOpen(session getty.Session) error {
+	h.client.addSession(session)
 
 	return nil
 }
 
-func (this *EchoMessageHandler) OnError(session getty.Session, err error) {
+func (h *EchoMessageHandler) OnError(session getty.Session, err error) {
 	log.Info("session{%s} got error{%v}, will be closed.", session.Stat(), err)
-	this.client.removeSession(session)
+	h.client.removeSession(session)
 }
 
-func (this *EchoMessageHandler) OnClose(session getty.Session) {
+func (h *EchoMessageHandler) OnClose(session getty.Session) {
 	log.Info("session{%s} is closing......", session.Stat())
-	this.client.removeSession(session)
+	h.client.removeSession(session)
 }
 
-func (this *EchoMessageHandler) OnMessage(session getty.Session, udpCtx interface{}) {
+func (h *EchoMessageHandler) OnMessage(session getty.Session, udpCtx interface{}) {
 	ctx, ok := udpCtx.(getty.UDPContext)
 	if !ok {
 		log.Error("illegal UDPContext{%#v}", udpCtx)
@@ -70,13 +70,12 @@ func (this *EchoMessageHandler) OnMessage(session getty.Session, udpCtx interfac
 	}
 
 	log.Debug("get echo package{%s}", p)
-	gxlog.CError("session:%s, get echo package{%s}", session.Stat(), p)
 
-	this.client.updateSession(session)
+	h.client.updateSession(session)
 }
 
-func (this *EchoMessageHandler) OnCron(session getty.Session) {
-	clientEchoSession, err := this.client.getClientEchoSession(session)
+func (h *EchoMessageHandler) OnCron(session getty.Session) {
+	clientEchoSession, err := h.client.getClientEchoSession(session)
 	if err != nil {
 		log.Error("client.getClientSession(session{%s}) = error{%#v}", session.Stat(), err)
 		return
@@ -85,11 +84,11 @@ func (this *EchoMessageHandler) OnCron(session getty.Session) {
 		log.Warn("session{%s} timeout{%s}, reqNum{%d}",
 			session.Stat(), time.Since(session.GetActive()).String(), clientEchoSession.reqNum)
 		// UDP_ENDPOINT session should be long live.
-		if this.client != &unconnectedClient {
-			this.client.removeSession(session)
+		if h.client != &unconnectedClient {
+			h.client.removeSession(session)
 		}
 		return
 	}
 
-	this.client.heartbeat(session)
+	h.client.heartbeat(session)
 }
