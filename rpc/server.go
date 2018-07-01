@@ -1,7 +1,6 @@
 package rpc
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -9,10 +8,12 @@ import (
 	"reflect"
 	"syscall"
 	"time"
+)
 
+import (
 	"github.com/AlexStocks/getty"
-	"github.com/AlexStocks/goext/log"
 	"github.com/AlexStocks/goext/net"
+	jerrors "github.com/juju/errors"
 
 	log "github.com/AlexStocks/log4go"
 )
@@ -20,72 +21,72 @@ import (
 type Server struct {
 	tcpServerList []getty.Server
 	serviceMap    map[string]*service
+	conf          *Config
 }
 
-func NewServer() *Server {
+func NewServer(conf *Config) *Server {
 	s := &Server{
 		serviceMap: make(map[string]*service),
+		conf:       conf,
 	}
 
 	return s
 }
 
-func (server *Server) Run() {
-	initConf(defaultServerConfFile)
-	initLog(defaultServerLogConfFile)
-	initProfiling()
-	server.Init()
-	gxlog.CInfo("%s starts successfull! its version=%s, its listen ends=%s:%s\n",
-		conf.AppName, Version, conf.Host, conf.Ports)
+func (s *Server) Run() {
+	s.Init()
 	log.Info("%s starts successfull! its version=%s, its listen ends=%s:%s\n",
-		conf.AppName, Version, conf.Host, conf.Ports)
-	server.initSignal()
+		s.conf.AppName, getty.Version, s.conf.Host, s.conf.Ports)
+	s.initSignal()
 }
 
-func (server *Server) Register(rcvr interface{}) error {
-	s := new(service)
-	s.typ = reflect.TypeOf(rcvr)
-	s.rcvr = reflect.ValueOf(rcvr)
-	sname := reflect.Indirect(s.rcvr).Type().Name()
-	if sname == "" {
-		s := "rpc.Register: no service name for type " + s.typ.String()
+func (s *Server) Register(rcvr interface{}) error {
+	svc := &service{
+		typ:  reflect.TypeOf(rcvr),
+		rcvr: reflect.ValueOf(rcvr),
+		name: reflect.Indirect(reflect.ValueOf(rcvr)).Type().Name(),
+		// Install the methods
+		method: prepareMethods(reflect.TypeOf(rcvr)),
+	}
+	if svc.name == "" {
+		s := "rpc.Register: no service name for type " + svc.typ.String()
 		log.Error(s)
-		return errors.New(s)
+		return jerrors.New(s)
 	}
-	if !isExported(sname) {
-		s := "rpc.Register: type " + sname + " is not exported"
+	if !isExported(svc.name) {
+		s := "rpc.Register: type " + svc.name + " is not exported"
 		log.Error(s)
-		return errors.New(s)
+		return jerrors.New(s)
 	}
-	if _, present := server.serviceMap[sname]; present {
-		return errors.New("rpc: service already defined: " + sname)
+	if _, present := s.serviceMap[svc.name]; present {
+		return jerrors.New("rpc: service already defined: " + svc.name)
 	}
-	s.name = sname
-	// Install the methods
-	s.method = suitableMethods(s.typ, true)
-	if len(s.method) == 0 {
-		str := ""
+
+	if len(svc.method) == 0 {
 		// To help the user, see if a pointer receiver would work.
-		method := suitableMethods(reflect.PtrTo(s.typ), false)
+		method := prepareMethods(reflect.PtrTo(svc.typ))
+		str := "rpc.Register: type " + svc.name + " has no exported methods of suitable type"
 		if len(method) != 0 {
-			str = "rpc.Register: type " + sname + " has no exported methods of suitable type (hint: pass a pointer to value of that type)"
-		} else {
-			str = "rpc.Register: type " + sname + " has no exported methods of suitable type"
+			str = "rpc.Register: type " + svc.name + " has no exported methods of suitable type (" +
+				"hint: pass a pointer to value of that type)"
 		}
-		log.Error(s)
-		return errors.New(str)
+		log.Error(str)
+
+		return jerrors.New(str)
 	}
-	server.serviceMap[s.name] = s
+
+	s.serviceMap[svc.name] = svc
+
 	return nil
 }
 
-func (server *Server) newSession(session getty.Session) error {
+func (s *Server) newSession(session getty.Session) error {
 	var (
 		ok      bool
 		tcpConn *net.TCPConn
 	)
 
-	if conf.GettySessionParam.CompressEncoding {
+	if s.conf.GettySessionParam.CompressEncoding {
 		session.SetCompressType(getty.CompressZip)
 	}
 
@@ -93,59 +94,59 @@ func (server *Server) newSession(session getty.Session) error {
 		panic(fmt.Sprintf("%s, session.conn{%#v} is not tcp connection\n", session.Stat(), session.Conn()))
 	}
 
-	tcpConn.SetNoDelay(conf.GettySessionParam.TcpNoDelay)
-	tcpConn.SetKeepAlive(conf.GettySessionParam.TcpKeepAlive)
-	if conf.GettySessionParam.TcpKeepAlive {
-		tcpConn.SetKeepAlivePeriod(conf.GettySessionParam.keepAlivePeriod)
+	tcpConn.SetNoDelay(s.conf.GettySessionParam.TcpNoDelay)
+	tcpConn.SetKeepAlive(s.conf.GettySessionParam.TcpKeepAlive)
+	if s.conf.GettySessionParam.TcpKeepAlive {
+		tcpConn.SetKeepAlivePeriod(s.conf.GettySessionParam.keepAlivePeriod)
 	}
-	tcpConn.SetReadBuffer(conf.GettySessionParam.TcpRBufSize)
-	tcpConn.SetWriteBuffer(conf.GettySessionParam.TcpWBufSize)
+	tcpConn.SetReadBuffer(s.conf.GettySessionParam.TcpRBufSize)
+	tcpConn.SetWriteBuffer(s.conf.GettySessionParam.TcpWBufSize)
 
-	session.SetName(conf.GettySessionParam.SessionName)
-	session.SetMaxMsgLen(conf.GettySessionParam.MaxMsgLen)
-	session.SetPkgHandler(NewRpcServerPacketHandler(server)) //
-	session.SetEventListener(NewRpcServerHandler())          //
-	session.SetRQLen(conf.GettySessionParam.PkgRQSize)
-	session.SetWQLen(conf.GettySessionParam.PkgWQSize)
-	session.SetReadTimeout(conf.GettySessionParam.tcpReadTimeout)
-	session.SetWriteTimeout(conf.GettySessionParam.tcpWriteTimeout)
-	session.SetCronPeriod((int)(conf.sessionTimeout.Nanoseconds() / 1e6))
-	session.SetWaitTime(conf.GettySessionParam.waitTimeout)
+	session.SetName(s.conf.GettySessionParam.SessionName)
+	session.SetMaxMsgLen(s.conf.GettySessionParam.MaxMsgLen)
+	session.SetPkgHandler(NewRpcServerPacketHandler(s)) //
+	session.SetEventListener(NewRpcServerHandler())     //
+	session.SetRQLen(s.conf.GettySessionParam.PkgRQSize)
+	session.SetWQLen(s.conf.GettySessionParam.PkgWQSize)
+	session.SetReadTimeout(s.conf.GettySessionParam.tcpReadTimeout)
+	session.SetWriteTimeout(s.conf.GettySessionParam.tcpWriteTimeout)
+	session.SetCronPeriod((int)(s.conf.sessionTimeout.Nanoseconds() / 1e6))
+	session.SetWaitTime(s.conf.GettySessionParam.waitTimeout)
 	log.Debug("app accepts new session:%s\n", session.Stat())
 
 	return nil
 }
 
-func (server *Server) Init() {
+func (s *Server) Init() {
 	var (
 		addr      string
 		portList  []string
 		tcpServer getty.Server
 	)
 
-	portList = conf.Ports
+	portList = s.conf.Ports
 	if len(portList) == 0 {
 		panic("portList is nil")
 	}
 	for _, port := range portList {
-		addr = gxnet.HostAddress2(conf.Host, port)
+		addr = gxnet.HostAddress2(s.conf.Host, port)
 		tcpServer = getty.NewTCPServer(
 			getty.WithLocalAddress(addr),
 		)
-		// run server
-		tcpServer.RunEventLoop(server.newSession)
-		log.Debug("server bind addr{%s} ok!", addr)
-		server.tcpServerList = append(server.tcpServerList, tcpServer)
+		// run s
+		tcpServer.RunEventLoop(s.newSession)
+		log.Debug("s bind addr{%s} ok!", addr)
+		s.tcpServerList = append(s.tcpServerList, tcpServer)
 	}
 }
 
-func (server *Server) Stop() {
-	for _, tcpServer := range server.tcpServerList {
+func (s *Server) Stop() {
+	for _, tcpServer := range s.tcpServerList {
 		tcpServer.Close()
 	}
 }
 
-func (server *Server) initSignal() {
+func (s *Server) initSignal() {
 	// signal.Notify的ch信道是阻塞的(signal.Notify不会阻塞发送信号), 需要设置缓冲
 	signals := make(chan os.Signal, 1)
 	// It is not possible to block SIGKILL or syscall.SIGSTOP
@@ -157,7 +158,7 @@ func (server *Server) initSignal() {
 		case syscall.SIGHUP:
 		// reload()
 		default:
-			go time.AfterFunc(conf.failFastTimeout, func() {
+			go time.AfterFunc(s.conf.failFastTimeout, func() {
 				// log.Warn("app exit now by force...")
 				// os.Exit(1)
 				log.Exit("app exit now by force...")
@@ -165,7 +166,7 @@ func (server *Server) initSignal() {
 			})
 
 			// 要么survialTimeout时间内执行完毕下面的逻辑然后程序退出，要么执行上面的超时函数程序强行退出
-			server.Stop()
+			s.Stop()
 			// fmt.Println("app exit now...")
 			log.Exit("app exit now...")
 			log.Close()

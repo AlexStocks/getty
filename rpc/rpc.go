@@ -2,73 +2,32 @@ package rpc
 
 import (
 	"reflect"
+	"sync"
 	"unicode"
 	"unicode/utf8"
+)
 
+import (
 	log "github.com/AlexStocks/log4go"
 )
 
-var typeOfError = reflect.TypeOf((*error)(nil)).Elem()
+var (
+	typeOfError = reflect.TypeOf((*error)(nil)).Elem()
+)
 
-// suitableMethods returns suitable Rpc methods of typ, it will report
-// error using log if reportErr is true.
-func suitableMethods(typ reflect.Type, reportErr bool) map[string]*methodType {
-	methods := make(map[string]*methodType)
-	for m := 0; m < typ.NumMethod(); m++ {
-		method := typ.Method(m)
-		mtype := method.Type
-		mname := method.Name
-		// Method must be exported.
-		if method.PkgPath != "" {
-			continue
-		}
-		// Method needs three ins: receiver, *args, *reply.
-		if mtype.NumIn() != 3 {
-			if reportErr {
-				log.Warn("method", mname, "has wrong number of ins:", mtype.NumIn())
-			}
-			continue
-		}
-		// First arg need not be a pointer.
-		argType := mtype.In(1)
-		if !isExportedOrBuiltinType(argType) {
-			if reportErr {
-				log.Warn(mname, "argument type not exported:", argType)
-			}
-			continue
-		}
-		// Second arg must be a pointer.
-		replyType := mtype.In(2)
-		if replyType.Kind() != reflect.Ptr {
-			if reportErr {
-				log.Warn("method", mname, "reply type not a pointer:", replyType)
-			}
-			continue
-		}
-		// Reply type must be exported.
-		if !isExportedOrBuiltinType(replyType) {
-			if reportErr {
-				log.Warn("method", mname, "reply type not exported:", replyType)
-			}
-			continue
-		}
-		// Method needs one out.
-		if mtype.NumOut() != 1 {
-			if reportErr {
-				log.Warn("method", mname, "has wrong number of outs:", mtype.NumOut())
-			}
-			continue
-		}
-		// The return type of the method must be error.
-		if returnType := mtype.Out(0); returnType != typeOfError {
-			if reportErr {
-				log.Warn("method", mname, "returns", returnType.String(), "not error")
-			}
-			continue
-		}
-		methods[mname] = &methodType{method: method, ArgType: argType, ReplyType: replyType}
-	}
-	return methods
+type methodType struct {
+	sync.Mutex
+	method    reflect.Method
+	ArgType   reflect.Type
+	ReplyType reflect.Type
+	numCalls  uint
+}
+
+type service struct {
+	name   string
+	rcvr   reflect.Value
+	typ    reflect.Type
+	method map[string]*methodType
 }
 
 // Is this an exported - upper case - name
@@ -85,4 +44,52 @@ func isExportedOrBuiltinType(t reflect.Type) bool {
 	// PkgPath will be non-empty even for an exported type,
 	// so we need to check the type name as well.
 	return isExported(t.Name()) || t.PkgPath() == ""
+}
+
+// prepareMethods returns suitable Rpc methods of typ
+func prepareMethods(typ reflect.Type) map[string]*methodType {
+	methods := make(map[string]*methodType)
+	for m := 0; m < typ.NumMethod(); m++ {
+		method := typ.Method(m)
+		mtype := method.Type
+		mname := method.Name
+		// Method must be exported.
+		if method.PkgPath != "" {
+			continue
+		}
+		// Method needs three ins: receiver, *args, *reply.
+		if mtype.NumIn() != 3 {
+			log.Warn("method %s has wrong number of ins %d which should be 3", mname, mtype.NumIn())
+			continue
+		}
+		// First arg need not be a pointer.
+		argType := mtype.In(1)
+		if !isExportedOrBuiltinType(argType) {
+			log.Error("method{%s} argument type not exported{%v}", mname, argType)
+			continue
+		}
+		// Second arg must be a pointer.
+		replyType := mtype.In(2)
+		if replyType.Kind() != reflect.Ptr {
+			log.Error("method{%s} reply type not a pointer{%v}", mname, replyType)
+			continue
+		}
+		// Reply type must be exported.
+		if !isExportedOrBuiltinType(replyType) {
+			log.Error("method{%s} reply type not exported{%v}", mname, replyType)
+			continue
+		}
+		// Method needs one out.
+		if mtype.NumOut() != 1 {
+			log.Error("method{%s} has wrong number of out parameters{%d}", mname, mtype.NumOut())
+			continue
+		}
+		// The return type of the method must be error.
+		if returnType := mtype.Out(0); returnType != typeOfError {
+			log.Error("method{%s}'s return type{%s} is not error", mname, returnType.String())
+			continue
+		}
+		methods[mname] = &methodType{method: method, ArgType: argType, ReplyType: replyType}
+	}
+	return methods
 }

@@ -1,22 +1,28 @@
 package rpc
 
 import (
-	"errors"
 	"fmt"
 	"math/rand"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
+)
 
+import (
+	jerrors "github.com/juju/errors"
+)
+
+import (
 	"github.com/AlexStocks/getty"
 	"github.com/AlexStocks/goext/net"
 	log "github.com/AlexStocks/log4go"
 )
 
 var (
-	errInvalidAddress  = errors.New("remote address invalid or empty")
-	errSessionNotExist = errors.New("session not exist")
+	errInvalidAddress  = jerrors.New("remote address invalid or empty")
+	errSessionNotExist = jerrors.New("session not exist")
+	errClientClosed    = jerrors.New("client closed")
 )
 
 func init() {
@@ -24,6 +30,7 @@ func init() {
 }
 
 type Client struct {
+	conf        *Config
 	lock        sync.RWMutex
 	sessions    []*rpcSession
 	gettyClient getty.Client
@@ -36,22 +43,15 @@ type Client struct {
 	sendLock sync.Mutex
 }
 
-func NewClient() *Client {
+func NewClient(conf *Config) *Client {
 	c := &Client{
 		pendingResponses: make(map[uint64]*PendingResponse),
+		conf:             conf,
+		gettyClient: getty.NewTCPClient(
+			getty.WithServerAddress(gxnet.HostAddress(conf.ServerHost, conf.ServerPort)),
+			getty.WithConnectionNumber((int)(conf.ConnectionNum)),
+		),
 	}
-	c.Init()
-	return c
-}
-
-func (c *Client) Init() {
-	initConf(defaultClientConfFile)
-	initLog(defaultClientLogConfFile)
-	initProfiling()
-	c.gettyClient = getty.NewTCPClient(
-		getty.WithServerAddress(gxnet.HostAddress(conf.ServerHost, conf.ServerPort)),
-		getty.WithConnectionNumber((int)(conf.ConnectionNum)),
-	)
 	c.gettyClient.RunEventLoop(c.newSession)
 	for {
 		if c.isAvailable() {
@@ -60,6 +60,8 @@ func (c *Client) Init() {
 		time.Sleep(1e6)
 	}
 	log.Info("client init ok")
+
+	return c
 }
 
 func (c *Client) newSession(session getty.Session) error {
@@ -86,8 +88,8 @@ func (c *Client) newSession(session getty.Session) error {
 
 	session.SetName(conf.GettySessionParam.SessionName)
 	session.SetMaxMsgLen(conf.GettySessionParam.MaxMsgLen)
-	session.SetPkgHandler(NewRpcClientPacketHandler()) //
-	session.SetEventListener(NewRpcClientHandler(c))   //
+	session.SetPkgHandler(NewRpcClientPacketHandler())
+	session.SetEventListener(NewRpcClientHandler(c))
 	session.SetRQLen(conf.GettySessionParam.PkgRQSize)
 	session.SetWQLen(conf.GettySessionParam.PkgWQSize)
 	session.SetReadTimeout(conf.GettySessionParam.tcpReadTimeout)
@@ -123,6 +125,7 @@ func (c *Client) Call(service, method string, args interface{}, reply interface{
 		<-resp.done
 		return resp.err
 	}
+
 	return errSessionNotExist
 }
 
@@ -130,27 +133,39 @@ func (c *Client) isAvailable() bool {
 	if c.selectSession() == nil {
 		return false
 	}
+
 	return true
 }
 
 func (c *Client) Close() {
+	var sessions *[]*rpcSession
+
 	c.lock.Lock()
 	if c.gettyClient != nil {
-		for _, s := range c.sessions {
-			log.Info("close client session{%s, last active:%s, request number:%d}",
-				s.session.Stat(), s.session.GetActive().String(), s.reqNum)
-			s.session.Close()
-		}
+		sessions = &(c.sessions)
+		c.sessions = nil
 		c.gettyClient.Close()
 		c.gettyClient = nil
 		c.sessions = c.sessions[:0]
 	}
 	c.lock.Unlock()
+
+	if sessions != nil {
+		for _, s := range *sessions {
+			log.Info("close client session{%s, last active:%s, request number:%d}",
+				s.session.Stat(), s.session.GetActive().String(), s.reqNum)
+			s.session.Close()
+		}
+	}
 }
 
 func (c *Client) selectSession() getty.Session {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
+	if c.sessions == nil {
+		return nil
+	}
+
 	count := len(c.sessions)
 	if count == 0 {
 		return nil
@@ -165,15 +180,25 @@ func (c *Client) addSession(session getty.Session) {
 	}
 
 	c.lock.Lock()
+	defer c.lock.Unlock()
+	if c.sessions == nil {
+		return
+	}
+
 	c.sessions = append(c.sessions, &rpcSession{session: session})
-	c.lock.Unlock()
 }
 
 func (c *Client) removeSession(session getty.Session) {
 	if session == nil {
 		return
 	}
+
 	c.lock.Lock()
+	defer c.lock.Unlock()
+	if c.sessions == nil {
+		return
+	}
+
 	for i, s := range c.sessions {
 		if s.session == session {
 			c.sessions = append(c.sessions[:i], c.sessions[i+1:]...)
@@ -182,7 +207,6 @@ func (c *Client) removeSession(session getty.Session) {
 		}
 	}
 	log.Info("after remove session{%s}, left session number:%d", session.Stat(), len(c.sessions))
-	c.lock.Unlock()
 }
 
 func (c *Client) updateSession(session getty.Session) {
@@ -190,13 +214,17 @@ func (c *Client) updateSession(session getty.Session) {
 		return
 	}
 	c.lock.Lock()
+	defer c.lock.Unlock()
+	if c.sessions == nil {
+		return
+	}
+
 	for i, s := range c.sessions {
 		if s.session == session {
 			c.sessions[i].reqNum++
 			break
 		}
 	}
-	c.lock.Unlock()
 }
 
 func (c *Client) getClientRpcSession(session getty.Session) (rpcSession, error) {
@@ -205,6 +233,11 @@ func (c *Client) getClientRpcSession(session getty.Session) (rpcSession, error) 
 		rpcSession rpcSession
 	)
 	c.lock.Lock()
+	defer c.lock.Unlock()
+	if c.sessions == nil {
+		return rpcSession, errClientClosed
+	}
+
 	err = errSessionNotExist
 	for _, s := range c.sessions {
 		if s.session == session {
@@ -213,7 +246,6 @@ func (c *Client) getClientRpcSession(session getty.Session) (rpcSession, error) 
 			break
 		}
 	}
-	c.lock.Unlock()
 	return rpcSession, err
 }
 

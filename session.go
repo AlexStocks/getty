@@ -594,7 +594,7 @@ func (s *session) handleTCPPackage() error {
 			// s.conn.SetReadTimeout(time.Now().Add(s.rTimeout))
 			bufLen, err = conn.read(buf)
 			if err != nil {
-				if netError, ok = err.(net.Error); ok && netError.Timeout() {
+				if netError, ok = jerrors.Cause(err).(net.Error); ok && netError.Timeout() {
 					break
 				}
 				log.Error("%s, [session.conn.read] = error{%s}", s.sessionToken(), jerrors.ErrorStack(err))
@@ -670,7 +670,7 @@ func (s *session) handleUDPPackage() error {
 
 		bufLen, addr, err = conn.read(buf)
 		log.Debug("conn.read() = bufLen:%d, addr:%#v, err:%s", bufLen, addr, jerrors.ErrorStack(err))
-		if netError, ok = err.(net.Error); ok && netError.Timeout() {
+		if netError, ok = jerrors.Cause(err).(net.Error); ok && netError.Timeout() {
 			continue
 		}
 		if err != nil {
@@ -730,7 +730,7 @@ func (s *session) handleWSPackage() error {
 			break
 		}
 		pkg, err = conn.read()
-		if netError, ok = err.(net.Error); ok && netError.Timeout() {
+		if netError, ok = jerrors.Cause(err).(net.Error); ok && netError.Timeout() {
 			continue
 		}
 		if err != nil {

@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"reflect"
+)
+
+import (
+	jerrors "github.com/juju/errors"
 )
 
 const (
@@ -18,9 +21,9 @@ const (
 )
 
 var (
-	ErrNotEnoughStream         = errors.New("packet stream is not enough")
-	ErrTooLargePackage         = errors.New("package length is exceed the echo package's legal maximum length.")
-	ErrNotFoundServiceOrMethod = errors.New("server invalid service or method")
+	ErrNotEnoughStream         = jerrors.New("packet stream is not enough")
+	ErrTooLargePackage         = jerrors.New("package length is exceed the echo package's legal maximum length.")
+	ErrNotFoundServiceOrMethod = jerrors.New("server invalid service or method")
 )
 
 type RequestHeader struct {
@@ -279,9 +282,9 @@ type PendingResponse struct {
 	seq   uint64
 	err   error
 	reply interface{}
-	done  chan bool
+	done  chan struct{}
 }
 
 func NewPendingResponse() *PendingResponse {
-	return &PendingResponse{done: make(chan bool)}
+	return &PendingResponse{done: make(chan struct{})}
 }

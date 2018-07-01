@@ -249,8 +249,8 @@ func (t *gettyTCPConn) read(p []byte) (int, error) {
 	length, err = t.reader.Read(p)
 	log.Debug("now:%s, length:%d, err:%s", currentTime, length, err)
 	atomic.AddUint32(&t.readBytes, uint32(length))
-	//return length, jerrors.Trace(err)
-	return length, err
+	return length, jerrors.Trace(err)
+	//return length, err
 }
 
 // tcp connection write
@@ -283,8 +283,8 @@ func (t *gettyTCPConn) Write(pkg interface{}) (int, error) {
 		atomic.AddUint32(&t.writeBytes, (uint32)(len(p)))
 	}
 	log.Debug("now:%s, length:%d, err:%s", currentTime, length, err)
-	//return length, jerrors.Trace(err)
-	return length, err
+	return length, jerrors.Trace(err)
+	//return length, err
 }
 
 // close tcp connection
@@ -402,8 +402,8 @@ func (u *gettyUDPConn) read(p []byte) (int, *net.UDPAddr, error) {
 		atomic.AddUint32(&u.readBytes, uint32(length))
 	}
 
-	return length, addr, err
-	// return length, addr, jerrors.Trace(err)
+	//return length, addr, err
+	return length, addr, jerrors.Trace(err)
 }
 
 // write udp packet, @ctx should be of type UDPContext
@@ -449,8 +449,8 @@ func (u *gettyUDPConn) Write(udpCtx interface{}) (int, error) {
 	}
 	log.Debug("WriteMsgUDP(peerAddr:%s) = {length:%d, error:%s}", peerAddr, length, err)
 
-	// return length, jerrors.Trace(err)
-	return length, err
+	return length, jerrors.Trace(err)
+	//return length, err
 }
 
 // close udp connection
@@ -547,8 +547,8 @@ func (w *gettyWSConn) read() ([]byte, error) {
 		}
 	}
 
-	// return b, jerrors.Trace(e)
-	return b, e
+	return b, jerrors.Trace(e)
+	//return b, e
 }
 
 func (w *gettyWSConn) updateWriteDeadline() error {
@@ -589,8 +589,8 @@ func (w *gettyWSConn) Write(pkg interface{}) (int, error) {
 	if err = w.conn.WriteMessage(websocket.BinaryMessage, p); err == nil {
 		atomic.AddUint32(&w.writeBytes, (uint32)(len(p)))
 	}
-	// return len(p), jerrors.Trace(err)
-	return len(p), err
+	return len(p), jerrors.Trace(err)
+	//return len(p), err
 }
 
 func (w *gettyWSConn) writePing() error {

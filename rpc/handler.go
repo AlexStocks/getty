@@ -2,12 +2,14 @@ package rpc
 
 import (
 	"encoding/json"
-	"errors"
 	"reflect"
 	"sync"
 	"time"
+)
 
+import (
 	"github.com/AlexStocks/getty"
+	jerrors "github.com/juju/errors"
 
 	log "github.com/AlexStocks/log4go"
 )
@@ -19,7 +21,7 @@ const (
 )
 
 var (
-	errTooManySessions = errors.New("too many echo sessions")
+	errTooManySessions = jerrors.New("too many echo sessions")
 )
 
 type rpcSession struct {
@@ -29,23 +31,26 @@ type rpcSession struct {
 }
 
 type RpcServerHandler struct {
-	sessionMap map[getty.Session]*rpcSession
-	rwlock     sync.RWMutex
+	maxSessionNum  int
+	sessionTimeout time.Duration
+	sessionMap     map[getty.Session]*rpcSession
+	rwlock         sync.RWMutex
 
 	sendLock sync.Mutex
 }
 
-func NewRpcServerHandler() *RpcServerHandler {
-	r := &RpcServerHandler{
-		sessionMap: make(map[getty.Session]*rpcSession),
+func NewRpcServerHandler(maxSessionNum int, sessionTimeout time.Duration) *RpcServerHandler {
+	return &RpcServerHandler{
+		maxSessionNum:  maxSessionNum,
+		sessionTimeout: sessionTimeout,
+		sessionMap:     make(map[getty.Session]*rpcSession),
 	}
-	return r
 }
 
 func (h *RpcServerHandler) OnOpen(session getty.Session) error {
 	var err error
 	h.rwlock.RLock()
-	if conf.SessionNumber < len(h.sessionMap) {
+	if h.maxSessionNum < len(h.sessionMap) {
 		err = errTooManySessions
 	}
 	h.rwlock.RUnlock()
@@ -101,7 +106,7 @@ func (h *RpcServerHandler) OnCron(session getty.Session) {
 	h.rwlock.RLock()
 	if _, ok := h.sessionMap[session]; ok {
 		active = session.GetActive()
-		if conf.sessionTimeout.Nanoseconds() < time.Since(active).Nanoseconds() {
+		if h.sessionTimeout.Nanoseconds() < time.Since(active).Nanoseconds() {
 			flag = true
 			log.Warn("session{%s} timeout{%s}, reqNum{%d}",
 				session.Stat(), time.Since(active).String(), h.sessionMap[session].reqNum)
@@ -198,13 +203,13 @@ func (h *RpcClientHandler) OnMessage(session getty.Session, pkg interface{}) {
 		return
 	}
 	if len(p.header.Error) > 0 {
-		pendingResponse.err = errors.New(p.header.Error)
+		pendingResponse.err = jerrors.New(p.header.Error)
 	}
 	err := json.Unmarshal(p.body.([]byte), pendingResponse.reply)
 	if err != nil {
 		pendingResponse.err = err
 	}
-	pendingResponse.done <- true
+	pendingResponse.done <- struct{}{}
 }
 
 func (h *RpcClientHandler) OnCron(session getty.Session) {

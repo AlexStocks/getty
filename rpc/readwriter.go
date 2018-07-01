@@ -2,12 +2,12 @@ package rpc
 
 import (
 	"bytes"
-	"errors"
 )
 
 import (
 	"github.com/AlexStocks/getty"
 	log "github.com/AlexStocks/log4go"
+	jerrors "github.com/juju/errors"
 )
 
 type RpcServerPacketHandler struct {
@@ -49,7 +49,7 @@ func (p *RpcServerPacketHandler) Write(ss getty.Session, pkg interface{}) error 
 
 	if resp, ok = pkg.(*RpcResponse); !ok {
 		log.Error("illegal pkg:%+v\n", pkg)
-		return errors.New("invalid rpc response")
+		return jerrors.New("invalid rpc response")
 	}
 
 	buf, err = resp.Marshal()
@@ -99,7 +99,7 @@ func (p *RpcClientPacketHandler) Write(ss getty.Session, pkg interface{}) error 
 
 	if req, ok = pkg.(*RpcRequest); !ok {
 		log.Error("illegal pkg:%+v\n", pkg)
-		return errors.New("invalid rpc request")
+		return jerrors.New("invalid rpc request")
 	}
 
 	buf, err = req.Marshal()

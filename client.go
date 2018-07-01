@@ -185,7 +185,7 @@ func (c *client) dialUDP() Session {
 		}
 		conn.SetReadDeadline(wheel.Now().Add(1e9))
 		length, err = conn.Read(buf)
-		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+		if netErr, ok := jerrors.Cause(err).(net.Error); ok && netErr.Timeout() {
 			err = nil
 		}
 		if err != nil {

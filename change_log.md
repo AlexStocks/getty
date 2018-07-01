@@ -14,9 +14,13 @@
 ## develop history ##
 ---
 
+- 2018/07/01
+    > Feature
+    * Add RPC
+ 
 - 2018/06/25
     > buf fix
-    * delete juju/errors on read/write in case of network i/o timeout
+    * Using juju/errors.Cause on read/write in case of network i/o timeout
 
 - 2018/03/29
     > improvement
