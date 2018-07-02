@@ -48,7 +48,7 @@ type (
 		WaitTimeout      string `default:"7s"`
 		waitTimeout      time.Duration
 		MaxMsgLen        int    `default:"1024"`
-		SessionName      string `default:"echo-client"`
+		SessionName      string `default:"echo-server"`
 	}
 
 	// Config holds supported types by the multiconfig package
