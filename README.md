@@ -1,9 +1,8 @@
-# getty #
----
+# getty 
+
  *a netty like asynchronous network I/O library*
 
-## INTRODUCTION ##
----
+## INTRO
 
 Getty is a asynchronous network I/O library in golang. Getty is based on "ngo" whose author is [sanbit](https://github.com/sanbit). Getty works on tcp/udp/websocket network protocol and supplies [a uniform interface](https://github.com/alexstocks/getty/blob/master/getty.go#L45).
 
@@ -15,7 +14,11 @@ Whatever if you use websocket, you do not need to care about hearbeat request/re
 
 You can get code example in https://github.com/AlexStocks/getty-examples.
 
-## LICENCE ##
----
+## RPC
+
+Working in progress.
+
+## LICENCE 
+
 Apache License 2.0
 

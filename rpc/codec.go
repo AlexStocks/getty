@@ -181,6 +181,7 @@ func (p *GettyPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
 
 type GettyRPCHeaderLenType uint16
 
+//easyjson:json
 type GettyRPCRequestHeader struct {
 	Service  string        `json:"service,omitempty"`
 	Method   string        `json:"method,omitempty"`
@@ -207,7 +208,7 @@ func NewGettyRPCRequest(server *Server) *GettyRPCRequest {
 }
 
 func (req *GettyRPCRequest) Marshal(buf *bytes.Buffer) error {
-	headerData, err := json.Marshal(req.header)
+	headerData, err := req.header.MarshalJSON()
 	if err != nil {
 		return jerrors.Trace(err)
 	}
@@ -247,7 +248,7 @@ func (req *GettyRPCRequest) Unmarshal(buf *bytes.Buffer) error {
 
 	header := buf.Next(int(headerLen))
 	body := buf.Next(buf.Len())
-	err = json.Unmarshal(header, &req.header)
+	err = (&req.header).UnmarshalJSON(header)
 	if err != nil {
 		return jerrors.Trace(err)
 	}

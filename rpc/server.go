@@ -46,7 +46,7 @@ func (s *Server) Register(rcvr interface{}) error {
 		rcvr: reflect.ValueOf(rcvr),
 		name: reflect.Indirect(reflect.ValueOf(rcvr)).Type().Name(),
 		// Install the methods
-		method: prepareMethods(reflect.TypeOf(rcvr)),
+		method: suitableMethods(reflect.TypeOf(rcvr)),
 	}
 	if svc.name == "" {
 		s := "rpc.Register: no service name for type " + svc.typ.String()
@@ -104,7 +104,7 @@ func (s *Server) newSession(session getty.Session) error {
 
 	session.SetName(s.conf.GettySessionParam.SessionName)
 	session.SetMaxMsgLen(s.conf.GettySessionParam.MaxMsgLen)
-	session.SetPkgHandler(NewRpcServerPacketHandler(s))
+	session.SetPkgHandler(NewRpcServerPackageHandler(s))
 	session.SetEventListener(NewRpcServerHandler(s.conf.SessionNumber, s.conf.sessionTimeout))
 	session.SetRQLen(s.conf.GettySessionParam.PkgRQSize)
 	session.SetWQLen(s.conf.GettySessionParam.PkgWQSize)
