@@ -46,8 +46,8 @@ func isExportedOrBuiltinType(t reflect.Type) bool {
 	return isExported(t.Name()) || t.PkgPath() == ""
 }
 
-// prepareMethods returns suitable Rpc methods of typ
-func prepareMethods(typ reflect.Type) map[string]*methodType {
+// suitableMethods returns suitable Rpc methods of typ
+func suitableMethods(typ reflect.Type) map[string]*methodType {
 	methods := make(map[string]*methodType)
 	for m := 0; m < typ.NumMethod(); m++ {
 		method := typ.Method(m)

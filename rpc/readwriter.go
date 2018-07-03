@@ -10,44 +10,49 @@ import (
 	jerrors "github.com/juju/errors"
 )
 
-type RpcServerPacketHandler struct {
+////////////////////////////////////////////
+// RpcServerPackageHandler
+////////////////////////////////////////////
+
+type RpcServerPackageHandler struct {
 	server *Server
 }
 
-func NewRpcServerPacketHandler(server *Server) *RpcServerPacketHandler {
-	return &RpcServerPacketHandler{
+func NewRpcServerPackageHandler(server *Server) *RpcServerPackageHandler {
+	return &RpcServerPackageHandler{
 		server: server,
 	}
 }
 
-func (p *RpcServerPacketHandler) Read(ss getty.Session, data []byte) (interface{}, int, error) {
+func (p *RpcServerPackageHandler) Read(ss getty.Session, data []byte) (interface{}, int, error) {
 	var (
-		err error
-		len int
-		buf *bytes.Buffer
+		err    error
+		length int
+		pkg    GettyPackage
+		buf    *bytes.Buffer
 	)
 
 	buf = bytes.NewBuffer(data)
-	req := NewRpcRequest(p.server)
-	len, err = req.Unmarshal(buf)
+	length, err = pkg.Unmarshal(buf)
 	if err != nil {
-		if err == ErrNotEnoughStream {
+		if jerrors.Cause(err) == ErrNotEnoughStream {
 			return nil, 0, nil
 		}
-		return nil, 0, err
+		return nil, 0, jerrors.Trace(err)
 	}
-	return req, len, nil
+
+	return &pkg, length, nil
 }
 
-func (p *RpcServerPacketHandler) Write(ss getty.Session, pkg interface{}) error {
+func (p *RpcServerPackageHandler) Write(ss getty.Session, pkg interface{}) error {
 	var (
 		ok   bool
 		err  error
-		resp *RpcResponse
+		resp *GettyPackage
 		buf  *bytes.Buffer
 	)
 
-	if resp, ok = pkg.(*RpcResponse); !ok {
+	if resp, ok = pkg.(*GettyPackage); !ok {
 		log.Error("illegal pkg:%+v\n", pkg)
 		return jerrors.New("invalid rpc response")
 	}
@@ -55,49 +60,52 @@ func (p *RpcServerPacketHandler) Write(ss getty.Session, pkg interface{}) error 
 	buf, err = resp.Marshal()
 	if err != nil {
 		log.Warn("binary.Write(resp{%#v}) = err{%#v}", resp, err)
-		return err
+		return jerrors.Trace(err)
 	}
 
-	err = ss.WriteBytes(buf.Bytes())
-
-	return err
+	return jerrors.Trace(ss.WriteBytes(buf.Bytes()))
 }
 
-type RpcClientPacketHandler struct {
+////////////////////////////////////////////
+// RpcClientPackageHandler
+////////////////////////////////////////////
+
+type RpcClientPackageHandler struct {
 }
 
-func NewRpcClientPacketHandler() *RpcClientPacketHandler {
-	return &RpcClientPacketHandler{}
+func NewRpcClientPackageHandler() *RpcClientPackageHandler {
+	return &RpcClientPackageHandler{}
 }
 
-func (p *RpcClientPacketHandler) Read(ss getty.Session, data []byte) (interface{}, int, error) {
+func (p *RpcClientPackageHandler) Read(ss getty.Session, data []byte) (interface{}, int, error) {
 	var (
-		err error
-		len int
-		buf *bytes.Buffer
+		err    error
+		length int
+		pkg    GettyPackage
+		buf    *bytes.Buffer
 	)
 
 	buf = bytes.NewBuffer(data)
-	resp := NewRpcResponse()
-	len, err = resp.Unmarshal(buf)
+	length, err = pkg.Unmarshal(buf)
 	if err != nil {
 		if err == ErrNotEnoughStream {
 			return nil, 0, nil
 		}
-		return nil, 0, err
+		return nil, 0, jerrors.Trace(err)
 	}
-	return resp, len, nil
+
+	return &pkg, length, nil
 }
 
-func (p *RpcClientPacketHandler) Write(ss getty.Session, pkg interface{}) error {
+func (p *RpcClientPackageHandler) Write(ss getty.Session, pkg interface{}) error {
 	var (
 		ok  bool
 		err error
-		req *RpcRequest
+		req *GettyPackage
 		buf *bytes.Buffer
 	)
 
-	if req, ok = pkg.(*RpcRequest); !ok {
+	if req, ok = pkg.(*GettyPackage); !ok {
 		log.Error("illegal pkg:%+v\n", pkg)
 		return jerrors.New("invalid rpc request")
 	}
@@ -105,10 +113,8 @@ func (p *RpcClientPacketHandler) Write(ss getty.Session, pkg interface{}) error 
 	buf, err = req.Marshal()
 	if err != nil {
 		log.Warn("binary.Write(req{%#v}) = err{%#v}", req, err)
-		return err
+		return jerrors.Trace(err)
 	}
 
-	err = ss.WriteBytes(buf.Bytes())
-
-	return err
+	return jerrors.Trace(ss.WriteBytes(buf.Bytes()))
 }

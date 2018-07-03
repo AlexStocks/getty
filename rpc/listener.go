@@ -15,9 +15,8 @@ import (
 )
 
 const (
-	CmdTypePing = "ping"
-	CmdTypeErr  = "err"
-	CmdTypeAck  = "ack"
+	CmdTypeErr = "err"
+	CmdTypeAck = "ack"
 )
 
 var (
@@ -26,9 +25,12 @@ var (
 
 type rpcSession struct {
 	session getty.Session
-	active  time.Time
 	reqNum  int32
 }
+
+////////////////////////////////////////////
+// RpcServerHandler
+////////////////////////////////////////////
 
 type RpcServerHandler struct {
 	maxSessionNum  int
@@ -80,22 +82,35 @@ func (h *RpcServerHandler) OnClose(session getty.Session) {
 }
 
 func (h *RpcServerHandler) OnMessage(session getty.Session, pkg interface{}) {
-	p, ok := pkg.(*RpcRequest)
+	h.rwlock.Lock()
+	if _, ok := h.sessionMap[session]; ok {
+		h.sessionMap[session].reqNum++
+	}
+	h.rwlock.Unlock()
+
+	p, ok := pkg.(*GettyPackage)
 	if !ok {
 		log.Error("illegal packge{%#v}", pkg)
 		return
 	}
-
-	if p.header.IsPing() {
-		h.replyCmd(session, p.header.Seq, "", CmdTypePing)
+	req, ok := p.B.(*GettyRPCRequest)
+	if !ok {
+		log.Error("illegal request{%#v}", p.B)
 		return
 	}
 
-	if p.header.CallType == RequestSendOnly {
-		h.asyncCallService(session, p.header.Seq, p.service, p.methodType, p.argv, p.replyv)
+	if p.H.Command == gettyCmdHbRequest {
+		h.replyCmd(session, p, gettyCmdHbResponse, "")
 		return
 	}
-	h.callService(session, p.header.Seq, p.service, p.methodType, p.argv, p.replyv)
+
+	if req.header.CallType == gettyTwoWayNoReply {
+		h.replyCmd(session, p, gettyCmdRPCResponse, "")
+		function := req.methodType.method.Func
+		function.Call([]reflect.Value{req.service.rcvr, req.argv, req.replyv})
+		return
+	}
+	h.callService(session, p, req.service, req.methodType, req.argv, req.replyv)
 }
 
 func (h *RpcServerHandler) OnCron(session getty.Session) {
@@ -103,6 +118,7 @@ func (h *RpcServerHandler) OnCron(session getty.Session) {
 		flag   bool
 		active time.Time
 	)
+
 	h.rwlock.RLock()
 	if _, ok := h.sessionMap[session]; ok {
 		active = session.GetActive()
@@ -113,6 +129,7 @@ func (h *RpcServerHandler) OnCron(session getty.Session) {
 		}
 	}
 	h.rwlock.RUnlock()
+
 	if flag {
 		h.rwlock.Lock()
 		delete(h.sessionMap, session)
@@ -121,57 +138,56 @@ func (h *RpcServerHandler) OnCron(session getty.Session) {
 	}
 }
 
-func (h *RpcServerHandler) replyCmd(session getty.Session, seq uint64, err string, cmd string) {
-	resp := NewRpcResponse()
-	resp.header.Seq = seq
-	switch cmd {
-	case CmdTypePing:
-		resp.header.ReplyType = ReplyTypePong
-	case CmdTypeAck:
-		resp.header.ReplyType = ReplyTypeAck
-	case CmdTypeErr:
-		resp.header.ReplyType = ReplyTypeAck
-		resp.header.Error = err
+func (h *RpcServerHandler) replyCmd(session getty.Session, reqPkg *GettyPackage, cmd gettyCommand, err string) {
+	rspPkg := *reqPkg
+	rspPkg.H.Code = 0
+	rspPkg.H.Command = gettyCmdRPCResponse
+	if len(err) != 0 {
+		rspPkg.B = &GettyRPCResponse{
+			header: GettyRPCResponseHeader{
+				Error: err,
+			},
+		}
 	}
+
 	h.sendLock.Lock()
 	defer h.sendLock.Unlock()
-	session.WritePkg(resp, 0)
+	session.WritePkg(&rspPkg, 0)
 }
 
-func (h *RpcServerHandler) asyncCallService(session getty.Session, seq uint64, service *service, methodType *methodType, argv, replyv reflect.Value) {
-	h.replyCmd(session, seq, "", CmdTypeAck)
-	function := methodType.method.Func
-	function.Call([]reflect.Value{service.rcvr, argv, replyv})
-	return
-}
+func (h *RpcServerHandler) callService(session getty.Session, reqPkg *GettyPackage, service *service,
+	methodType *methodType, argv, replyv reflect.Value) {
 
-func (h *RpcServerHandler) callService(session getty.Session, seq uint64, service *service, methodType *methodType, argv, replyv reflect.Value) {
 	function := methodType.method.Func
 	returnValues := function.Call([]reflect.Value{service.rcvr, argv, replyv})
 	errInter := returnValues[0].Interface()
 
-	resp := NewRpcResponse()
-	resp.header.ReplyType = ReplyTypeData
-	resp.header.Seq = seq
 	if errInter != nil {
-		h.replyCmd(session, seq, errInter.(error).Error(), CmdTypeErr)
+		h.replyCmd(session, reqPkg, gettyCmdRPCResponse, errInter.(error).Error())
 		return
 	}
-	resp.body = replyv.Interface()
+
+	rspPkg := *reqPkg
+	rspPkg.H.Code = 0
+	rspPkg.H.Command = gettyCmdRPCResponse
+	rspPkg.B = &GettyRPCResponse{
+		body: replyv.Interface(),
+	}
 	h.sendLock.Lock()
 	defer h.sendLock.Unlock()
-	session.WritePkg(resp, 0)
+	session.WritePkg(&rspPkg, 0)
 }
+
+////////////////////////////////////////////
+// RpcClientHandler
+////////////////////////////////////////////
 
 type RpcClientHandler struct {
 	client *Client
 }
 
 func NewRpcClientHandler(client *Client) *RpcClientHandler {
-	h := &RpcClientHandler{
-		client: client,
-	}
-	return h
+	return &RpcClientHandler{client: client}
 }
 
 func (h *RpcClientHandler) OnOpen(session getty.Session) error {
@@ -190,7 +206,7 @@ func (h *RpcClientHandler) OnClose(session getty.Session) {
 }
 
 func (h *RpcClientHandler) OnMessage(session getty.Session, pkg interface{}) {
-	p, ok := pkg.(*RpcResponse)
+	p, ok := pkg.(*GettyPackage)
 	if !ok {
 		log.Error("illegal packge{%#v}", pkg)
 		return
@@ -198,14 +214,23 @@ func (h *RpcClientHandler) OnMessage(session getty.Session, pkg interface{}) {
 	log.Debug("get rpc response{%s}", p)
 	h.client.updateSession(session)
 
-	pendingResponse := h.client.RemovePendingResponse(p.header.Seq)
-	if p.header.ReplyType == ReplyTypePong {
+	pendingResponse := h.client.RemovePendingResponse(p.H.Sequence)
+	if p.H.Command == gettyCmdHbResponse {
 		return
 	}
-	if len(p.header.Error) > 0 {
-		pendingResponse.err = jerrors.New(p.header.Error)
+	if p.B == nil {
+		log.Error("response:{%#v} body is nil", p)
+		return
 	}
-	err := json.Unmarshal(p.body.([]byte), pendingResponse.reply)
+	rsp, ok := p.B.(*GettyRPCResponse)
+	if !ok {
+		log.Error("response body:{%#v} type is not *GettyRPCResponse", p.B)
+		return
+	}
+	if len(rsp.header.Error) > 0 {
+		pendingResponse.err = jerrors.New(rsp.header.Error)
+	}
+	err := json.Unmarshal(rsp.body.([]byte), pendingResponse.reply)
 	if err != nil {
 		pendingResponse.err = err
 	}
@@ -218,7 +243,7 @@ func (h *RpcClientHandler) OnCron(session getty.Session) {
 		log.Error("client.getClientSession(session{%s}) = error{%#v}", session.Stat(), err)
 		return
 	}
-	if conf.sessionTimeout.Nanoseconds() < time.Since(session.GetActive()).Nanoseconds() {
+	if h.client.conf.sessionTimeout.Nanoseconds() < time.Since(session.GetActive()).Nanoseconds() {
 		log.Warn("session{%s} timeout{%s}, reqNum{%d}",
 			session.Stat(), time.Since(session.GetActive()).String(), rpcSession.reqNum)
 		h.client.removeSession(session)

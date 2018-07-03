@@ -19,12 +19,12 @@ import (
 )
 
 type Server struct {
-	tcpServerList []getty.Server
+	conf          *ServerConfig
 	serviceMap    map[string]*service
-	conf          *Config
+	tcpServerList []getty.Server
 }
 
-func NewServer(conf *Config) *Server {
+func NewServer(conf *ServerConfig) *Server {
 	s := &Server{
 		serviceMap: make(map[string]*service),
 		conf:       conf,
@@ -64,7 +64,7 @@ func (s *Server) Register(rcvr interface{}) error {
 
 	if len(svc.method) == 0 {
 		// To help the user, see if a pointer receiver would work.
-		method := prepareMethods(reflect.PtrTo(svc.typ))
+		method := suitableMethods(reflect.PtrTo(svc.typ))
 		str := "rpc.Register: type " + svc.name + " has no exported methods of suitable type"
 		if len(method) != 0 {
 			str = "rpc.Register: type " + svc.name + " has no exported methods of suitable type (" +
@@ -104,8 +104,8 @@ func (s *Server) newSession(session getty.Session) error {
 
 	session.SetName(s.conf.GettySessionParam.SessionName)
 	session.SetMaxMsgLen(s.conf.GettySessionParam.MaxMsgLen)
-	session.SetPkgHandler(NewRpcServerPacketHandler(s)) //
-	session.SetEventListener(NewRpcServerHandler())     //
+	session.SetPkgHandler(NewRpcServerPacketHandler(s))
+	session.SetEventListener(NewRpcServerHandler(s.conf.SessionNumber, s.conf.sessionTimeout))
 	session.SetRQLen(s.conf.GettySessionParam.PkgRQSize)
 	session.SetWQLen(s.conf.GettySessionParam.PkgWQSize)
 	session.SetReadTimeout(s.conf.GettySessionParam.tcpReadTimeout)
@@ -133,7 +133,6 @@ func (s *Server) Init() {
 		tcpServer = getty.NewTCPServer(
 			getty.WithLocalAddress(addr),
 		)
-		// run s
 		tcpServer.RunEventLoop(s.newSession)
 		log.Debug("s bind addr{%s} ok!", addr)
 		s.tcpServerList = append(s.tcpServerList, tcpServer)
@@ -147,9 +146,8 @@ func (s *Server) Stop() {
 }
 
 func (s *Server) initSignal() {
-	// signal.Notify的ch信道是阻塞的(signal.Notify不会阻塞发送信号), 需要设置缓冲
 	signals := make(chan os.Signal, 1)
-	// It is not possible to block SIGKILL or syscall.SIGSTOP
+	// It is impossible to block SIGKILL or syscall.SIGSTOP
 	signal.Notify(signals, os.Interrupt, os.Kill, syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGINT)
 	for {
 		sig := <-signals
@@ -159,15 +157,12 @@ func (s *Server) initSignal() {
 		// reload()
 		default:
 			go time.AfterFunc(s.conf.failFastTimeout, func() {
-				// log.Warn("app exit now by force...")
-				// os.Exit(1)
 				log.Exit("app exit now by force...")
 				log.Close()
 			})
 
-			// 要么survialTimeout时间内执行完毕下面的逻辑然后程序退出，要么执行上面的超时函数程序强行退出
+			// if @s can not stop in s.conf.failFastTimeout, getty will Force Quit.
 			s.Stop()
-			// fmt.Println("app exit now...")
 			log.Exit("app exit now...")
 			log.Close()
 			return

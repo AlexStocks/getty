@@ -23,6 +23,7 @@ var (
 	errInvalidAddress  = jerrors.New("remote address invalid or empty")
 	errSessionNotExist = jerrors.New("session not exist")
 	errClientClosed    = jerrors.New("client closed")
+	src                = rand.NewSource(time.Now().UnixNano())
 )
 
 func init() {
@@ -30,7 +31,7 @@ func init() {
 }
 
 type Client struct {
-	conf        *Config
+	conf        *ClientConfig
 	lock        sync.RWMutex
 	sessions    []*rpcSession
 	gettyClient getty.Client
@@ -43,7 +44,7 @@ type Client struct {
 	sendLock sync.Mutex
 }
 
-func NewClient(conf *Config) *Client {
+func NewClient(conf *ClientConfig) *Client {
 	c := &Client{
 		pendingResponses: make(map[uint64]*PendingResponse),
 		conf:             conf,
@@ -53,9 +54,15 @@ func NewClient(conf *Config) *Client {
 		),
 	}
 	c.gettyClient.RunEventLoop(c.newSession)
+	idx := 1
 	for {
+		idx++
 		if c.isAvailable() {
 			break
+		}
+
+		if idx > 12000 {
+			panic("failed to create client in 2 minutes")
 		}
 		time.Sleep(1e6)
 	}
@@ -70,7 +77,7 @@ func (c *Client) newSession(session getty.Session) error {
 		tcpConn *net.TCPConn
 	)
 
-	if conf.GettySessionParam.CompressEncoding {
+	if c.conf.GettySessionParam.CompressEncoding {
 		session.SetCompressType(getty.CompressZip)
 	}
 
@@ -78,24 +85,24 @@ func (c *Client) newSession(session getty.Session) error {
 		panic(fmt.Sprintf("%s, session.conn{%#v} is not tcp connection\n", session.Stat(), session.Conn()))
 	}
 
-	tcpConn.SetNoDelay(conf.GettySessionParam.TcpNoDelay)
-	tcpConn.SetKeepAlive(conf.GettySessionParam.TcpKeepAlive)
-	if conf.GettySessionParam.TcpKeepAlive {
-		tcpConn.SetKeepAlivePeriod(conf.GettySessionParam.keepAlivePeriod)
+	tcpConn.SetNoDelay(c.conf.GettySessionParam.TcpNoDelay)
+	tcpConn.SetKeepAlive(c.conf.GettySessionParam.TcpKeepAlive)
+	if c.conf.GettySessionParam.TcpKeepAlive {
+		tcpConn.SetKeepAlivePeriod(c.conf.GettySessionParam.keepAlivePeriod)
 	}
-	tcpConn.SetReadBuffer(conf.GettySessionParam.TcpRBufSize)
-	tcpConn.SetWriteBuffer(conf.GettySessionParam.TcpWBufSize)
+	tcpConn.SetReadBuffer(c.conf.GettySessionParam.TcpRBufSize)
+	tcpConn.SetWriteBuffer(c.conf.GettySessionParam.TcpWBufSize)
 
-	session.SetName(conf.GettySessionParam.SessionName)
-	session.SetMaxMsgLen(conf.GettySessionParam.MaxMsgLen)
-	session.SetPkgHandler(NewRpcClientPacketHandler())
+	session.SetName(c.conf.GettySessionParam.SessionName)
+	session.SetMaxMsgLen(c.conf.GettySessionParam.MaxMsgLen)
+	session.SetPkgHandler(NewRpcClientPackageHandler())
 	session.SetEventListener(NewRpcClientHandler(c))
-	session.SetRQLen(conf.GettySessionParam.PkgRQSize)
-	session.SetWQLen(conf.GettySessionParam.PkgWQSize)
-	session.SetReadTimeout(conf.GettySessionParam.tcpReadTimeout)
-	session.SetWriteTimeout(conf.GettySessionParam.tcpWriteTimeout)
-	session.SetCronPeriod((int)(conf.heartbeatPeriod.Nanoseconds() / 1e6))
-	session.SetWaitTime(conf.GettySessionParam.waitTimeout)
+	session.SetRQLen(c.conf.GettySessionParam.PkgRQSize)
+	session.SetWQLen(c.conf.GettySessionParam.PkgWQSize)
+	session.SetReadTimeout(c.conf.GettySessionParam.tcpReadTimeout)
+	session.SetWriteTimeout(c.conf.GettySessionParam.tcpWriteTimeout)
+	session.SetCronPeriod((int)(c.conf.heartbeatPeriod.Nanoseconds() / 1e6))
+	session.SetWaitTime(c.conf.GettySessionParam.waitTimeout)
 	log.Debug("client new session:%s\n", session.Stat())
 
 	return nil
@@ -106,11 +113,12 @@ func (c *Client) Sequence() uint64 {
 }
 
 func (c *Client) Call(service, method string, args interface{}, reply interface{}) error {
-	req := NewRpcRequest(nil)
+	req := NewGettyRPCRequest(nil)
 	req.header.Service = service
 	req.header.Method = method
+	req.header.CallType = gettyTwoWay
 	if reply == nil {
-		req.header.CallType = RequestSendOnly
+		req.header.CallType = gettyTwoWayNoReply
 	}
 	req.body = args
 
@@ -118,15 +126,16 @@ func (c *Client) Call(service, method string, args interface{}, reply interface{
 	resp.reply = reply
 
 	session := c.selectSession()
-	if session != nil {
-		if err := c.transfer(session, req, resp); err != nil {
-			return err
-		}
-		<-resp.done
-		return resp.err
+	if session == nil {
+		return errSessionNotExist
 	}
 
-	return errSessionNotExist
+	if err := c.transfer(session, req, resp); err != nil {
+		return jerrors.Trace(err)
+	}
+	<-resp.done
+
+	return jerrors.Trace(resp.err)
 }
 
 func (c *Client) isAvailable() bool {
@@ -250,34 +259,36 @@ func (c *Client) getClientRpcSession(session getty.Session) (rpcSession, error) 
 }
 
 func (c *Client) ping(session getty.Session) error {
-	req := NewRpcRequest(nil)
-	req.header.Service = "go"
-	req.header.Method = "ping"
-	req.header.CallType = RequestSendOnly
-	req.body = nil
-
-	resp := NewPendingResponse()
-	return c.transfer(session, req, resp)
+	return c.transfer(session, nil, nil)
 }
 
-func (c *Client) transfer(session getty.Session, req *RpcRequest, resp *PendingResponse) error {
+func (c *Client) transfer(session getty.Session, req *GettyRPCRequest, resp *PendingResponse) error {
 	var (
 		sequence uint64
 		err      error
+		pkg      GettyPackage
 	)
 
 	sequence = c.Sequence()
-	req.header.Seq = sequence
-	resp.seq = sequence
-	c.AddPendingResponse(resp)
+	pkg.H.Magic = gettyPackageMagic
+	pkg.H.LogID = (uint32)(src.Int63())
+	pkg.H.Sequence = sequence
+	pkg.H.Command = gettyCmdHbRequest
+	if req != nil && resp != nil {
+		pkg.H.Command = gettyCmdRPCRequest
+		pkg.B = req
+
+		resp.seq = sequence
+		c.AddPendingResponse(resp)
+	}
 
 	c.sendLock.Lock()
 	defer c.sendLock.Unlock()
-	err = session.WritePkg(req, 0)
-	if err != nil {
+	err = session.WritePkg(pkg, 0)
+	if err != nil && resp != nil {
 		c.RemovePendingResponse(resp.seq)
 	}
-	return err
+	return jerrors.Trace(err)
 }
 
 func (c *Client) PendingResponseCount() int {
@@ -285,6 +296,7 @@ func (c *Client) PendingResponseCount() int {
 	defer c.pendingLock.RUnlock()
 	return len(c.pendingResponses)
 }
+
 func (c *Client) AddPendingResponse(pr *PendingResponse) {
 	c.pendingLock.Lock()
 	defer c.pendingLock.Unlock()
