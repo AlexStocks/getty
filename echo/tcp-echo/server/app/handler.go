@@ -67,7 +67,6 @@ func (h *MessageHandler) Handle(session getty.Session, pkg *EchoPackage) error {
 
 type clientEchoSession struct {
 	session getty.Session
-	active  time.Time
 	reqNum  int32
 }
 
@@ -137,7 +136,6 @@ func (h *EchoMessageHandler) OnMessage(session getty.Session, pkg interface{}) {
 	if err != nil {
 		h.rwlock.Lock()
 		if _, ok := h.sessionMap[session]; ok {
-			h.sessionMap[session].active = time.Now()
 			h.sessionMap[session].reqNum++
 		}
 		h.rwlock.Unlock()
