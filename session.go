@@ -323,7 +323,7 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 			s.incWritePkgNum()
 			// gxlog.CError("after incWritePkgNum, ss:%s", s.Stat())
 		}
-		return err
+		return jerrors.Trace(err)
 	}
 	select {
 	case s.wQ <- pkg:
@@ -640,7 +640,7 @@ func (s *session) handleTCPPackage() error {
 		}
 	}
 
-	return err
+	return jerrors.Trace(err)
 }
 
 // get package from udp packet
@@ -709,7 +709,7 @@ func (s *session) handleUDPPackage() error {
 		s.rQ <- UDPContext{Pkg: pkg, PeerAddr: addr}
 	}
 
-	return err
+	return jerrors.Trace(err)
 }
 
 // get package from websocket stream
@@ -737,7 +737,7 @@ func (s *session) handleWSPackage() error {
 			log.Warn("%s, [session.handleWSPackage] = error{%s}",
 				s.sessionToken(), jerrors.ErrorStack(err))
 			// s.errFlag = true
-			return err
+			return jerrors.Trace(err)
 		}
 		s.UpdateActive()
 		if s.reader != nil {

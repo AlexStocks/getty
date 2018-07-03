@@ -255,7 +255,8 @@ func (c *Client) getClientRpcSession(session getty.Session) (rpcSession, error) 
 			break
 		}
 	}
-	return rpcSession, err
+
+	return rpcSession, jerrors.Trace(err)
 }
 
 func (c *Client) ping(session getty.Session) error {

@@ -53,15 +53,23 @@ const (
 )
 
 ////////////////////////////////////////////
+//  getty error code
+////////////////////////////////////////////
+
+type GettyErrorCode int32
+
+const (
+	GettyOK   GettyErrorCode = 0x00
+	GettyFail                = 0x01
+)
+
+////////////////////////////////////////////
 // GettyPackageHandler
 ////////////////////////////////////////////
 
 const (
 	gettyPackageMagic = 0x20160905
 	maxPackageLen     = 1024 * 1024
-
-	ReplyTypeData = 0x01
-	ReplyTypeAck  = 0x03
 )
 
 var (
@@ -90,12 +98,12 @@ type RPCPackage interface {
 }
 
 type GettyPackageHeader struct {
-	Magic    uint32
+	Magic    uint32 // magic number
 	LogID    uint32 // log id
 	Sequence uint64 // request/response sequence
 
-	Command gettyCommand // operation command code
-	Code    int32        // error code
+	Command gettyCommand   // operation command code
+	Code    GettyErrorCode // error code
 
 	ServiceID uint32 // service id
 	Len       uint32 // body length
@@ -121,16 +129,17 @@ func (p GettyPackage) Marshal() (*bytes.Buffer, error) {
 	buf = &bytes.Buffer{}
 	err = binary.Write(buf, binary.LittleEndian, p.H)
 	if err != nil {
-		return nil, err
+		return nil, jerrors.Trace(err)
 	}
 	if p.B != nil {
 		if err = p.B.Marshal(buf); err != nil {
 			return nil, jerrors.Trace(err)
 		}
 
+		// body length
 		length = buf.Len() - gettyPackageHeaderLen
 		size = (int)((uint)(unsafe.Sizeof(p.H.Len)))
-		buf0 = bytes.NewBuffer(buf.Bytes()[gettyPackageHeaderLen-size:])
+		buf0 = bytes.NewBuffer(buf.Bytes()[gettyPackageHeaderLen-size : size])
 		binary.Write(buf0, binary.LittleEndian, length)
 	}
 
@@ -143,8 +152,7 @@ func (p *GettyPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
 	}
 
 	// header
-	err := binary.Read(buf, binary.LittleEndian, &(p.H))
-	if err != nil {
+	if err := binary.Read(buf, binary.LittleEndian, &(p.H)); err != nil {
 		return 0, jerrors.Trace(err)
 	}
 	if p.H.Magic != gettyPackageMagic {
@@ -159,7 +167,7 @@ func (p *GettyPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
 	}
 
 	if p.H.Len != 0 {
-		if err = p.B.Unmarshal(bytes.NewBuffer(buf.Next(int(p.H.Len)))); err != nil {
+		if err := p.B.Unmarshal(bytes.NewBuffer(buf.Next(int(p.H.Len)))); err != nil {
 			return 0, jerrors.Trace(err)
 		}
 	}
@@ -170,6 +178,8 @@ func (p *GettyPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
 ////////////////////////////////////////////
 // GettyRPCRequest
 ////////////////////////////////////////////
+
+type GettyRPCHeaderLenType uint16
 
 type GettyRPCRequestHeader struct {
 	Service  string        `json:"service,omitempty"`
@@ -188,7 +198,7 @@ type GettyRPCRequest struct {
 }
 
 // json rpc stream format
-// |-- 2B (GettyRPCRequestHeader length) --|-- GettyRPCRequestHeader --|
+// |-- 2B (GettyRPCRequestHeader length) --|-- GettyRPCRequestHeader --|-- rpc body --|
 
 func NewGettyRPCRequest(server *Server) *GettyRPCRequest {
 	return &GettyRPCRequest{
@@ -277,7 +287,7 @@ func (req *GettyRPCRequest) Unmarshal(buf *bytes.Buffer) error {
 ////////////////////////////////////////////
 
 type GettyRPCResponseHeader struct {
-	Error string `json:"error,omitempty"`
+	Error string `json:"error,omitempty"` // error string
 }
 
 type GettyRPCResponse struct {
@@ -296,16 +306,14 @@ func (resp *GettyRPCResponse) Marshal(buf *bytes.Buffer) error {
 		return jerrors.Trace(err)
 	}
 
-	err = binary.Write(buf, binary.LittleEndian, uint16(len(headerData)))
-	if err != nil {
-		return err
-	}
-	_, err = buf.Write(headerData)
+	err = binary.Write(buf, binary.LittleEndian, (GettyRPCHeaderLenType)(len(headerData)))
 	if err != nil {
 		return jerrors.Trace(err)
 	}
-	_, err = buf.Write(bodyData)
-	if err != nil {
+	if _, err = buf.Write(headerData); err != nil {
+		return jerrors.Trace(err)
+	}
+	if _, err = buf.Write(bodyData); err != nil {
 		return jerrors.Trace(err)
 	}
 
@@ -318,21 +326,17 @@ func (resp *GettyRPCResponse) Unmarshal(buf *bytes.Buffer) error {
 		return ErrNotEnoughStream
 	}
 
-	var headerLen uint16
+	var headerLen GettyRPCHeaderLenType
 	err := binary.Read(buf, binary.LittleEndian, &headerLen)
 	if err != nil {
-		return err
+		return jerrors.Trace(err)
 	}
 
 	header := buf.Next(int(headerLen))
 	if len(header) != int(headerLen) {
 		return ErrNotEnoughStream
 	}
-	body := buf.Next(int(buf.Len()))
-	if len(body) == 0 {
-		return ErrNotEnoughStream
-	}
-	resp.body = body
+	resp.body = buf.Next(int(buf.Len()))
 	err = json.Unmarshal(header, resp.header)
 	if err != nil {
 		return jerrors.Trace(err)

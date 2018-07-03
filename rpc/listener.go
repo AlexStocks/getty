@@ -57,7 +57,7 @@ func (h *RpcServerHandler) OnOpen(session getty.Session) error {
 	}
 	h.rwlock.RUnlock()
 	if err != nil {
-		return err
+		return jerrors.Trace(err)
 	}
 
 	log.Info("got session:%s", session.Stat())
@@ -143,6 +143,7 @@ func (h *RpcServerHandler) replyCmd(session getty.Session, reqPkg *GettyPackage,
 	rspPkg.H.Code = 0
 	rspPkg.H.Command = gettyCmdRPCResponse
 	if len(err) != 0 {
+		rspPkg.H.Code = GettyFail
 		rspPkg.B = &GettyRPCResponse{
 			header: GettyRPCResponseHeader{
 				Error: err,
@@ -227,7 +228,7 @@ func (h *RpcClientHandler) OnMessage(session getty.Session, pkg interface{}) {
 		log.Error("response body:{%#v} type is not *GettyRPCResponse", p.B)
 		return
 	}
-	if len(rsp.header.Error) > 0 {
+	if p.H.Code == GettyFail && len(rsp.header.Error) > 0 {
 		pendingResponse.err = jerrors.New(rsp.header.Error)
 	}
 	err := json.Unmarshal(rsp.body.([]byte), pendingResponse.reply)
