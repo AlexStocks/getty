@@ -9,7 +9,8 @@ import (
 )
 
 func main() {
-	client := rpc.NewClient()
+	log.LoadConfiguration("client_log.xml")
+	client := rpc.NewClient("client_config.toml")
 	defer client.Close()
 
 	for i := 0; i < 100; i++ {

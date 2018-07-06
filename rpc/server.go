@@ -24,7 +24,8 @@ type Server struct {
 	tcpServerList []getty.Server
 }
 
-func NewServer(conf *ServerConfig) *Server {
+func NewServer(confFile string) *Server {
+	conf := loadServerConf(confFile)
 	s := &Server{
 		serviceMap: make(map[string]*service),
 		conf:       conf,

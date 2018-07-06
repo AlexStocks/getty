@@ -74,6 +74,8 @@ type session struct {
 	// goroutines sync
 	grNum int32
 	lock  sync.RWMutex
+
+	pool *Pool
 }
 
 func newSession(endPoint EndPoint, conn Connection) *session {
@@ -245,6 +247,7 @@ func (s *session) SetRQLen(readQLen int) {
 	s.lock.Lock()
 	s.rQ = make(chan interface{}, readQLen)
 	log.Info("%s, [session.SetRQLen] rQ{len:%d, cap:%d}", s.Stat(), len(s.rQ), cap(s.rQ))
+	s.pool = NewPool(readQLen/2, 2, 1)
 	s.lock.Unlock()
 }
 
@@ -485,7 +488,10 @@ LOOP:
 			// read the s.rQ and assure (session)handlePackage gr will not block by (session)rQ.
 			if flag {
 				log.Debug("%#v <-s.rQ", inPkg)
-				s.listener.OnMessage(s, inPkg)
+				pkg := inPkg
+				s.pool.ScheduleTimeout(s.wait, func() {
+					s.listener.OnMessage(s, pkg)
+				})
 				s.incReadPkgNum()
 			} else {
 				log.Info("[session.handleLoop] drop readin package{%#v}", inPkg)

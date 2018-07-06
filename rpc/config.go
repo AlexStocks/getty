@@ -1,7 +1,12 @@
 package rpc
 
 import (
+	"fmt"
 	"time"
+)
+
+import (
+	config "github.com/koding/multiconfig"
 )
 
 type (
@@ -76,3 +81,70 @@ type (
 		GettySessionParam GettySessionParam `required:"true" yaml:"getty_session_param" json:"getty_session_param,omitempty"`
 	}
 )
+
+func loadClientConf(confFile string) *ClientConfig {
+	var err error
+	conf := new(ClientConfig)
+	config.MustLoadWithPath(confFile, conf)
+	conf.heartbeatPeriod, err = time.ParseDuration(conf.HeartbeatPeriod)
+	if err != nil {
+		panic(fmt.Sprintf("time.ParseDuration(HeartbeatPeroid{%#v}) = error{%v}", conf.HeartbeatPeriod, err))
+	}
+	conf.sessionTimeout, err = time.ParseDuration(conf.SessionTimeout)
+	if err != nil {
+		panic(fmt.Sprintf("time.ParseDuration(SessionTimeout{%#v}) = error{%v}", conf.SessionTimeout, err))
+	}
+	conf.failFastTimeout, err = time.ParseDuration(conf.FailFastTimeout)
+	if err != nil {
+		panic(fmt.Sprintf("time.ParseDuration(FailFastTimeout{%#v}) = error{%v}", conf.FailFastTimeout, err))
+	}
+	conf.GettySessionParam.keepAlivePeriod, err = time.ParseDuration(conf.GettySessionParam.KeepAlivePeriod)
+	if err != nil {
+		panic(fmt.Sprintf("time.ParseDuration(KeepAlivePeriod{%#v}) = error{%v}", conf.GettySessionParam.KeepAlivePeriod, err))
+	}
+	conf.GettySessionParam.tcpReadTimeout, err = time.ParseDuration(conf.GettySessionParam.TcpReadTimeout)
+	if err != nil {
+		panic(fmt.Sprintf("time.ParseDuration(TcpReadTimeout{%#v}) = error{%v}", conf.GettySessionParam.TcpReadTimeout, err))
+	}
+	conf.GettySessionParam.tcpWriteTimeout, err = time.ParseDuration(conf.GettySessionParam.TcpWriteTimeout)
+	if err != nil {
+		panic(fmt.Sprintf("time.ParseDuration(TcpWriteTimeout{%#v}) = error{%v}", conf.GettySessionParam.TcpWriteTimeout, err))
+	}
+	conf.GettySessionParam.waitTimeout, err = time.ParseDuration(conf.GettySessionParam.WaitTimeout)
+	if err != nil {
+		panic(fmt.Sprintf("time.ParseDuration(WaitTimeout{%#v}) = error{%v}", conf.GettySessionParam.WaitTimeout, err))
+	}
+	return conf
+}
+
+func loadServerConf(confFile string) *ServerConfig {
+	var err error
+	conf := new(ServerConfig)
+	config.MustLoadWithPath(confFile, conf)
+
+	conf.sessionTimeout, err = time.ParseDuration(conf.SessionTimeout)
+	if err != nil {
+		panic(fmt.Sprintf("time.ParseDuration(SessionTimeout{%#v}) = error{%v}", conf.SessionTimeout, err))
+	}
+	conf.failFastTimeout, err = time.ParseDuration(conf.FailFastTimeout)
+	if err != nil {
+		panic(fmt.Sprintf("time.ParseDuration(FailFastTimeout{%#v}) = error{%v}", conf.FailFastTimeout, err))
+	}
+	conf.GettySessionParam.keepAlivePeriod, err = time.ParseDuration(conf.GettySessionParam.KeepAlivePeriod)
+	if err != nil {
+		panic(fmt.Sprintf("time.ParseDuration(KeepAlivePeriod{%#v}) = error{%v}", conf.GettySessionParam.KeepAlivePeriod, err))
+	}
+	conf.GettySessionParam.tcpReadTimeout, err = time.ParseDuration(conf.GettySessionParam.TcpReadTimeout)
+	if err != nil {
+		panic(fmt.Sprintf("time.ParseDuration(TcpReadTimeout{%#v}) = error{%v}", conf.GettySessionParam.TcpReadTimeout, err))
+	}
+	conf.GettySessionParam.tcpWriteTimeout, err = time.ParseDuration(conf.GettySessionParam.TcpWriteTimeout)
+	if err != nil {
+		panic(fmt.Sprintf("time.ParseDuration(TcpWriteTimeout{%#v}) = error{%v}", conf.GettySessionParam.TcpWriteTimeout, err))
+	}
+	conf.GettySessionParam.waitTimeout, err = time.ParseDuration(conf.GettySessionParam.WaitTimeout)
+	if err != nil {
+		panic(fmt.Sprintf("time.ParseDuration(WaitTimeout{%#v}) = error{%v}", conf.GettySessionParam.WaitTimeout, err))
+	}
+	return conf
+}
