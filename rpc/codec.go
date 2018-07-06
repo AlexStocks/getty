@@ -10,8 +10,13 @@ import (
 )
 
 import (
-	log "github.com/AlexStocks/log4go"
+	proto "github.com/gogo/protobuf/proto"
+	pb "github.com/golang/protobuf/proto"
 	jerrors "github.com/juju/errors"
+)
+
+import (
+	log "github.com/AlexStocks/log4go"
 )
 
 ////////////////////////////////////////////
@@ -63,6 +68,68 @@ const (
 	GettyFail                = 0x01
 )
 
+type SerializeType byte
+
+const (
+	JSON SerializeType = iota
+	ProtoBuffer
+)
+
+var (
+	Codecs = map[SerializeType]Codec{
+		JSON:        &JSONCodec{},
+		ProtoBuffer: &PBCodec{},
+	}
+)
+
+// Codec defines the interface that decode/encode body.
+type Codec interface {
+	Encode(i interface{}) ([]byte, error)
+	Decode(data []byte, i interface{}) error
+}
+
+// JSONCodec uses json marshaler and unmarshaler.
+type JSONCodec struct{}
+
+// Encode encodes an object into slice of bytes.
+func (c JSONCodec) Encode(i interface{}) ([]byte, error) {
+	return json.Marshal(i)
+}
+
+// Decode decodes an object from slice of bytes.
+func (c JSONCodec) Decode(data []byte, i interface{}) error {
+	return json.Unmarshal(data, i)
+}
+
+// PBCodec uses protobuf marshaler and unmarshaler.
+type PBCodec struct{}
+
+// Encode encodes an object into slice of bytes.
+func (c PBCodec) Encode(i interface{}) ([]byte, error) {
+	if m, ok := i.(proto.Marshaler); ok {
+		return m.Marshal()
+	}
+
+	if m, ok := i.(pb.Message); ok {
+		return pb.Marshal(m)
+	}
+
+	return nil, fmt.Errorf("%T is not a proto.Marshaler", i)
+}
+
+// Decode decodes an object from slice of bytes.
+func (c PBCodec) Decode(data []byte, i interface{}) error {
+	if m, ok := i.(proto.Unmarshaler); ok {
+		return m.Unmarshal(data)
+	}
+
+	if m, ok := i.(pb.Message); ok {
+		return pb.Unmarshal(data, m)
+	}
+
+	return fmt.Errorf("%T is not a proto.Unmarshaler", i)
+}
+
 ////////////////////////////////////////////
 // GettyPackageHandler
 ////////////////////////////////////////////
@@ -75,26 +142,25 @@ const (
 var (
 	ErrNotEnoughStream         = jerrors.New("packet stream is not enough")
 	ErrTooLargePackage         = jerrors.New("package length is exceed the getty package's legal maximum length.")
+	ErrInvalidPackage          = jerrors.New("invalid rpc package")
 	ErrNotFoundServiceOrMethod = jerrors.New("server invalid service or method")
 	ErrIllegalMagic            = jerrors.New("package magic is not right.")
 )
 
 var (
-	gettyPackageHeaderLen  int
-	gettyRPCRequestMinLen  int
-	gettyRPCResponseMinLen int
+	gettyPackageHeaderLen int
 )
 
 func init() {
 	gettyPackageHeaderLen = (int)((uint)(unsafe.Sizeof(GettyPackageHeader{})))
-	gettyRPCRequestMinLen = (int)((uint)(unsafe.Sizeof(GettyRPCRequestHeader{}))) + 2
-	gettyRPCResponseMinLen = (int)((uint)(unsafe.Sizeof(GettyRPCResponseHeader{}))) + 2
 }
 
 type RPCPackage interface {
-	Marshal(*bytes.Buffer) error
+	Marshal(SerializeType, *bytes.Buffer) (int, error)
 	// @buf length should be equal to GettyPkg.GettyPackageHeader.Len
-	Unmarshal(buf *bytes.Buffer) error
+	Unmarshal(sz SerializeType, buf *bytes.Buffer) error
+	GetBody() []byte
+	GetHeader() interface{}
 }
 
 type GettyPackageHeader struct {
@@ -106,7 +172,7 @@ type GettyPackageHeader struct {
 	Code    GettyErrorCode // error code
 
 	ServiceID uint32 // service id
-	Len       uint32 // body length
+	CodecType SerializeType
 }
 
 type GettyPackage struct {
@@ -119,36 +185,54 @@ func (p GettyPackage) String() string {
 		p.H.LogID, p.H.Sequence, (gettyCommand(p.H.Command)).String())
 }
 
-func (p GettyPackage) Marshal() (*bytes.Buffer, error) {
+func (p *GettyPackage) Marshal() (*bytes.Buffer, error) {
 	var (
-		err          error
-		length, size int
-		buf, buf0    *bytes.Buffer
+		err             error
+		packLen, length int
+		buf             *bytes.Buffer
 	)
 
-	buf = &bytes.Buffer{}
-	err = binary.Write(buf, binary.LittleEndian, p.H)
+	packLen = gettyPackageHeaderLen
+	if p.B != nil {
+		buf = &bytes.Buffer{}
+		length, err = p.B.Marshal(p.H.CodecType, buf)
+		if err != nil {
+			return nil, jerrors.Trace(err)
+		}
+		packLen = gettyPackageHeaderLen + length
+	}
+	buf0 := &bytes.Buffer{}
+	err = binary.Write(buf0, binary.LittleEndian, uint16(packLen))
+	if err != nil {
+		return nil, jerrors.Trace(err)
+	}
+	err = binary.Write(buf0, binary.LittleEndian, p.H)
 	if err != nil {
 		return nil, jerrors.Trace(err)
 	}
 	if p.B != nil {
-		if err = p.B.Marshal(buf); err != nil {
+		if err = binary.Write(buf0, binary.LittleEndian, buf.Bytes()); err != nil {
 			return nil, jerrors.Trace(err)
 		}
-
-		// body length
-		length = buf.Len() - gettyPackageHeaderLen
-		size = (int)((uint)(unsafe.Sizeof(p.H.Len)))
-		buf0 = bytes.NewBuffer(buf.Bytes()[gettyPackageHeaderLen-size : size])
-		binary.Write(buf0, binary.LittleEndian, length)
 	}
-
-	return buf, nil
+	return buf0, nil
 }
 
 func (p *GettyPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
-	if buf.Len() < gettyPackageHeaderLen {
+	var err error
+	if buf.Len() < 2+gettyPackageHeaderLen {
 		return 0, ErrNotEnoughStream
+	}
+	var packLen uint16
+	err = binary.Read(buf, binary.LittleEndian, &packLen)
+	if err != nil {
+		return 0, jerrors.Trace(err)
+	}
+	if int(packLen) > maxPackageLen {
+		return 0, ErrTooLargePackage
+	}
+	if int(packLen) < gettyPackageHeaderLen {
+		return 0, ErrInvalidPackage
 	}
 
 	// header
@@ -159,20 +243,14 @@ func (p *GettyPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
 		log.Error("@p.H.Magic{%x}, right magic{%x}", p.H.Magic, gettyPackageMagic)
 		return 0, ErrIllegalMagic
 	}
-	if buf.Len() < (int)(p.H.Len) {
-		return 0, ErrNotEnoughStream
-	}
-	if maxPackageLen < p.H.Len {
-		return 0, ErrTooLargePackage
-	}
 
-	if p.H.Len != 0 {
-		if err := p.B.Unmarshal(bytes.NewBuffer(buf.Next(int(p.H.Len)))); err != nil {
+	if int(packLen) > gettyPackageHeaderLen {
+		if err := p.B.Unmarshal(p.H.CodecType, bytes.NewBuffer(buf.Next(int(packLen)-gettyPackageHeaderLen))); err != nil {
 			return 0, jerrors.Trace(err)
 		}
 	}
 
-	return (int)(p.H.Len) + gettyPackageHeaderLen, nil
+	return int(packLen), nil
 }
 
 ////////////////////////////////////////////
@@ -183,62 +261,63 @@ type GettyRPCHeaderLenType uint16
 
 //easyjson:json
 type GettyRPCRequestHeader struct {
-	Service  string        `json:"service,omitempty"`
-	Method   string        `json:"method,omitempty"`
-	CallType gettyCallType `json:"call_type,omitempty"`
+	Service  string
+	Method   string
+	CallType gettyCallType
 }
 
 type GettyRPCRequest struct {
-	server     *Server
+	header GettyRPCRequestHeader
+	body   interface{}
+}
+
+type GettyRPCRequestPackage struct {
+	H          GettyPackageHeader
 	header     GettyRPCRequestHeader
-	body       interface{}
 	service    *service
 	methodType *methodType
 	argv       reflect.Value
 	replyv     reflect.Value
 }
 
-// json rpc stream format
-// |-- 2B (GettyRPCRequestHeader length) --|-- GettyRPCRequestHeader --|-- rpc body --|
-
-func NewGettyRPCRequest(server *Server) *GettyRPCRequest {
-	return &GettyRPCRequest{
-		server: server,
-	}
+func NewGettyRPCRequest() RPCPackage {
+	return &GettyRPCRequest{}
 }
 
-func (req *GettyRPCRequest) Marshal(buf *bytes.Buffer) error {
-	headerData, err := req.header.MarshalJSON()
-	if err != nil {
-		return jerrors.Trace(err)
+func (req *GettyRPCRequest) Marshal(sz SerializeType, buf *bytes.Buffer) (int, error) {
+	codec := Codecs[sz]
+	if codec == nil {
+		return 0, jerrors.Errorf("can not find codec for %d", sz)
 	}
-
-	bodyData, err := json.Marshal(req.body)
+	headerData, err := codec.Encode(req.header)
 	if err != nil {
-		return jerrors.Trace(err)
+		return 0, jerrors.Trace(err)
 	}
-
+	bodyData, err := codec.Encode(req.body)
+	if err != nil {
+		return 0, jerrors.Trace(err)
+	}
 	err = binary.Write(buf, binary.LittleEndian, uint16(len(headerData)))
 	if err != nil {
-		return jerrors.Trace(err)
+		return 0, jerrors.Trace(err)
 	}
 	err = binary.Write(buf, binary.LittleEndian, headerData)
 	if err != nil {
-		return jerrors.Trace(err)
+		return 0, jerrors.Trace(err)
+	}
+	err = binary.Write(buf, binary.LittleEndian, uint16(len(bodyData)))
+	if err != nil {
+		return 0, jerrors.Trace(err)
 	}
 	err = binary.Write(buf, binary.LittleEndian, bodyData)
 	if err != nil {
-		return jerrors.Trace(err)
+		return 0, jerrors.Trace(err)
 	}
 
-	return nil
+	return 2 + len(headerData) + 2 + len(bodyData), nil
 }
 
-// @buf length should be equal to GettyPkg.GettyPackageHeader.Len
-func (req *GettyRPCRequest) Unmarshal(buf *bytes.Buffer) error {
-	if buf.Len() < gettyRPCRequestMinLen {
-		return ErrNotEnoughStream
-	}
+func (req *GettyRPCRequest) Unmarshal(sz SerializeType, buf *bytes.Buffer) error {
 
 	var headerLen uint16
 	err := binary.Read(buf, binary.LittleEndian, &headerLen)
@@ -246,41 +325,44 @@ func (req *GettyRPCRequest) Unmarshal(buf *bytes.Buffer) error {
 		return jerrors.Trace(err)
 	}
 
-	header := buf.Next(int(headerLen))
-	body := buf.Next(buf.Len())
-	err = (&req.header).UnmarshalJSON(header)
+	header := make([]byte, headerLen)
+	err = binary.Read(buf, binary.LittleEndian, header)
 	if err != nil {
 		return jerrors.Trace(err)
 	}
 
-	// get service & method
-	req.service = req.server.serviceMap[req.header.Service]
-	if req.service != nil {
-		req.methodType = req.service.method[req.header.Method]
-	}
-	if req.service == nil || req.methodType == nil {
-		return ErrNotFoundServiceOrMethod
-	}
-
-	// get args
-	argIsValue := false
-	if req.methodType.ArgType.Kind() == reflect.Ptr {
-		req.argv = reflect.New(req.methodType.ArgType.Elem())
-	} else {
-		req.argv = reflect.New(req.methodType.ArgType)
-		argIsValue = true
-	}
-	err = json.Unmarshal(body, req.argv.Interface())
+	var bodyLen uint16
+	err = binary.Read(buf, binary.LittleEndian, &bodyLen)
 	if err != nil {
 		return jerrors.Trace(err)
 	}
-	if argIsValue {
-		req.argv = req.argv.Elem()
-	}
-	// get reply
-	req.replyv = reflect.New(req.methodType.ReplyType.Elem())
 
+	body := make([]byte, bodyLen)
+	err = binary.Read(buf, binary.LittleEndian, body)
+	if err != nil {
+		return jerrors.Trace(err)
+	}
+
+	codec := Codecs[sz]
+	if codec == nil {
+		return jerrors.Errorf("can not find codec for %d", sz)
+	}
+
+	err = codec.Decode(header, &req.header)
+	if err != nil {
+		return jerrors.Trace(err)
+	}
+
+	req.body = body
 	return nil
+}
+
+func (req *GettyRPCRequest) GetBody() []byte {
+	return req.body.([]byte)
+}
+
+func (req *GettyRPCRequest) GetHeader() interface{} {
+	return req.header
 }
 
 ////////////////////////////////////////////
@@ -288,62 +370,105 @@ func (req *GettyRPCRequest) Unmarshal(buf *bytes.Buffer) error {
 ////////////////////////////////////////////
 
 type GettyRPCResponseHeader struct {
-	Error string `json:"error,omitempty"` // error string
+	Error string
 }
 
 type GettyRPCResponse struct {
-	header GettyRPCResponseHeader `json:"header,omitempty"`
-	body   interface{}            `json:"body,omitempty"`
+	header GettyRPCResponseHeader
+	body   interface{}
 }
 
-func (resp *GettyRPCResponse) Marshal(buf *bytes.Buffer) error {
-	headerData, err := json.Marshal(resp.header)
-	if err != nil {
-		return jerrors.Trace(err)
-	}
-
-	bodyData, err := json.Marshal(resp.body)
-	if err != nil {
-		return jerrors.Trace(err)
-	}
-
-	err = binary.Write(buf, binary.LittleEndian, (GettyRPCHeaderLenType)(len(headerData)))
-	if err != nil {
-		return jerrors.Trace(err)
-	}
-	if _, err = buf.Write(headerData); err != nil {
-		return jerrors.Trace(err)
-	}
-	if _, err = buf.Write(bodyData); err != nil {
-		return jerrors.Trace(err)
-	}
-
-	return nil
+type GettyRPCResponsePackage struct {
+	H      GettyPackageHeader
+	header GettyRPCResponseHeader
+	body   []byte
 }
 
-// @buf length should be equal to GettyPkg.GettyPackageHeader.Len
-func (resp *GettyRPCResponse) Unmarshal(buf *bytes.Buffer) error {
-	if buf.Len() < gettyRPCResponseMinLen {
-		return ErrNotEnoughStream
+func NewGettyRPCResponse() RPCPackage {
+	return &GettyRPCResponse{}
+}
+
+func (resp *GettyRPCResponse) Marshal(sz SerializeType, buf *bytes.Buffer) (int, error) {
+	codec := Codecs[sz]
+	if codec == nil {
+		return 0, jerrors.Errorf("can not find codec for %d", sz)
+	}
+	headerData, err := codec.Encode(resp.header)
+	if err != nil {
+		return 0, jerrors.Trace(err)
 	}
 
-	var headerLen GettyRPCHeaderLenType
+	bodyData, err := codec.Encode(resp.body)
+	if err != nil {
+		return 0, jerrors.Trace(err)
+	}
+
+	err = binary.Write(buf, binary.LittleEndian, uint16(len(headerData)))
+	if err != nil {
+		return 0, jerrors.Trace(err)
+	}
+	err = binary.Write(buf, binary.LittleEndian, headerData)
+	if err != nil {
+		return 0, jerrors.Trace(err)
+	}
+	err = binary.Write(buf, binary.LittleEndian, uint16(len(bodyData)))
+	if err != nil {
+		return 0, jerrors.Trace(err)
+	}
+	err = binary.Write(buf, binary.LittleEndian, bodyData)
+	if err != nil {
+		return 0, jerrors.Trace(err)
+	}
+
+	return 2 + len(headerData) + 2 + len(bodyData), nil
+}
+
+func (resp *GettyRPCResponse) Unmarshal(sz SerializeType, buf *bytes.Buffer) error {
+
+	var headerLen uint16
 	err := binary.Read(buf, binary.LittleEndian, &headerLen)
 	if err != nil {
 		return jerrors.Trace(err)
 	}
 
-	header := buf.Next(int(headerLen))
-	if len(header) != int(headerLen) {
-		return ErrNotEnoughStream
-	}
-	resp.body = buf.Next(int(buf.Len()))
-	err = json.Unmarshal(header, resp.header)
+	header := make([]byte, headerLen)
+	err = binary.Read(buf, binary.LittleEndian, header)
 	if err != nil {
 		return jerrors.Trace(err)
 	}
 
+	var bodyLen uint16
+	err = binary.Read(buf, binary.LittleEndian, &bodyLen)
+	if err != nil {
+		return jerrors.Trace(err)
+	}
+
+	body := make([]byte, bodyLen)
+	err = binary.Read(buf, binary.LittleEndian, body)
+	if err != nil {
+		return jerrors.Trace(err)
+	}
+
+	codec := Codecs[sz]
+	if codec == nil {
+		return jerrors.Errorf("can not find codec for %d", sz)
+	}
+
+	err = codec.Decode(header, &resp.header)
+	if err != nil {
+		return jerrors.Trace(err)
+	}
+
+	resp.body = body
 	return nil
+}
+
+func (resp *GettyRPCResponse) GetBody() []byte {
+	return resp.body.([]byte)
+}
+
+func (resp *GettyRPCResponse) GetHeader() interface{} {
+	return resp.header
 }
 
 ////////////////////////////////////////////

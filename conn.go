@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -180,6 +181,7 @@ func newGettyTCPConn(conn net.Conn) *gettyTCPConn {
 // for zip compress
 type writeFlusher struct {
 	flusher *flate.Writer
+	lock    sync.Mutex
 }
 
 func (t *writeFlusher) Write(p []byte) (int, error) {
@@ -187,7 +189,8 @@ func (t *writeFlusher) Write(p []byte) (int, error) {
 		n   int
 		err error
 	)
-
+	t.lock.Lock()
+	defer t.lock.Unlock()
 	n, err = t.flusher.Write(p)
 	if err != nil {
 		return n, jerrors.Trace(err)

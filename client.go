@@ -383,6 +383,7 @@ func (c *client) RunEventLoop(newSession NewSessionCallback) {
 	c.newSession = newSession
 	c.Unlock()
 
+	log.Info("run")
 	c.wg.Add(1)
 	// a for-loop goroutine to make sure the connection is valid
 	go func() {

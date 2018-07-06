@@ -20,7 +20,6 @@ type methodType struct {
 	method    reflect.Method
 	ArgType   reflect.Type
 	ReplyType reflect.Type
-	numCalls  uint
 }
 
 type service struct {

@@ -23,7 +23,6 @@ var (
 	errInvalidAddress  = jerrors.New("remote address invalid or empty")
 	errSessionNotExist = jerrors.New("session not exist")
 	errClientClosed    = jerrors.New("client closed")
-	src                = rand.NewSource(time.Now().UnixNano())
 )
 
 func init() {
@@ -35,16 +34,16 @@ type Client struct {
 	lock        sync.RWMutex
 	sessions    []*rpcSession
 	gettyClient getty.Client
+	codecType   SerializeType
 
 	sequence uint64
 
 	pendingLock      sync.RWMutex
 	pendingResponses map[uint64]*PendingResponse
-
-	sendLock sync.Mutex
 }
 
-func NewClient(conf *ClientConfig) *Client {
+func NewClient(confFile string) *Client {
+	conf := loadClientConf(confFile)
 	c := &Client{
 		pendingResponses: make(map[uint64]*PendingResponse),
 		conf:             conf,
@@ -52,6 +51,7 @@ func NewClient(conf *ClientConfig) *Client {
 			getty.WithServerAddress(gxnet.HostAddress(conf.ServerHost, conf.ServerPort)),
 			getty.WithConnectionNumber((int)(conf.ConnectionNum)),
 		),
+		codecType: JSON,
 	}
 	c.gettyClient.RunEventLoop(c.newSession)
 	idx := 1
@@ -69,6 +69,10 @@ func NewClient(conf *ClientConfig) *Client {
 	log.Info("client init ok")
 
 	return c
+}
+
+func (c *Client) SetCodecType(st SerializeType) {
+	c.codecType = st
 }
 
 func (c *Client) newSession(session getty.Session) error {
@@ -113,14 +117,14 @@ func (c *Client) Sequence() uint64 {
 }
 
 func (c *Client) Call(service, method string, args interface{}, reply interface{}) error {
-	req := NewGettyRPCRequest(nil)
-	req.header.Service = service
-	req.header.Method = method
-	req.header.CallType = gettyTwoWay
+	b := &GettyRPCRequest{}
+	b.header.Service = service
+	b.header.Method = method
+	b.header.CallType = gettyTwoWay
 	if reply == nil {
-		req.header.CallType = gettyTwoWayNoReply
+		b.header.CallType = gettyTwoWayNoReply
 	}
-	req.body = args
+	b.body = args
 
 	resp := NewPendingResponse()
 	resp.reply = reply
@@ -130,7 +134,7 @@ func (c *Client) Call(service, method string, args interface{}, reply interface{
 		return errSessionNotExist
 	}
 
-	if err := c.transfer(session, req, resp); err != nil {
+	if err := c.transfer(session, b, resp); err != nil {
 		return jerrors.Trace(err)
 	}
 	<-resp.done
@@ -147,30 +151,24 @@ func (c *Client) isAvailable() bool {
 }
 
 func (c *Client) Close() {
-	var sessions *[]*rpcSession
-
 	c.lock.Lock()
 	if c.gettyClient != nil {
-		sessions = &(c.sessions)
-		c.sessions = nil
+		for _, s := range c.sessions {
+			log.Info("close client session{%s, last active:%s, request number:%d}",
+				s.session.Stat(), s.session.GetActive().String(), s.reqNum)
+			s.session.Close()
+		}
 		c.gettyClient.Close()
 		c.gettyClient = nil
 		c.sessions = c.sessions[:0]
 	}
 	c.lock.Unlock()
-
-	if sessions != nil {
-		for _, s := range *sessions {
-			log.Info("close client session{%s, last active:%s, request number:%d}",
-				s.session.Stat(), s.session.GetActive().String(), s.reqNum)
-			s.session.Close()
-		}
-	}
 }
 
 func (c *Client) selectSession() getty.Session {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
+
 	if c.sessions == nil {
 		return nil
 	}
@@ -189,12 +187,8 @@ func (c *Client) addSession(session getty.Session) {
 	}
 
 	c.lock.Lock()
-	defer c.lock.Unlock()
-	if c.sessions == nil {
-		return
-	}
-
 	c.sessions = append(c.sessions, &rpcSession{session: session})
+	c.lock.Unlock()
 }
 
 func (c *Client) removeSession(session getty.Session) {
@@ -259,8 +253,9 @@ func (c *Client) getClientRpcSession(session getty.Session) (rpcSession, error) 
 	return rpcSession, jerrors.Trace(err)
 }
 
-func (c *Client) ping(session getty.Session) error {
-	return c.transfer(session, nil, nil)
+func (c *Client) heartbeat(session getty.Session) error {
+	resp := NewPendingResponse()
+	return c.transfer(session, nil, resp)
 }
 
 func (c *Client) transfer(session getty.Session, req *GettyRPCRequest, resp *PendingResponse) error {
@@ -272,19 +267,18 @@ func (c *Client) transfer(session getty.Session, req *GettyRPCRequest, resp *Pen
 
 	sequence = c.Sequence()
 	pkg.H.Magic = gettyPackageMagic
-	pkg.H.LogID = (uint32)(src.Int63())
+	pkg.H.LogID = (uint32)(randomID())
 	pkg.H.Sequence = sequence
 	pkg.H.Command = gettyCmdHbRequest
-	if req != nil && resp != nil {
+	pkg.H.CodecType = c.codecType
+	if req != nil {
 		pkg.H.Command = gettyCmdRPCRequest
 		pkg.B = req
-
-		resp.seq = sequence
-		c.AddPendingResponse(resp)
 	}
 
-	c.sendLock.Lock()
-	defer c.sendLock.Unlock()
+	resp.seq = sequence
+	c.AddPendingResponse(resp)
+
 	err = session.WritePkg(pkg, 0)
 	if err != nil && resp != nil {
 		c.RemovePendingResponse(resp.seq)
