@@ -11,6 +11,7 @@ import (
 func main() {
 	log.LoadConfiguration("client_log.xml")
 	client := rpc.NewClient("client_config.toml")
+	// client.SetCodecType(rpc.ProtoBuffer)//默认是json序列化
 	defer client.Close()
 
 	for i := 0; i < 100; i++ {
