@@ -16,7 +16,7 @@ You can get code example in https://github.com/AlexStocks/getty-examples.
 
 ## RPC
 
-Working in progress.
+Support Json and Protobuf.
 
 ## LICENCE 
 
