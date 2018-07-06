@@ -2,7 +2,9 @@ package main
 
 import (
 	"time"
+)
 
+import (
 	"github.com/AlexStocks/getty/rpc"
 	"github.com/AlexStocks/getty/rpc/example/data"
 	log "github.com/AlexStocks/log4go"
