@@ -135,8 +135,9 @@ func (c PBCodec) Decode(data []byte, i interface{}) error {
 ////////////////////////////////////////////
 
 const (
-	gettyPackageMagic = 0x20160905
-	maxPackageLen     = 1024 * 1024
+	gettyPackageMagic        = 0x20160905
+	maxPackageLen            = 1024 * 1024
+	rpcPackagePlaceholderLen = 2
 )
 
 var (
@@ -220,7 +221,7 @@ func (p *GettyPackage) Marshal() (*bytes.Buffer, error) {
 
 func (p *GettyPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
 	var err error
-	if buf.Len() < 2+gettyPackageHeaderLen {
+	if buf.Len() < rpcPackagePlaceholderLen+gettyPackageHeaderLen {
 		return 0, ErrNotEnoughStream
 	}
 	var packLen uint16
@@ -244,7 +245,7 @@ func (p *GettyPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
 		return 0, ErrIllegalMagic
 	}
 
-	if int(packLen) > gettyPackageHeaderLen {
+	if int(packLen) > rpcPackagePlaceholderLen+gettyPackageHeaderLen {
 		if err := p.B.Unmarshal(p.H.CodecType, bytes.NewBuffer(buf.Next(int(packLen)-gettyPackageHeaderLen))); err != nil {
 			return 0, jerrors.Trace(err)
 		}
