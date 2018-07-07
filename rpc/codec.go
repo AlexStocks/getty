@@ -23,6 +23,43 @@ import (
 //  getty command
 ////////////////////////////////////////////
 
+type gettyCodecType uint32
+
+const (
+	gettyCodecUnknown gettyCodecType = 0x00
+	gettyJson                        = 0x01
+	gettyProtobuf                    = 0x02
+)
+
+var gettyCodecTypeStrings = [...]string{
+	"unknown",
+	"json",
+	"protobuf",
+}
+
+func (c gettyCodecType) String() string {
+	if c == gettyJson || c == gettyProtobuf {
+		return gettyCodecTypeStrings[c]
+	}
+
+	return gettyCodecTypeStrings[gettyCodecUnknown]
+}
+
+func String2CodecType(codecType string) gettyCodecType {
+	switch codecType {
+	case gettyCodecTypeStrings[gettyJson]:
+		return gettyJson
+	case gettyCodecTypeStrings[gettyProtobuf]:
+		return gettyProtobuf
+	}
+
+	return gettyCodecUnknown
+}
+
+////////////////////////////////////////////
+//  getty command
+////////////////////////////////////////////
+
 type gettyCommand uint32
 
 const (

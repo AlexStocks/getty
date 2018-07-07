@@ -30,12 +30,24 @@ type (
 		SessionName      string `default:"rpc" yaml:"session_name" json:"session_name,omitempty"`
 	}
 
+	RegistryConfig struct {
+		Type             string `default:"etcd" yaml:"type" json:"type,omitempty"`
+		Addr             string `default:"127.0.0.1:2379" yaml:"addr" json:"addr,omitempty"`
+		KeepaliveTimeout int    `default:"5" yaml:"keepalive_time" json:"keepalive_timeout,omitempty"`
+		Root             string `default:"getty" yaml:"keepalive_time" json:"keepalive_timeout,omitempty"`
+		IDC              string `default:"idc-bj" yaml:"idc" json:"idc,omitempty"`
+		NodeID           string `default:"node0" yaml:"node_id" json:"node_id,omitempty"`
+	}
+
 	// Config holds supported types by the multiconfig package
 	ServerConfig struct {
 		// local address
-		AppName string   `default:"rcp-server" yaml:"app_name" json:"app_name,omitempty"`
-		Host    string   `default:"127.0.0.1" yaml:"host" json:"host,omitempty"`
-		Ports   []string `yaml:"ports" json:"ports,omitempty"` // `default:["10000"]`
+		AppName     string   `default:"rcp-server" yaml:"app_name" json:"app_name,omitempty"`
+		Host        string   `default:"127.0.0.1" yaml:"host" json:"host,omitempty"`
+		Ports       []string `yaml:"ports" json:"ports,omitempty"` // `default:["10000"]`
+		ProfilePort int      `default:"10086" yaml:"profile_port" json:"profile_port,omitempty"`
+		CodecType   string   `default:"json" yaml:"codec_type" json:"codec_type,omitempty"`
+		codecType   gettyCodecType
 
 		// session
 		SessionTimeout string `default:"60s" yaml:"session_timeout" json:"session_timeout,omitempty"`
@@ -48,19 +60,22 @@ type (
 
 		// session tcp parameters
 		GettySessionParam GettySessionParam `required:"true" yaml:"getty_session_param" json:"getty_session_param,omitempty"`
+
+		// registry center
+		Registry RegistryConfig `required:"true" yaml:"registry_config" json:"registry_config,omitempty"`
 	}
 
 	// Config holds supported types by the multiconfig package
 	ClientConfig struct {
 		// local address
-		AppName string   `default:"rcp-client" yaml:"app_name" json:"app_name,omitempty"`
-		Host    string   `default:"127.0.0.1" yaml:"host" json:"host,omitempty"`
-		Ports   []string `yaml:"ports" json:"ports,omitempty"` // `default:["10000"]`
+		AppName     string   `default:"rcp-client" yaml:"app_name" json:"app_name,omitempty"`
+		Host        string   `default:"127.0.0.1" yaml:"host" json:"host,omitempty"`
+		Ports       []string `yaml:"ports" json:"ports,omitempty"` // `default:["10000"]`
+		ProfilePort int      `default:"10086" yaml:"profile_port" json:"profile_port,omitempty"`
 
 		// server
-		ServerHost  string `default:"127.0.0.1" yaml:"server_host" json:"server_host,omitempty"`
-		ServerPort  int    `default:"10000" yaml:"server_port" json:"server_port,omitempty"`
-		ProfilePort int    `default:"10086" yaml:"profile_port" json:"profile_port,omitempty"`
+		ServerHost string `default:"127.0.0.1" yaml:"server_host" json:"server_host,omitempty"`
+		ServerPort int    `default:"10000" yaml:"server_port" json:"server_port,omitempty"`
 
 		// session pool
 		ConnectionNum int `default:"16" yaml:"connection_num" json:"connection_num,omitempty"`
@@ -79,6 +94,9 @@ type (
 
 		// session tcp parameters
 		GettySessionParam GettySessionParam `required:"true" yaml:"getty_session_param" json:"getty_session_param,omitempty"`
+
+		// registry center
+		Registry RegistryConfig `required:"true" yaml:"registry_config" json:"registry_config,omitempty"`
 	}
 )
 

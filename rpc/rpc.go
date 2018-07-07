@@ -15,6 +15,11 @@ var (
 	typeOfError = reflect.TypeOf((*error)(nil)).Elem()
 )
 
+type GettyRPCService interface {
+	Service() string // Service Interface
+	Version() string
+}
+
 type methodType struct {
 	sync.Mutex
 	method    reflect.Method

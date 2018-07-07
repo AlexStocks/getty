@@ -6,32 +6,92 @@ import (
 	"os"
 	"os/signal"
 	"reflect"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 )
 
 import (
 	"github.com/AlexStocks/getty"
+	"github.com/AlexStocks/goext/database/registry"
+	"github.com/AlexStocks/goext/database/registry/etcdv3"
+	"github.com/AlexStocks/goext/database/registry/zookeeper"
 	"github.com/AlexStocks/goext/net"
-	jerrors "github.com/juju/errors"
-
 	log "github.com/AlexStocks/log4go"
+	jerrors "github.com/juju/errors"
 )
 
 type Server struct {
 	conf          *ServerConfig
 	serviceMap    map[string]*service
 	tcpServerList []getty.Server
+	registry      gxregistry.Registry
+	sa            gxregistry.ServiceAttr
+	nodes         []*gxregistry.Node
 }
 
-func NewServer(confFile string) *Server {
+var (
+	ErrIllegalCodecType = jerrors.New("illegal codec type")
+)
+
+func NewServer(confFile string) (*Server, error) {
 	conf := loadServerConf(confFile)
+	if conf.codecType = String2CodecType(conf.CodecType); conf.codecType == gettyCodecUnknown {
+		return nil, ErrIllegalCodecType
+	}
+
 	s := &Server{
 		serviceMap: make(map[string]*service),
 		conf:       conf,
 	}
 
-	return s
+	var err error
+	var registry gxregistry.Registry
+	if len(s.conf.Registry.Addr) != 0 {
+		addrList := strings.Split(s.conf.Registry.Addr, ",")
+		switch s.conf.Registry.Type {
+		case "etcd":
+			registry, err = gxetcd.NewRegistry(
+				gxregistry.WithAddrs(addrList...),
+				gxregistry.WithTimeout(time.Duration(int(time.Second)*s.conf.Registry.KeepaliveTimeout)),
+				gxregistry.WithRoot(s.conf.Registry.Root),
+			)
+		case "zookeeper":
+			registry, err = gxzookeeper.NewRegistry(
+				gxregistry.WithAddrs(addrList...),
+				gxregistry.WithTimeout(time.Duration(int(time.Second)*s.conf.Registry.KeepaliveTimeout)),
+				gxregistry.WithRoot(s.conf.Registry.Root),
+			)
+		}
+
+		if err != nil {
+			return nil, jerrors.Trace(err)
+		}
+		if registry != nil {
+			s.registry = registry
+			s.sa = gxregistry.ServiceAttr{
+				Group:    s.conf.Registry.IDC,
+				Role:     gxregistry.SRT_Provider,
+				Protocol: s.conf.CodecType,
+			}
+
+			for _, p := range s.conf.Ports {
+				port, err := strconv.Atoi(p)
+				if err != nil {
+					return nil, jerrors.New(fmt.Sprintf("illegal port %s", p))
+				}
+
+				s.nodes = append(s.nodes,
+					&gxregistry.Node{
+						ID:      s.conf.Registry.NodeID + "-" + net.JoinHostPort(s.conf.Host, p),
+						Address: s.conf.Host,
+						Port:    int32(port)})
+			}
+		}
+	}
+
+	return s, nil
 }
 
 func (s *Server) Run() {
@@ -41,7 +101,7 @@ func (s *Server) Run() {
 	s.initSignal()
 }
 
-func (s *Server) Register(rcvr interface{}) error {
+func (s *Server) Register(rcvr GettyRPCService) error {
 	svc := &service{
 		typ:  reflect.TypeOf(rcvr),
 		rcvr: reflect.ValueOf(rcvr),
@@ -77,6 +137,15 @@ func (s *Server) Register(rcvr interface{}) error {
 	}
 
 	s.serviceMap[svc.name] = svc
+	if s.registry != nil {
+		sa := s.sa
+		sa.Service = rcvr.Service()
+		sa.Version = rcvr.Version()
+		service := gxregistry.Service{Attr: &sa, Nodes: s.nodes}
+		if err := s.registry.Register(service); err != nil {
+			return jerrors.Trace(err)
+		}
+	}
 
 	return nil
 }

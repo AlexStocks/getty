@@ -8,6 +8,7 @@ Host                    = "127.0.0.1"
 # Host                    = "192.168.8.3"
 Ports                   = ["10000", "20000"]
 ProfilePort             = 10086
+CodecType               = "json"
 
 # session
 # client与server之间连接的超时时间
@@ -32,3 +33,12 @@ FailFastTimeout         = "3s"
     WaitTimeout         = "1s"
     MaxMsgLen           = 128
     SessionName         = "rpc-server"
+
+# registry
+[Registry]
+    Type                = "etcd"
+    Addr                = "127.0.0.1:2379"
+    KeepaliveTimeout    = 5
+    Root                = "/getty"
+    IDC                 = "bj-unicom"
+    NodeID              = "n147"

@@ -14,6 +14,14 @@ type TestRpc struct {
 	i int
 }
 
+func (r *TestRpc) Service() string {
+	return "TestRpc"
+}
+
+func (r *TestRpc) Version() string {
+	return "v1.0"
+}
+
 func (r *TestRpc) Test(arg TestABC, res *string) error {
 	log.Debug("arg:%+v", arg)
 	*res = "this is a test"
