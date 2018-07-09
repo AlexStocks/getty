@@ -16,7 +16,21 @@ You can get code example in https://github.com/AlexStocks/getty-examples.
 
 ## RPC
 
-Support Json and Protobuf.
+A open source, Go based, RPC framework. 
+
+Feature list:
+
+- 1 Transport: TCP(√), UDP, Websocket
+- 2 Codec: ProtoBuf(√), JSON(√)
+- 3 Service Discovery: Service Publish(√), Service Watch(√), Service Notify(√)
+- 4 Registry: ZooKeeper(√), Etcd(x)
+- 5 Strategy: Failover(√), Failfast(√)
+- 6 Load Balance: Random(√), RoundRobin(√)
+- 7 Metrics:  Invoke Statistics(x), User Auth(x)
+
+## 
+
+ 
 
 ## LICENCE 
 
