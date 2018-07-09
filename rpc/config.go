@@ -74,8 +74,11 @@ type (
 		ProfilePort int      `default:"10086" yaml:"profile_port" json:"profile_port,omitempty"`
 
 		// server
+		// !!! Attention: If u wanna use registry, the ServerHost & ServerPort could be nil.
 		ServerHost string `default:"127.0.0.1" yaml:"server_host" json:"server_host,omitempty"`
 		ServerPort int    `default:"10000" yaml:"server_port" json:"server_port,omitempty"`
+		CodecType  string `default:"json" yaml:"codec_type" json:"codec_type,omitempty"`
+		codecType  gettyCodecType
 
 		// session pool
 		ConnectionNum int `default:"16" yaml:"connection_num" json:"connection_num,omitempty"`
@@ -91,6 +94,10 @@ type (
 		// app
 		FailFastTimeout string `default:"5s" yaml:"fail_fast_timeout" json:"fail_fast_timeout,omitempty"`
 		failFastTimeout time.Duration
+
+		// Connection Pool
+		PoolSize int `default:"2" yaml:"pool_size" json:"pool_size,omitempty"`
+		PoolTTL  int `default:"180" yaml:"pool_ttl" json:"pool_ttl,omitempty"`
 
 		// session tcp parameters
 		GettySessionParam GettySessionParam `required:"true" yaml:"getty_session_param" json:"getty_session_param,omitempty"`

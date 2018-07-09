@@ -169,26 +169,26 @@ func (h *RpcServerHandler) callService(session getty.Session, req GettyRPCReques
 ////////////////////////////////////////////
 
 type RpcClientHandler struct {
-	client *Client
+	conn *gettyRPCClientConn
 }
 
-func NewRpcClientHandler(client *Client) *RpcClientHandler {
-	return &RpcClientHandler{client: client}
+func NewRpcClientHandler(client *gettyRPCClientConn) *RpcClientHandler {
+	return &RpcClientHandler{conn: client}
 }
 
 func (h *RpcClientHandler) OnOpen(session getty.Session) error {
-	h.client.addSession(session)
+	h.conn.addSession(session)
 	return nil
 }
 
 func (h *RpcClientHandler) OnError(session getty.Session, err error) {
 	log.Info("session{%s} got error{%v}, will be closed.", session.Stat(), err)
-	h.client.removeSession(session)
+	h.conn.removeSession(session)
 }
 
 func (h *RpcClientHandler) OnClose(session getty.Session) {
 	log.Info("session{%s} is closing......", session.Stat())
-	h.client.removeSession(session)
+	h.conn.removeSession(session)
 }
 
 func (h *RpcClientHandler) OnMessage(session getty.Session, pkg interface{}) {
@@ -198,9 +198,9 @@ func (h *RpcClientHandler) OnMessage(session getty.Session, pkg interface{}) {
 		return
 	}
 	log.Debug("get rpc response{%s}", p)
-	h.client.updateSession(session)
+	h.conn.updateSession(session)
 
-	pendingResponse := h.client.RemovePendingResponse(p.H.Sequence)
+	pendingResponse := h.conn.pool.rpcClient.RemovePendingResponse(p.H.Sequence)
 	if pendingResponse == nil {
 		return
 	}
@@ -228,17 +228,17 @@ func (h *RpcClientHandler) OnMessage(session getty.Session, pkg interface{}) {
 }
 
 func (h *RpcClientHandler) OnCron(session getty.Session) {
-	rpcSession, err := h.client.getClientRpcSession(session)
+	rpcSession, err := h.conn.getClientRpcSession(session)
 	if err != nil {
 		log.Error("client.getClientSession(session{%s}) = error{%#v}", session.Stat(), err)
 		return
 	}
-	if h.client.conf.sessionTimeout.Nanoseconds() < time.Since(session.GetActive()).Nanoseconds() {
+	if h.conn.pool.rpcClient.conf.sessionTimeout.Nanoseconds() < time.Since(session.GetActive()).Nanoseconds() {
 		log.Warn("session{%s} timeout{%s}, reqNum{%d}",
 			session.Stat(), time.Since(session.GetActive()).String(), rpcSession.reqNum)
-		h.client.removeSession(session)
+		h.conn.removeSession(session) // -> h.conn.close() -> h.conn.pool.remove(h.conn)
 		return
 	}
 
-	h.client.heartbeat(session)
+	h.conn.pool.rpcClient.heartbeat(session)
 }

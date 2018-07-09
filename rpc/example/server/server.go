@@ -8,8 +8,8 @@ import (
 )
 
 func main() {
-	log.LoadConfiguration("/Users/alex/test/golang/lib/src/github.com/AlexStocks/getty/rpc/example/server/server_log.xml")
-	srv, err := rpc.NewServer("/Users/alex/test/golang/lib/src/github.com/AlexStocks/getty/rpc/example/server/server_config.toml")
+	log.LoadConfiguration("./server_log.xml")
+	srv, err := rpc.NewServer("./server_config.toml")
 	if err != nil {
 		panic(jerrors.ErrorStack(err))
 	}

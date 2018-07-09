@@ -26,19 +26,21 @@ type Server struct {
 	conf          *ServerConfig
 	serviceMap    map[string]*service
 	tcpServerList []getty.Server
-	registry      gxregistry.Registry
-	sa            gxregistry.ServiceAttr
-	nodes         []*gxregistry.Node
+
+	// registry
+	registry gxregistry.Registry
+	sa       gxregistry.ServiceAttr
+	nodes    []*gxregistry.Node
 }
 
 var (
-	ErrIllegalCodecType = jerrors.New("illegal codec type")
+	ErrIllegalSerialType = jerrors.New("illegal codec type")
 )
 
 func NewServer(confFile string) (*Server, error) {
 	conf := loadServerConf(confFile)
 	if conf.codecType = String2CodecType(conf.CodecType); conf.codecType == gettyCodecUnknown {
-		return nil, ErrIllegalCodecType
+		return nil, ErrIllegalSerialType
 	}
 
 	s := &Server{
@@ -46,9 +48,9 @@ func NewServer(confFile string) (*Server, error) {
 		conf:       conf,
 	}
 
-	var err error
-	var registry gxregistry.Registry
 	if len(s.conf.Registry.Addr) != 0 {
+		var err error
+		var registry gxregistry.Registry
 		addrList := strings.Split(s.conf.Registry.Addr, ",")
 		switch s.conf.Registry.Type {
 		case "etcd":

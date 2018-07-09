@@ -23,43 +23,6 @@ import (
 //  getty command
 ////////////////////////////////////////////
 
-type gettyCodecType uint32
-
-const (
-	gettyCodecUnknown gettyCodecType = 0x00
-	gettyJson                        = 0x01
-	gettyProtobuf                    = 0x02
-)
-
-var gettyCodecTypeStrings = [...]string{
-	"unknown",
-	"json",
-	"protobuf",
-}
-
-func (c gettyCodecType) String() string {
-	if c == gettyJson || c == gettyProtobuf {
-		return gettyCodecTypeStrings[c]
-	}
-
-	return gettyCodecTypeStrings[gettyCodecUnknown]
-}
-
-func String2CodecType(codecType string) gettyCodecType {
-	switch codecType {
-	case gettyCodecTypeStrings[gettyJson]:
-		return gettyJson
-	case gettyCodecTypeStrings[gettyProtobuf]:
-		return gettyProtobuf
-	}
-
-	return gettyCodecUnknown
-}
-
-////////////////////////////////////////////
-//  getty command
-////////////////////////////////////////////
-
 type gettyCommand uint32
 
 const (
@@ -105,19 +68,49 @@ const (
 	GettyFail                = 0x01
 )
 
-type SerializeType byte
+////////////////////////////////////////////
+//  getty codec type
+////////////////////////////////////////////
+
+type gettyCodecType uint32
 
 const (
-	JSON SerializeType = iota
-	ProtoBuffer
+	gettyCodecUnknown  gettyCodecType = 0x00
+	gettyCodecJson                    = 0x01
+	gettyCodecProtobuf                = 0x02
 )
 
 var (
-	Codecs = map[SerializeType]Codec{
-		JSON:        &JSONCodec{},
-		ProtoBuffer: &PBCodec{},
+	gettyCodecStrings = [...]string{
+		"unknown",
+		"json",
+		"protobuf",
+	}
+
+	Codecs = map[gettyCodecType]Codec{
+		gettyCodecJson:     &JSONCodec{},
+		gettyCodecProtobuf: &PBCodec{},
 	}
 )
+
+func (c gettyCodecType) String() string {
+	if c == gettyCodecJson || c == gettyCodecProtobuf {
+		return gettyCodecStrings[c]
+	}
+
+	return gettyCodecStrings[gettyCodecUnknown]
+}
+
+func String2CodecType(codecType string) gettyCodecType {
+	switch codecType {
+	case gettyCodecStrings[gettyCodecJson]:
+		return gettyCodecJson
+	case gettyCodecStrings[gettyCodecProtobuf]:
+		return gettyCodecProtobuf
+	}
+
+	return gettyCodecUnknown
+}
 
 // Codec defines the interface that decode/encode body.
 type Codec interface {
@@ -194,9 +187,9 @@ func init() {
 }
 
 type RPCPackage interface {
-	Marshal(SerializeType, *bytes.Buffer) (int, error)
+	Marshal(gettyCodecType, *bytes.Buffer) (int, error)
 	// @buf length should be equal to GettyPkg.GettyPackageHeader.Len
-	Unmarshal(sz SerializeType, buf *bytes.Buffer) error
+	Unmarshal(sz gettyCodecType, buf *bytes.Buffer) error
 	GetBody() []byte
 	GetHeader() interface{}
 }
@@ -210,7 +203,7 @@ type GettyPackageHeader struct {
 	Code    GettyErrorCode // error code
 
 	ServiceID uint32 // service id
-	CodecType SerializeType
+	CodecType gettyCodecType
 }
 
 type GettyPackage struct {
@@ -322,7 +315,7 @@ func NewGettyRPCRequest() RPCPackage {
 	return &GettyRPCRequest{}
 }
 
-func (req *GettyRPCRequest) Marshal(sz SerializeType, buf *bytes.Buffer) (int, error) {
+func (req *GettyRPCRequest) Marshal(sz gettyCodecType, buf *bytes.Buffer) (int, error) {
 	codec := Codecs[sz]
 	if codec == nil {
 		return 0, jerrors.Errorf("can not find codec for %d", sz)
@@ -355,8 +348,7 @@ func (req *GettyRPCRequest) Marshal(sz SerializeType, buf *bytes.Buffer) (int, e
 	return 2 + len(headerData) + 2 + len(bodyData), nil
 }
 
-func (req *GettyRPCRequest) Unmarshal(sz SerializeType, buf *bytes.Buffer) error {
-
+func (req *GettyRPCRequest) Unmarshal(sz gettyCodecType, buf *bytes.Buffer) error {
 	var headerLen uint16
 	err := binary.Read(buf, binary.LittleEndian, &headerLen)
 	if err != nil {
@@ -426,7 +418,7 @@ func NewGettyRPCResponse() RPCPackage {
 	return &GettyRPCResponse{}
 }
 
-func (resp *GettyRPCResponse) Marshal(sz SerializeType, buf *bytes.Buffer) (int, error) {
+func (resp *GettyRPCResponse) Marshal(sz gettyCodecType, buf *bytes.Buffer) (int, error) {
 	codec := Codecs[sz]
 	if codec == nil {
 		return 0, jerrors.Errorf("can not find codec for %d", sz)
@@ -461,8 +453,7 @@ func (resp *GettyRPCResponse) Marshal(sz SerializeType, buf *bytes.Buffer) (int,
 	return 2 + len(headerData) + 2 + len(bodyData), nil
 }
 
-func (resp *GettyRPCResponse) Unmarshal(sz SerializeType, buf *bytes.Buffer) error {
-
+func (resp *GettyRPCResponse) Unmarshal(sz gettyCodecType, buf *bytes.Buffer) error {
 	var headerLen uint16
 	err := binary.Read(buf, binary.LittleEndian, &headerLen)
 	if err != nil {
