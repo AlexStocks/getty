@@ -32,7 +32,7 @@ type (
 
 	RegistryConfig struct {
 		Type             string `default:"etcd" yaml:"type" json:"type,omitempty"`
-		Addr             string `default:"127.0.0.1:2379" yaml:"addr" json:"addr,omitempty"`
+		Addr             string `default:"" yaml:"addr" json:"addr,omitempty"`
 		KeepaliveTimeout int    `default:"5" yaml:"keepalive_time" json:"keepalive_timeout,omitempty"`
 		Root             string `default:"getty" yaml:"keepalive_time" json:"keepalive_timeout,omitempty"`
 		IDC              string `default:"idc-bj" yaml:"idc" json:"idc,omitempty"`

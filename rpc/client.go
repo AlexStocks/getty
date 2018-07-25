@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"fmt"
 	"math/rand"
 	"strings"
 	"sync"
@@ -53,7 +54,10 @@ func NewClient(confFile string) (*Client, error) {
 
 	if len(c.conf.Registry.Addr) == 0 {
 		if conf.codecType = String2CodecType(conf.CodecType); conf.codecType == gettyCodecUnknown {
-			return nil, ErrIllegalSerialType
+			return nil, jerrors.New(fmt.Sprintf(ErrIllegalConf+"codec type %s", conf.CodecType))
+		}
+		if conf.ServerPort == 0 {
+			return nil, jerrors.New(fmt.Sprintf(ErrIllegalConf + "both registry addr and ServerPort is nil"))
 		}
 
 		_, err := c.pool.getConn(conf.CodecType, gxnet.HostAddress(conf.ServerHost, conf.ServerPort))
@@ -77,14 +81,15 @@ func NewClient(confFile string) (*Client, error) {
 			gxregistry.WithTimeout(time.Duration(int(time.Second)*c.conf.Registry.KeepaliveTimeout)),
 			gxregistry.WithRoot(c.conf.Registry.Root),
 		)
+	default:
+		return nil, jerrors.New(fmt.Sprintf(ErrIllegalConf+"registry type %s", c.conf.Registry.Type))
 	}
 	if err != nil {
 		return nil, jerrors.Trace(err)
 	}
 
-	if registry != nil {
-		c.registry = registry
-
+	c.registry = registry
+	if c.registry != nil {
 		c.filter, err = gxpool.NewFilter(
 			gxfilter.WithBalancerMode(gxfilter.SM_Hash),
 			gxfilter.WithRegistry(c.registry),
@@ -142,8 +147,14 @@ func (c *Client) Call(service, method string, args interface{}, reply interface{
 }
 
 func (c *Client) Close() {
-	c.pool.close()
-	c.registry.Close()
+	if c.pool != nil {
+		c.pool.close()
+	}
+	c.pool = nil
+	if c.registry != nil {
+		c.registry.Close()
+	}
+	c.registry = nil
 }
 
 func (c *Client) selectSession() getty.Session {

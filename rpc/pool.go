@@ -28,6 +28,10 @@ type gettyRPCClientConn struct {
 	sessions    []*rpcSession
 }
 
+var (
+	errClientPoolClosed = jerrors.New("client pool closed")
+)
+
 func newGettyRPCClientConn(pool *gettyRPCClientConnPool, protocol, addr string) (*gettyRPCClientConn, error) {
 	c := &gettyRPCClientConn{
 		protocol: protocol,
@@ -198,6 +202,8 @@ func (c *gettyRPCClientConn) isAvailable() bool {
 func (c *gettyRPCClientConn) close() error {
 	err := jerrors.Errorf("close gettyRPCClientConn{%#v} again", c)
 	c.once.Do(func() {
+		// delete @c from client pool
+		c.pool.remove(c)
 		for _, s := range c.sessions {
 			log.Info("close client session{%s, last active:%s, request number:%d}",
 				s.session.Stat(), s.session.GetActive().String(), s.reqNum)
@@ -209,7 +215,6 @@ func (c *gettyRPCClientConn) close() error {
 
 		c.created = 0
 		err = nil
-		c.pool.remove(c)
 	})
 	return err
 }
@@ -245,7 +250,6 @@ func (p *gettyRPCClientConnPool) close() {
 }
 
 func (p *gettyRPCClientConnPool) getConn(protocol, addr string) (*gettyRPCClientConn, error) {
-	p.Lock()
 	var builder strings.Builder
 
 	builder.WriteString(addr)
@@ -253,6 +257,12 @@ func (p *gettyRPCClientConnPool) getConn(protocol, addr string) (*gettyRPCClient
 	builder.WriteString(protocol)
 
 	key := builder.String()
+
+	p.Lock()
+	defer p.Unlock()
+	if p.connMap == nil {
+		return nil, errClientPoolClosed
+	}
 
 	connArray := p.connMap[key]
 	now := time.Now().Unix()
@@ -263,7 +273,7 @@ func (p *gettyRPCClientConnPool) getConn(protocol, addr string) (*gettyRPCClient
 		p.connMap[key] = connArray
 
 		if d := now - conn.created; d > p.ttl {
-			conn.close()
+			conn.close() // -> pool.remove(c)
 			continue
 		}
 
@@ -271,8 +281,6 @@ func (p *gettyRPCClientConnPool) getConn(protocol, addr string) (*gettyRPCClient
 
 		return conn, nil
 	}
-
-	p.Unlock()
 
 	// create new conn
 	return newGettyRPCClientConn(p, protocol, addr)
@@ -283,7 +291,7 @@ func (p *gettyRPCClientConnPool) release(conn *gettyRPCClientConn, err error) {
 		return
 	}
 	if err != nil {
-		conn.close()
+		conn.close() //
 		return
 	}
 
@@ -296,6 +304,11 @@ func (p *gettyRPCClientConnPool) release(conn *gettyRPCClientConn, err error) {
 	key := builder.String()
 
 	p.Lock()
+	defer p.Unlock()
+	if p.connMap == nil {
+		return
+	}
+
 	connArray := p.connMap[key]
 	if len(connArray) >= p.size {
 		p.Unlock()
@@ -303,7 +316,6 @@ func (p *gettyRPCClientConnPool) release(conn *gettyRPCClientConn, err error) {
 		return
 	}
 	p.connMap[key] = append(connArray, conn)
-	p.Unlock()
 }
 
 func (p *gettyRPCClientConnPool) remove(conn *gettyRPCClientConn) {
@@ -320,6 +332,11 @@ func (p *gettyRPCClientConnPool) remove(conn *gettyRPCClientConn) {
 	key := builder.String()
 
 	p.Lock()
+	defer p.Unlock()
+	if p.connMap == nil {
+		return
+	}
+
 	connArray := p.connMap[key]
 	if len(connArray) > 0 {
 		for idx, c := range connArray {
@@ -329,5 +346,4 @@ func (p *gettyRPCClientConnPool) remove(conn *gettyRPCClientConn) {
 			}
 		}
 	}
-	p.Unlock()
 }

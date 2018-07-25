@@ -16,7 +16,9 @@ import (
 )
 
 import (
+	"github.com/AlexStocks/goext/log"
 	log "github.com/AlexStocks/log4go"
+	"time"
 )
 
 ////////////////////////////////////////////
@@ -493,6 +495,8 @@ func (resp *GettyRPCResponse) Unmarshal(sz gettyCodecType, buf *bytes.Buffer) er
 }
 
 func (resp *GettyRPCResponse) GetBody() []byte {
+	gxlog.CWarn("resp body %p", resp.body)
+	time.Sleep(5e9)
 	return resp.body.([]byte)
 }
 

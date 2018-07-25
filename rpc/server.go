@@ -34,13 +34,13 @@ type Server struct {
 }
 
 var (
-	ErrIllegalSerialType = jerrors.New("illegal codec type")
+	ErrIllegalConf = "illegal conf: "
 )
 
 func NewServer(confFile string) (*Server, error) {
 	conf := loadServerConf(confFile)
 	if conf.codecType = String2CodecType(conf.CodecType); conf.codecType == gettyCodecUnknown {
-		return nil, ErrIllegalSerialType
+		return nil, jerrors.New(fmt.Sprintf(ErrIllegalConf+"codec type %s", conf.CodecType))
 	}
 
 	s := &Server{
@@ -65,13 +65,15 @@ func NewServer(confFile string) (*Server, error) {
 				gxregistry.WithTimeout(time.Duration(int(time.Second)*s.conf.Registry.KeepaliveTimeout)),
 				gxregistry.WithRoot(s.conf.Registry.Root),
 			)
+		default:
+			return nil, jerrors.New(fmt.Sprintf(ErrIllegalConf+"registry type %s", s.conf.Registry.Type))
 		}
 
 		if err != nil {
 			return nil, jerrors.Trace(err)
 		}
-		if registry != nil {
-			s.registry = registry
+		s.registry = registry
+		if s.registry != nil {
 			s.sa = gxregistry.ServiceAttr{
 				Group:    s.conf.Registry.IDC,
 				Role:     gxregistry.SRT_Provider,
@@ -88,7 +90,9 @@ func NewServer(confFile string) (*Server, error) {
 					&gxregistry.Node{
 						ID:      s.conf.Registry.NodeID + "-" + net.JoinHostPort(s.conf.Host, p),
 						Address: s.conf.Host,
-						Port:    int32(port)})
+						Port:    int32(port),
+					},
+				)
 			}
 		}
 	}
@@ -212,8 +216,15 @@ func (s *Server) Init() {
 }
 
 func (s *Server) Stop() {
-	for _, tcpServer := range s.tcpServerList {
-		tcpServer.Close()
+	if s.registry != nil {
+		s.registry.Close()
+	}
+	list := s.tcpServerList
+	s.tcpServerList = nil
+	if list != nil {
+		for _, tcpServer := range list {
+			tcpServer.Close()
+		}
 	}
 }
 
