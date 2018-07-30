@@ -16,9 +16,7 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/goext/log"
 	log "github.com/AlexStocks/log4go"
-	"time"
 )
 
 ////////////////////////////////////////////
@@ -225,14 +223,14 @@ func (p *GettyPackage) Marshal() (*bytes.Buffer, error) {
 		buf             *bytes.Buffer
 	)
 
-	packLen = gettyPackageHeaderLen
+	packLen = rpcPackagePlaceholderLen + gettyPackageHeaderLen
 	if p.B != nil {
 		buf = &bytes.Buffer{}
 		length, err = p.B.Marshal(p.H.CodecType, buf)
 		if err != nil {
 			return nil, jerrors.Trace(err)
 		}
-		packLen = gettyPackageHeaderLen + length
+		packLen = rpcPackagePlaceholderLen + gettyPackageHeaderLen + length
 	}
 	buf0 := &bytes.Buffer{}
 	err = binary.Write(buf0, binary.LittleEndian, uint16(packLen))
@@ -278,7 +276,7 @@ func (p *GettyPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
 	}
 
 	if int(packLen) > rpcPackagePlaceholderLen+gettyPackageHeaderLen {
-		if err := p.B.Unmarshal(p.H.CodecType, bytes.NewBuffer(buf.Next(int(packLen)-gettyPackageHeaderLen))); err != nil {
+		if err := p.B.Unmarshal(p.H.CodecType, bytes.NewBuffer(buf.Next(int(packLen)-rpcPackagePlaceholderLen-gettyPackageHeaderLen))); err != nil {
 			return 0, jerrors.Trace(err)
 		}
 	}
@@ -473,7 +471,6 @@ func (resp *GettyRPCResponse) Unmarshal(sz gettyCodecType, buf *bytes.Buffer) er
 	if err != nil {
 		return jerrors.Trace(err)
 	}
-
 	body := make([]byte, bodyLen)
 	err = binary.Read(buf, binary.LittleEndian, body)
 	if err != nil {
@@ -495,8 +492,6 @@ func (resp *GettyRPCResponse) Unmarshal(sz gettyCodecType, buf *bytes.Buffer) er
 }
 
 func (resp *GettyRPCResponse) GetBody() []byte {
-	gxlog.CWarn("resp body %p", resp.body)
-	time.Sleep(5e9)
 	return resp.body.([]byte)
 }
 

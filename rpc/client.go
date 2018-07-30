@@ -120,7 +120,7 @@ func NewClient(confFile string) (*Client, error) {
 	return c, nil
 }
 
-func (c *Client) Call(service, method string, args interface{}, reply interface{}) error {
+func (c *Client) Call(addr, protocol, service, method string, args interface{}, reply interface{}) error {
 	b := &GettyRPCRequest{}
 	b.header.Service = service
 	b.header.Method = method
@@ -133,7 +133,7 @@ func (c *Client) Call(service, method string, args interface{}, reply interface{
 	resp := NewPendingResponse()
 	resp.reply = reply
 
-	session := c.selectSession()
+	session := c.selectSession(protocol, addr)
 	if session == nil {
 		return errSessionNotExist
 	}
@@ -157,8 +157,12 @@ func (c *Client) Close() {
 	c.registry = nil
 }
 
-func (c *Client) selectSession() getty.Session {
-	return nil
+func (c *Client) selectSession(protocol, addr string) getty.Session {
+	rpcConn, err := c.pool.getConn(protocol, addr)
+	if err != nil {
+		return nil
+	}
+	return rpcConn.selectSession()
 }
 
 func (c *Client) heartbeat(session getty.Session) error {
