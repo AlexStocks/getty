@@ -123,7 +123,9 @@ func (p *RpcClientPackageHandler) Read(ss getty.Session, data []byte) (interface
 	resp := &GettyRPCResponsePackage{
 		H:      pkg.H,
 		header: pkg.B.GetHeader().(GettyRPCResponseHeader),
-		body:   pkg.B.GetBody(),
+	}
+	if pkg.H.Command != gettyCmdHbResponse {
+		resp.body = pkg.B.GetBody()
 	}
 	return resp, length, nil
 }
