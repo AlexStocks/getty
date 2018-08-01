@@ -142,7 +142,6 @@ func (c *Client) Call(addr, protocol, service, method string, args interface{}, 
 	if err := c.transfer(session, b, resp); err != nil {
 		return jerrors.Trace(err)
 	}
-	// <-resp.done
 
 	var err error
 	select {
