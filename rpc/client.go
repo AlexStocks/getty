@@ -21,9 +21,10 @@ import (
 )
 
 var (
-	errInvalidAddress  = jerrors.New("remote address invalid or empty")
-	errSessionNotExist = jerrors.New("session not exist")
-	errClientClosed    = jerrors.New("client closed")
+	errInvalidAddress    = jerrors.New("remote address invalid or empty")
+	errSessionNotExist   = jerrors.New("session not exist")
+	errClientClosed      = jerrors.New("client closed")
+	errClientReadTimeout = jerrors.New("client read timeout")
 )
 
 func init() {
@@ -120,7 +121,7 @@ func NewClient(confFile string) (*Client, error) {
 	return c, nil
 }
 
-func (c *Client) Call(addr, protocol, service, method string, args interface{}, reply interface{}) error {
+func (c *Client) Call(service, method string, args interface{}, reply interface{}) error {
 	b := &GettyRPCRequest{}
 	b.header.Service = service
 	b.header.Method = method
@@ -133,7 +134,7 @@ func (c *Client) Call(addr, protocol, service, method string, args interface{}, 
 	resp := NewPendingResponse()
 	resp.reply = reply
 
-	session := c.selectSession(protocol, addr)
+	session := c.selectSession()
 	if session == nil {
 		return errSessionNotExist
 	}
@@ -141,9 +142,16 @@ func (c *Client) Call(addr, protocol, service, method string, args interface{}, 
 	if err := c.transfer(session, b, resp); err != nil {
 		return jerrors.Trace(err)
 	}
-	<-resp.done
 
-	return jerrors.Trace(resp.err)
+	var err error
+	select {
+	case <-getty.GetTimeWheel().After(c.conf.GettySessionParam.tcpReadTimeout):
+		err = errClientReadTimeout
+		c.RemovePendingResponse(resp.seq)
+	case <-resp.done:
+		err = resp.err
+	}
+	return jerrors.Trace(err)
 }
 
 func (c *Client) Close() {
@@ -157,12 +165,8 @@ func (c *Client) Close() {
 	c.registry = nil
 }
 
-func (c *Client) selectSession(protocol, addr string) getty.Session {
-	rpcConn, err := c.pool.getConn(protocol, addr)
-	if err != nil {
-		return nil
-	}
-	return rpcConn.selectSession()
+func (c *Client) selectSession() getty.Session {
+	return nil
 }
 
 func (c *Client) heartbeat(session getty.Session) error {
