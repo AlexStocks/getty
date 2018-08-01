@@ -49,6 +49,10 @@ var (
 	wheel = gxtime.NewWheel(gxtime.TimeMillisecondDuration(100), 1200) // wheel longest span is 2 minute
 )
 
+func GetTimeWheel() *gxtime.Wheel {
+	return wheel
+}
+
 // getty base session
 type session struct {
 	name      string

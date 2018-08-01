@@ -21,9 +21,10 @@ import (
 )
 
 var (
-	errInvalidAddress  = jerrors.New("remote address invalid or empty")
-	errSessionNotExist = jerrors.New("session not exist")
-	errClientClosed    = jerrors.New("client closed")
+	errInvalidAddress    = jerrors.New("remote address invalid or empty")
+	errSessionNotExist   = jerrors.New("session not exist")
+	errClientClosed      = jerrors.New("client closed")
+	errClientReadTimeout = jerrors.New("client read timeout")
 )
 
 func init() {
@@ -141,9 +142,16 @@ func (c *Client) Call(addr, protocol, service, method string, args interface{}, 
 	if err := c.transfer(session, b, resp); err != nil {
 		return jerrors.Trace(err)
 	}
-	<-resp.done
 
-	return jerrors.Trace(resp.err)
+	var err error
+	select {
+	case <-getty.GetTimeWheel().After(c.conf.GettySessionParam.tcpReadTimeout):
+		err = errClientReadTimeout
+		c.RemovePendingResponse(resp.seq)
+	case <-resp.done:
+		err = resp.err
+	}
+	return jerrors.Trace(err)
 }
 
 func (c *Client) Close() {
