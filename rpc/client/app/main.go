@@ -131,6 +131,7 @@ func test() {
 	var errResult int
 	err = client.Call(rpc.CodecJson, "127.0.0.1:20000", "TestRpc", "Err", 2, &errResult)
 	if err != nil {
+		// error test case, this invocation should step into this branch.
 		log.Error("client.Call(TestRpc::Err) = error:%s", jerrors.ErrorStack(err))
 		return
 	}

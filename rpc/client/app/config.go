@@ -17,6 +17,7 @@ import (
 
 import (
 	"github.com/AlexStocks/getty/rpc"
+	log "github.com/AlexStocks/log4go"
 	jerrors "github.com/juju/errors"
 	config "github.com/koding/multiconfig"
 )
@@ -42,7 +43,7 @@ func initConf() {
 		return
 	}
 
-	conf := new(rpc.ClientConfig)
+	conf = new(rpc.ClientConfig)
 	config.MustLoadWithPath(confFile, conf)
 	if err := conf.CheckValidity(); err != nil {
 		panic(jerrors.ErrorStack(err))
