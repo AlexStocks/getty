@@ -3,20 +3,17 @@ package rpc
 import (
 	"bytes"
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"unsafe"
 )
 
 import (
+	log "github.com/AlexStocks/log4go"
 	proto "github.com/gogo/protobuf/proto"
 	pb "github.com/golang/protobuf/proto"
+	"github.com/json-iterator/go"
 	jerrors "github.com/juju/errors"
-)
-
-import (
-	log "github.com/AlexStocks/log4go"
 )
 
 ////////////////////////////////////////////
@@ -129,14 +126,20 @@ type Codec interface {
 // JSONCodec uses json marshaler and unmarshaler.
 type JSONCodec struct{}
 
+var (
+	jsonstd = jsoniter.ConfigCompatibleWithStandardLibrary
+)
+
 // Encode encodes an object into slice of bytes.
 func (c JSONCodec) Encode(i interface{}) ([]byte, error) {
-	return json.Marshal(i)
+	// return json.Marshal(i)
+	return jsonstd.Marshal(i)
 }
 
 // Decode decodes an object from slice of bytes.
 func (c JSONCodec) Decode(data []byte, i interface{}) error {
-	return json.Unmarshal(data, i)
+	// return json.Unmarshal(data, i)
+	return jsonstd.Unmarshal(data, i)
 }
 
 // PBCodec uses protobuf marshaler and unmarshaler.
@@ -298,7 +301,7 @@ func (p *GettyPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
 
 type GettyRPCHeaderLenType uint16
 
-//easyjson:json
+// easyjson:json
 type GettyRPCRequestHeader struct {
 	Service  string
 	Method   string
