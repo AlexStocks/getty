@@ -326,7 +326,7 @@ func NewGettyRPCRequest() RPCPackage {
 func (req *GettyRPCRequest) Marshal(sz CodecType, buf *bytes.Buffer) (int, error) {
 	codec := Codecs[sz]
 	if codec == nil {
-		return 0, jerrors.Errorf("can not find codec for %d", sz)
+		return 0, jerrors.Errorf("can not find codec for %s", sz)
 	}
 	headerData, err := codec.Encode(req.header)
 	if err != nil {

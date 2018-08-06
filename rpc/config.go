@@ -1,6 +1,8 @@
 package rpc
 
-import "time"
+import (
+	"time"
+)
 
 import (
 	jerrors "github.com/juju/errors"

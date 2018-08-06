@@ -4,10 +4,13 @@ import (
 	"math/rand"
 	"sync"
 	"time"
+)
 
+import (
 	"github.com/AlexStocks/getty"
 	"github.com/AlexStocks/goext/sync/atomic"
 
+	"github.com/AlexStocks/goext/log"
 	jerrors "github.com/juju/errors"
 )
 
@@ -63,12 +66,17 @@ func (c *Client) Call(typ CodecType, addr, service, method string, args interfac
 	resp := NewPendingResponse()
 	resp.reply = reply
 
-	var err error
-	var session getty.Session
-	session, err = c.selectSession(typ, addr)
+	var (
+		err     error
+		session getty.Session
+		conn    *gettyRPCClientConn
+	)
+	conn, session, err = c.selectSession(typ, addr)
+	gxlog.CError("conn:%p, session:%p", conn, session)
 	if err != nil || session == nil {
 		return errSessionNotExist
 	}
+	defer c.pool.release(conn, err)
 
 	if err = c.transfer(session, typ, b, resp); err != nil {
 		return jerrors.Trace(err)
@@ -92,12 +100,12 @@ func (c *Client) Close() {
 	c.pool = nil
 }
 
-func (c *Client) selectSession(typ CodecType, addr string) (getty.Session, error) {
+func (c *Client) selectSession(typ CodecType, addr string) (*gettyRPCClientConn, getty.Session, error) {
 	rpcConn, err := c.pool.getConn(typ.String(), addr)
 	if err != nil {
-		return nil, jerrors.Trace(err)
+		return nil, nil, jerrors.Trace(err)
 	}
-	return rpcConn.selectSession(), nil
+	return rpcConn, rpcConn.selectSession(), nil
 }
 
 func (c *Client) heartbeat(session getty.Session, typ CodecType) error {

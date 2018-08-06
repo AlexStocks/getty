@@ -277,8 +277,6 @@ func (p *gettyRPCClientConnPool) getConn(protocol, addr string) (*gettyRPCClient
 			continue
 		}
 
-		p.Unlock()
-
 		return conn, nil
 	}
 
@@ -291,7 +289,7 @@ func (p *gettyRPCClientConnPool) release(conn *gettyRPCClientConn, err error) {
 		return
 	}
 	if err != nil {
-		conn.close() //
+		conn.close()
 		return
 	}
 
