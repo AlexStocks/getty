@@ -107,7 +107,7 @@ func initSignal() {
 	}
 }
 
-func test() {
+func testJSON() {
 	var (
 		err        error
 		testResult string
@@ -126,7 +126,7 @@ func test() {
 		log.Error("client.Call(TestRpc::Add) = error:%s", jerrors.ErrorStack(err))
 		return
 	}
-	log.Info("TestRpc::Add(1) = res:%s", addResult)
+	log.Info("TestRpc::Add(1) = res:%d", addResult)
 
 	var errResult int
 	err = client.Call(rpc.CodecJson, "127.0.0.1:20000", "TestRpc", "Err", 2, &errResult)
@@ -136,4 +136,44 @@ func test() {
 		return
 	}
 	log.Info("TestRpc::Err(2) = res:%s", errResult)
+}
+
+func testProtobuf() {
+	var (
+		err        error
+		testResult string
+	)
+	param := TestABC{"aaa", "bbb", "ccc"}
+	err = client.Call(rpc.CodecProtobuf, "127.0.0.1:20000", "TestRpc", "Test", param, &testResult)
+	if err != nil {
+		log.Error("client.Call(TestRpc::Test) = error:%s", jerrors.ErrorStack(err))
+		return
+	}
+	log.Info("TestRpc::Test(param:%#v) = res:%s", param, testResult)
+
+	var addResult int
+	err = client.Call(rpc.CodecProtobuf, "127.0.0.1:20000", "TestRpc", "Add", 1, &addResult)
+	if err != nil {
+		log.Error("client.Call(TestRpc::Add) = error:%s", jerrors.ErrorStack(err))
+		return
+	}
+	log.Info("TestRpc::Add(1) = res:%d", addResult)
+
+	var errResult int
+	err = client.Call(rpc.CodecProtobuf, "127.0.0.1:20000", "TestRpc", "Err", 2, &errResult)
+	if err != nil {
+		// error test case, this invocation should step into this branch.
+		log.Error("client.Call(TestRpc::Err) = error:%s", jerrors.ErrorStack(err))
+		return
+	}
+	log.Info("TestRpc::Err(2) = res:%s", errResult)
+}
+
+func test() {
+	gxlog.CInfo("start to run json rpc example:\n")
+	testJSON()
+
+	time.Sleep(2e9)
+	gxlog.CInfo("start to run protobuf rpc example:\n")
+	testJSON()
 }
