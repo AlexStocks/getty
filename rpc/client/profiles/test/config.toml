@@ -1,13 +1,12 @@
 # toml configure file
 # toml中key的首字母可以小写，但是对应的golang中的struct成员首字母必须大写
 
-AppName                 = "ECHO-CLIENT"
+AppName                 = "RPC-CLIENT"
 
 # host
 LocalHost               = "127.0.0.1"
 
 # server
-# ServerHost              = "192.168.8.3"
 ServerHost              = "127.0.0.1"
 ServerPort              = 10000
 ProfilePort             = 10080
@@ -21,12 +20,6 @@ ConnectionNum           = 2
 HeartbeatPeriod         = "10s"
 # client与server之间连接的超时时间
 SessionTimeout          = "20s"
-
-# client
-# client echo request string
-EchoString              = "Hello, getty!"
-# 发送echo请求次数
-EchoTimes               = 10000
 
 # app fail fast
 FailFastTimeout         = "3s"
@@ -45,4 +38,4 @@ FailFastTimeout         = "3s"
     TcpWriteTimeout     = "5s"
     WaitTimeout         = "1s"
     MaxMsgLen           = 128
-    SessionName         = "echo-client"
+    SessionName         = "getty-rpc-client"

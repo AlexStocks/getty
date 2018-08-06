@@ -1,27 +1,19 @@
 # toml configure file
 # toml中key的首字母可以小写，但是对应的golang中的struct成员首字母必须大写
 
-AppName                 = "RPC-CLIENT"
+AppName                 = "RPC-SERVER"
 
-# host
-LocalHost               = "127.0.0.1"
+Host                    = "127.0.0.1"
 
-# server
-ServerHost              = "127.0.0.1"
-ServerPort              = 10000
-ProfilePort             = 10080
+Ports                   = ["10000", "20000"]
+ProfilePort             = 10086
 
-# connection pool
-# 连接池连接数目
-ConnectionNum           = 2
 
-# session
-# client与server之间连接的心跳周期
-HeartbeatPeriod         = "10s"
 # client与server之间连接的超时时间
 SessionTimeout          = "20s"
+SessionNumber           = 700
 
-# app fail fast
+# app
 FailFastTimeout         = "3s"
 
 # tcp
@@ -31,11 +23,11 @@ FailFastTimeout         = "3s"
     TcpKeepAlive        = true
     KeepAlivePeriod     = "120s"
     TcpRBufSize         = 262144
-    TcpWBufSize         = 65536
-    PkgRQSize           = 512
-    PkgWQSize           = 256
+    TcpWBufSize         = 524288
+    PkgRQSize           = 1024
+    PkgWQSize           = 512
     TcpReadTimeout      = "1s"
     TcpWriteTimeout     = "5s"
     WaitTimeout         = "1s"
     MaxMsgLen           = 128
-    SessionName         = "getty-rpc-client"
+    SessionName         = "getty-rpc-server"

@@ -17,8 +17,9 @@ import (
 
 import (
 	"github.com/AlexStocks/getty/rpc"
-	jerrors "github.com/juju/errors"
+	log "github.com/AlexStocks/log4go"
 	config "github.com/koding/multiconfig"
+	jerrors "github.com/juju/errors"
 )
 
 const (
@@ -27,7 +28,7 @@ const (
 )
 
 var (
-	conf *rpc.ClientConfig
+	conf *rpc.ServerConfig
 )
 
 func initConf() {
@@ -41,8 +42,6 @@ func initConf() {
 		panic(fmt.Sprintf("application configure file name{%v} suffix must be .toml", confFile))
 		return
 	}
-
-	conf := new(rpc.ClientConfig)
 	config.MustLoadWithPath(confFile, conf)
 	if err := conf.CheckValidity(); err != nil {
 		panic(jerrors.ErrorStack(err))
@@ -61,4 +60,6 @@ func initConf() {
 	}
 	log.LoadConfiguration(confFile)
 	log.Info("config{%#v}", conf)
+
+	return
 }
