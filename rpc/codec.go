@@ -72,12 +72,12 @@ const (
 //  getty codec type
 ////////////////////////////////////////////
 
-type gettyCodecType uint32
+type CodecType uint32
 
 const (
-	gettyCodecUnknown  gettyCodecType = 0x00
-	gettyCodecJson                    = 0x01
-	gettyCodecProtobuf                = 0x02
+	CodecUnknown  CodecType = 0x00
+	CodecJson               = 0x01
+	CodecProtobuf           = 0x02
 )
 
 var (
@@ -87,29 +87,37 @@ var (
 		"protobuf",
 	}
 
-	Codecs = map[gettyCodecType]Codec{
-		gettyCodecJson:     &JSONCodec{},
-		gettyCodecProtobuf: &PBCodec{},
+	Codecs = map[CodecType]Codec{
+		CodecJson:     &JSONCodec{},
+		CodecProtobuf: &PBCodec{},
 	}
 )
 
-func (c gettyCodecType) String() string {
-	if c == gettyCodecJson || c == gettyCodecProtobuf {
+func (c CodecType) String() string {
+	if c == CodecJson || c == CodecProtobuf {
 		return gettyCodecStrings[c]
 	}
 
-	return gettyCodecStrings[gettyCodecUnknown]
+	return gettyCodecStrings[CodecUnknown]
 }
 
-func String2CodecType(codecType string) gettyCodecType {
-	switch codecType {
-	case gettyCodecStrings[gettyCodecJson]:
-		return gettyCodecJson
-	case gettyCodecStrings[gettyCodecProtobuf]:
-		return gettyCodecProtobuf
+func (c CodecType) CheckValidity() bool {
+	if c == CodecJson || c == CodecProtobuf {
+		return true
 	}
 
-	return gettyCodecUnknown
+	return false
+}
+
+func GetCodecType(codecType string) CodecType {
+	switch codecType {
+	case gettyCodecStrings[CodecJson]:
+		return CodecJson
+	case gettyCodecStrings[CodecProtobuf]:
+		return CodecProtobuf
+	}
+
+	return CodecUnknown
 }
 
 // Codec defines the interface that decode/encode body.
@@ -187,9 +195,9 @@ func init() {
 }
 
 type RPCPackage interface {
-	Marshal(gettyCodecType, *bytes.Buffer) (int, error)
+	Marshal(CodecType, *bytes.Buffer) (int, error)
 	// @buf length should be equal to GettyPkg.GettyPackageHeader.Len
-	Unmarshal(sz gettyCodecType, buf *bytes.Buffer) error
+	Unmarshal(sz CodecType, buf *bytes.Buffer) error
 	GetBody() []byte
 	GetHeader() interface{}
 }
@@ -203,7 +211,7 @@ type GettyPackageHeader struct {
 	Code    GettyErrorCode // error code
 
 	ServiceID uint32 // service id
-	CodecType gettyCodecType
+	CodecType CodecType
 }
 
 type GettyPackage struct {
@@ -315,7 +323,7 @@ func NewGettyRPCRequest() RPCPackage {
 	return &GettyRPCRequest{}
 }
 
-func (req *GettyRPCRequest) Marshal(sz gettyCodecType, buf *bytes.Buffer) (int, error) {
+func (req *GettyRPCRequest) Marshal(sz CodecType, buf *bytes.Buffer) (int, error) {
 	codec := Codecs[sz]
 	if codec == nil {
 		return 0, jerrors.Errorf("can not find codec for %d", sz)
@@ -348,7 +356,7 @@ func (req *GettyRPCRequest) Marshal(sz gettyCodecType, buf *bytes.Buffer) (int, 
 	return 2 + len(headerData) + 2 + len(bodyData), nil
 }
 
-func (req *GettyRPCRequest) Unmarshal(sz gettyCodecType, buf *bytes.Buffer) error {
+func (req *GettyRPCRequest) Unmarshal(sz CodecType, buf *bytes.Buffer) error {
 	var headerLen uint16
 	err := binary.Read(buf, binary.LittleEndian, &headerLen)
 	if err != nil {
@@ -418,7 +426,7 @@ func NewGettyRPCResponse() RPCPackage {
 	return &GettyRPCResponse{}
 }
 
-func (resp *GettyRPCResponse) Marshal(sz gettyCodecType, buf *bytes.Buffer) (int, error) {
+func (resp *GettyRPCResponse) Marshal(sz CodecType, buf *bytes.Buffer) (int, error) {
 	codec := Codecs[sz]
 	if codec == nil {
 		return 0, jerrors.Errorf("can not find codec for %d", sz)
@@ -453,7 +461,7 @@ func (resp *GettyRPCResponse) Marshal(sz gettyCodecType, buf *bytes.Buffer) (int
 	return 2 + len(headerData) + 2 + len(bodyData), nil
 }
 
-func (resp *GettyRPCResponse) Unmarshal(sz gettyCodecType, buf *bytes.Buffer) error {
+func (resp *GettyRPCResponse) Unmarshal(sz CodecType, buf *bytes.Buffer) error {
 	var headerLen uint16
 	err := binary.Read(buf, binary.LittleEndian, &headerLen)
 	if err != nil {

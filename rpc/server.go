@@ -3,108 +3,37 @@ package rpc
 import (
 	"fmt"
 	"net"
-	"os"
-	"os/signal"
 	"reflect"
-	"strconv"
-	"strings"
-	"syscall"
-	"time"
 )
 
 import (
 	"github.com/AlexStocks/getty"
-	"github.com/AlexStocks/goext/database/registry"
-	"github.com/AlexStocks/goext/database/registry/etcdv3"
-	"github.com/AlexStocks/goext/database/registry/zookeeper"
 	"github.com/AlexStocks/goext/net"
 	log "github.com/AlexStocks/log4go"
 	jerrors "github.com/juju/errors"
 )
 
 type Server struct {
-	conf          *ServerConfig
+	conf          ServerConfig
 	serviceMap    map[string]*service
 	tcpServerList []getty.Server
-
-	// registry
-	registry gxregistry.Registry
-	sa       gxregistry.ServiceAttr
-	nodes    []*gxregistry.Node
 }
 
 var (
 	ErrIllegalConf = "illegal conf: "
 )
 
-func NewServer(confFile string) (*Server, error) {
-	conf := loadServerConf(confFile)
-	if conf.codecType = String2CodecType(conf.CodecType); conf.codecType == gettyCodecUnknown {
-		return nil, jerrors.New(fmt.Sprintf(ErrIllegalConf+"codec type %s", conf.CodecType))
+func NewServer(conf *ServerConfig) (*Server, error) {
+	if err := conf.CheckValidity(); err != nil {
+		return nil, jerrors.Trace(err)
 	}
 
 	s := &Server{
 		serviceMap: make(map[string]*service),
-		conf:       conf,
-	}
-
-	if len(s.conf.Registry.Addr) != 0 {
-		var err error
-		var registry gxregistry.Registry
-		addrList := strings.Split(s.conf.Registry.Addr, ",")
-		switch s.conf.Registry.Type {
-		case "etcd":
-			registry, err = gxetcd.NewRegistry(
-				gxregistry.WithAddrs(addrList...),
-				gxregistry.WithTimeout(time.Duration(int(time.Second)*s.conf.Registry.KeepaliveTimeout)),
-				gxregistry.WithRoot(s.conf.Registry.Root),
-			)
-		case "zookeeper":
-			registry, err = gxzookeeper.NewRegistry(
-				gxregistry.WithAddrs(addrList...),
-				gxregistry.WithTimeout(time.Duration(int(time.Second)*s.conf.Registry.KeepaliveTimeout)),
-				gxregistry.WithRoot(s.conf.Registry.Root),
-			)
-		default:
-			return nil, jerrors.New(fmt.Sprintf(ErrIllegalConf+"registry type %s", s.conf.Registry.Type))
-		}
-
-		if err != nil {
-			return nil, jerrors.Trace(err)
-		}
-		s.registry = registry
-		if s.registry != nil {
-			s.sa = gxregistry.ServiceAttr{
-				Group:    s.conf.Registry.IDC,
-				Role:     gxregistry.SRT_Provider,
-				Protocol: s.conf.CodecType,
-			}
-
-			for _, p := range s.conf.Ports {
-				port, err := strconv.Atoi(p)
-				if err != nil {
-					return nil, jerrors.New(fmt.Sprintf("illegal port %s", p))
-				}
-
-				s.nodes = append(s.nodes,
-					&gxregistry.Node{
-						ID:      s.conf.Registry.NodeID + "-" + net.JoinHostPort(s.conf.Host, p),
-						Address: s.conf.Host,
-						Port:    int32(port),
-					},
-				)
-			}
-		}
+		conf:       *conf,
 	}
 
 	return s, nil
-}
-
-func (s *Server) Run() {
-	s.Init()
-	log.Info("%s starts successfull! its version=%s, its listen ends=%s:%s\n",
-		s.conf.AppName, getty.Version, s.conf.Host, s.conf.Ports)
-	s.initSignal()
 }
 
 func (s *Server) Register(rcvr GettyRPCService) error {
@@ -143,15 +72,6 @@ func (s *Server) Register(rcvr GettyRPCService) error {
 	}
 
 	s.serviceMap[svc.name] = svc
-	if s.registry != nil {
-		sa := s.sa
-		sa.Service = rcvr.Service()
-		sa.Version = rcvr.Version()
-		service := gxregistry.Service{Attr: &sa, Nodes: s.nodes}
-		if err := s.registry.Register(service); err != nil {
-			return jerrors.Trace(err)
-		}
-	}
 
 	return nil
 }
@@ -193,7 +113,7 @@ func (s *Server) newSession(session getty.Session) error {
 	return nil
 }
 
-func (s *Server) Init() {
+func (s *Server) Start() {
 	var (
 		addr      string
 		portList  []string
@@ -216,39 +136,11 @@ func (s *Server) Init() {
 }
 
 func (s *Server) Stop() {
-	if s.registry != nil {
-		s.registry.Close()
-	}
 	list := s.tcpServerList
 	s.tcpServerList = nil
 	if list != nil {
 		for _, tcpServer := range list {
 			tcpServer.Close()
-		}
-	}
-}
-
-func (s *Server) initSignal() {
-	signals := make(chan os.Signal, 1)
-	// It is impossible to block SIGKILL or syscall.SIGSTOP
-	signal.Notify(signals, os.Interrupt, os.Kill, syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGINT)
-	for {
-		sig := <-signals
-		log.Info("get signal %s", sig.String())
-		switch sig {
-		case syscall.SIGHUP:
-		// reload()
-		default:
-			go time.AfterFunc(s.conf.failFastTimeout, func() {
-				log.Exit("app exit now by force...")
-				log.Close()
-			})
-
-			// if @s can not stop in s.conf.failFastTimeout, getty will Force Quit.
-			s.Stop()
-			log.Exit("app exit now...")
-			log.Close()
-			return
 		}
 	}
 }

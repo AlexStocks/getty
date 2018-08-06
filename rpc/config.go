@@ -1,12 +1,9 @@
 package rpc
 
-import (
-	"fmt"
-	"time"
-)
+import "time"
 
 import (
-	config "github.com/koding/multiconfig"
+	jerrors "github.com/juju/errors"
 )
 
 type (
@@ -46,8 +43,6 @@ type (
 		Host        string   `default:"127.0.0.1" yaml:"host" json:"host,omitempty"`
 		Ports       []string `yaml:"ports" json:"ports,omitempty"` // `default:["10000"]`
 		ProfilePort int      `default:"10086" yaml:"profile_port" json:"profile_port,omitempty"`
-		CodecType   string   `default:"json" yaml:"codec_type" json:"codec_type,omitempty"`
-		codecType   gettyCodecType
 
 		// session
 		SessionTimeout string `default:"60s" yaml:"session_timeout" json:"session_timeout,omitempty"`
@@ -60,31 +55,20 @@ type (
 
 		// session tcp parameters
 		GettySessionParam GettySessionParam `required:"true" yaml:"getty_session_param" json:"getty_session_param,omitempty"`
-
-		// registry center
-		Registry RegistryConfig `required:"true" yaml:"registry_config" json:"registry_config,omitempty"`
 	}
 
 	// Config holds supported types by the multiconfig package
 	ClientConfig struct {
 		// local address
-		AppName     string   `default:"rcp-client" yaml:"app_name" json:"app_name,omitempty"`
-		Host        string   `default:"127.0.0.1" yaml:"host" json:"host,omitempty"`
-		Ports       []string `yaml:"ports" json:"ports,omitempty"` // `default:["10000"]`
-		ProfilePort int      `default:"10086" yaml:"profile_port" json:"profile_port,omitempty"`
-
-		// server
-		// !!! Attention: If u wanna use registry, the ServerHost & ServerPort could be nil.
-		ServerHost string `default:"127.0.0.1" yaml:"server_host" json:"server_host,omitempty"`
-		ServerPort int    `default:"10000" yaml:"server_port" json:"server_port,omitempty"`
-		CodecType  string `default:"json" yaml:"codec_type" json:"codec_type,omitempty"`
-		codecType  gettyCodecType
+		AppName     string `default:"rcp-client" yaml:"app_name" json:"app_name,omitempty"`
+		Host        string `default:"127.0.0.1" yaml:"host" json:"host,omitempty"`
+		ProfilePort int    `default:"10086" yaml:"profile_port" json:"profile_port,omitempty"`
 
 		// session pool
 		ConnectionNum int `default:"16" yaml:"connection_num" json:"connection_num,omitempty"`
 
 		// heartbeat
-		HeartbeatPeriod string `default:"15s" yaml:"heartbeat_period" json:"heartbeat_period,omitempty"`
+		HeartbeatPeriod string `default:"15s" yaml:"heartbeat_period" json:"heartbeat_period, omitempty"`
 		heartbeatPeriod time.Duration
 
 		// session
@@ -92,7 +76,7 @@ type (
 		sessionTimeout time.Duration
 
 		// app
-		FailFastTimeout string `default:"5s" yaml:"fail_fast_timeout" json:"fail_fast_timeout,omitempty"`
+		FailFastTimeout string `default:"5s" yaml:"fail_fast_timeout" json:"fail_fast_timeout, omitempty"`
 		failFastTimeout time.Duration
 
 		// Connection Pool
@@ -101,75 +85,59 @@ type (
 
 		// session tcp parameters
 		GettySessionParam GettySessionParam `required:"true" yaml:"getty_session_param" json:"getty_session_param,omitempty"`
-
-		// registry center
-		Registry RegistryConfig `required:"true" yaml:"registry_config" json:"registry_config,omitempty"`
 	}
 )
 
-func loadClientConf(confFile string) *ClientConfig {
+func (c *GettySessionParam) CheckValidity() error {
 	var err error
-	conf := new(ClientConfig)
-	config.MustLoadWithPath(confFile, conf)
-	conf.heartbeatPeriod, err = time.ParseDuration(conf.HeartbeatPeriod)
-	if err != nil {
-		panic(fmt.Sprintf("time.ParseDuration(HeartbeatPeroid{%#v}) = error{%v}", conf.HeartbeatPeriod, err))
+
+	if c.keepAlivePeriod, err = time.ParseDuration(c.KeepAlivePeriod); err != nil {
+		return jerrors.Annotatef(err, "time.ParseDuration(KeepAlivePeriod{%#v})", c.KeepAlivePeriod)
 	}
-	conf.sessionTimeout, err = time.ParseDuration(conf.SessionTimeout)
-	if err != nil {
-		panic(fmt.Sprintf("time.ParseDuration(SessionTimeout{%#v}) = error{%v}", conf.SessionTimeout, err))
+
+	if c.tcpReadTimeout, err = time.ParseDuration(c.TcpReadTimeout); err != nil {
+		return jerrors.Annotatef(err, "time.ParseDuration(TcpReadTimeout{%#v})", c.TcpReadTimeout)
 	}
-	conf.failFastTimeout, err = time.ParseDuration(conf.FailFastTimeout)
-	if err != nil {
-		panic(fmt.Sprintf("time.ParseDuration(FailFastTimeout{%#v}) = error{%v}", conf.FailFastTimeout, err))
+
+	if c.tcpWriteTimeout, err = time.ParseDuration(c.TcpWriteTimeout); err != nil {
+		return jerrors.Annotatef(err, "time.ParseDuration(TcpWriteTimeout{%#v})", c.TcpWriteTimeout)
 	}
-	conf.GettySessionParam.keepAlivePeriod, err = time.ParseDuration(conf.GettySessionParam.KeepAlivePeriod)
-	if err != nil {
-		panic(fmt.Sprintf("time.ParseDuration(KeepAlivePeriod{%#v}) = error{%v}", conf.GettySessionParam.KeepAlivePeriod, err))
+
+	if c.waitTimeout, err = time.ParseDuration(c.WaitTimeout); err != nil {
+		return jerrors.Annotatef(err, "time.ParseDuration(WaitTimeout{%#v})", c.WaitTimeout)
 	}
-	conf.GettySessionParam.tcpReadTimeout, err = time.ParseDuration(conf.GettySessionParam.TcpReadTimeout)
-	if err != nil {
-		panic(fmt.Sprintf("time.ParseDuration(TcpReadTimeout{%#v}) = error{%v}", conf.GettySessionParam.TcpReadTimeout, err))
-	}
-	conf.GettySessionParam.tcpWriteTimeout, err = time.ParseDuration(conf.GettySessionParam.TcpWriteTimeout)
-	if err != nil {
-		panic(fmt.Sprintf("time.ParseDuration(TcpWriteTimeout{%#v}) = error{%v}", conf.GettySessionParam.TcpWriteTimeout, err))
-	}
-	conf.GettySessionParam.waitTimeout, err = time.ParseDuration(conf.GettySessionParam.WaitTimeout)
-	if err != nil {
-		panic(fmt.Sprintf("time.ParseDuration(WaitTimeout{%#v}) = error{%v}", conf.GettySessionParam.WaitTimeout, err))
-	}
-	return conf
+
+	return nil
 }
 
-func loadServerConf(confFile string) *ServerConfig {
+func (c *ClientConfig) CheckValidity() error {
 	var err error
-	conf := new(ServerConfig)
-	config.MustLoadWithPath(confFile, conf)
 
-	conf.sessionTimeout, err = time.ParseDuration(conf.SessionTimeout)
-	if err != nil {
-		panic(fmt.Sprintf("time.ParseDuration(SessionTimeout{%#v}) = error{%v}", conf.SessionTimeout, err))
+	if c.heartbeatPeriod, err = time.ParseDuration(c.HeartbeatPeriod); err != nil {
+		return jerrors.Annotatef(err, "time.ParseDuration(HeartbeatPeroid{%#v})", c.HeartbeatPeriod)
 	}
-	conf.failFastTimeout, err = time.ParseDuration(conf.FailFastTimeout)
-	if err != nil {
-		panic(fmt.Sprintf("time.ParseDuration(FailFastTimeout{%#v}) = error{%v}", conf.FailFastTimeout, err))
+
+	if c.sessionTimeout, err = time.ParseDuration(c.SessionTimeout); err != nil {
+		return jerrors.Annotatef(err, "time.ParseDuration(SessionTimeout{%#v})", c.SessionTimeout)
 	}
-	conf.GettySessionParam.keepAlivePeriod, err = time.ParseDuration(conf.GettySessionParam.KeepAlivePeriod)
-	if err != nil {
-		panic(fmt.Sprintf("time.ParseDuration(KeepAlivePeriod{%#v}) = error{%v}", conf.GettySessionParam.KeepAlivePeriod, err))
+
+	if c.failFastTimeout, err = time.ParseDuration(c.FailFastTimeout); err != nil {
+		return jerrors.Annotatef(err, "time.ParseDuration(FailFastTimeout{%#v})", c.FailFastTimeout)
 	}
-	conf.GettySessionParam.tcpReadTimeout, err = time.ParseDuration(conf.GettySessionParam.TcpReadTimeout)
-	if err != nil {
-		panic(fmt.Sprintf("time.ParseDuration(TcpReadTimeout{%#v}) = error{%v}", conf.GettySessionParam.TcpReadTimeout, err))
+
+	return jerrors.Trace(c.GettySessionParam.CheckValidity())
+}
+
+func (c *ServerConfig) CheckValidity() error {
+	var err error
+
+	if c.sessionTimeout, err = time.ParseDuration(c.SessionTimeout); err != nil {
+		return jerrors.Annotatef(err, "time.ParseDuration(SessionTimeout{%#v})", c.SessionTimeout)
 	}
-	conf.GettySessionParam.tcpWriteTimeout, err = time.ParseDuration(conf.GettySessionParam.TcpWriteTimeout)
-	if err != nil {
-		panic(fmt.Sprintf("time.ParseDuration(TcpWriteTimeout{%#v}) = error{%v}", conf.GettySessionParam.TcpWriteTimeout, err))
+
+	if c.failFastTimeout, err = time.ParseDuration(c.FailFastTimeout); err != nil {
+		return jerrors.Annotatef(err, "time.ParseDuration(FailFastTimeout{%#v})", c.FailFastTimeout)
 	}
-	conf.GettySessionParam.waitTimeout, err = time.ParseDuration(conf.GettySessionParam.WaitTimeout)
-	if err != nil {
-		panic(fmt.Sprintf("time.ParseDuration(WaitTimeout{%#v}) = error{%v}", conf.GettySessionParam.WaitTimeout, err))
-	}
-	return conf
+
+	return jerrors.Trace(c.GettySessionParam.CheckValidity())
 }

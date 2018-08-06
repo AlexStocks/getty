@@ -65,7 +65,7 @@ func (c *gettyRPCClientConn) newSession(session getty.Session) error {
 	var (
 		ok      bool
 		tcpConn *net.TCPConn
-		conf    *ClientConfig
+		conf    ClientConfig
 	)
 
 	conf = c.pool.rpcClient.conf

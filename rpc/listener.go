@@ -230,7 +230,8 @@ func (h *RpcClientHandler) OnMessage(session getty.Session, pkg interface{}) {
 func (h *RpcClientHandler) OnCron(session getty.Session) {
 	rpcSession, err := h.conn.getClientRpcSession(session)
 	if err != nil {
-		log.Error("client.getClientSession(session{%s}) = error{%#v}", session.Stat(), err)
+		log.Error("client.getClientSession(session{%s}) = error{%s}",
+			session.Stat(), jerrors.ErrorStack(err))
 		return
 	}
 	if h.conn.pool.rpcClient.conf.sessionTimeout.Nanoseconds() < time.Since(session.GetActive()).Nanoseconds() {
@@ -240,5 +241,7 @@ func (h *RpcClientHandler) OnCron(session getty.Session) {
 		return
 	}
 
-	h.conn.pool.rpcClient.heartbeat(session)
+	codecType := GetCodecType(h.conn.protocol)
+
+	h.conn.pool.rpcClient.heartbeat(session, codecType)
 }
