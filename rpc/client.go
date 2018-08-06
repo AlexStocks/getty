@@ -63,8 +63,8 @@ func (c *Client) Call(typ CodecType, addr, service, method string, args interfac
 	}
 	b.body = args
 
-	resp := NewPendingResponse()
-	resp.reply = reply
+	rsp := NewPendingResponse()
+	rsp.reply = reply
 
 	var (
 		err     error
@@ -78,16 +78,16 @@ func (c *Client) Call(typ CodecType, addr, service, method string, args interfac
 	}
 	defer c.pool.release(conn, err)
 
-	if err = c.transfer(session, typ, b, resp); err != nil {
+	if err = c.transfer(session, typ, b, rsp); err != nil {
 		return jerrors.Trace(err)
 	}
 
 	select {
 	case <-getty.GetTimeWheel().After(c.conf.GettySessionParam.tcpReadTimeout):
 		err = errClientReadTimeout
-		c.RemovePendingResponse(resp.seq)
-	case <-resp.done:
-		err = resp.err
+		c.RemovePendingResponse(rsp.seq)
+	case <-rsp.done:
+		err = rsp.err
 	}
 
 	return jerrors.Trace(err)
@@ -109,11 +109,11 @@ func (c *Client) selectSession(typ CodecType, addr string) (*gettyRPCClientConn,
 }
 
 func (c *Client) heartbeat(session getty.Session, typ CodecType) error {
-	resp := NewPendingResponse()
-	return c.transfer(session, typ, nil, resp)
+	rsp := NewPendingResponse()
+	return c.transfer(session, typ, nil, rsp)
 }
 
-func (c *Client) transfer(session getty.Session, typ CodecType, req *GettyRPCRequest, resp *PendingResponse) error {
+func (c *Client) transfer(session getty.Session, typ CodecType, req *GettyRPCRequest, rsp *PendingResponse) error {
 	var (
 		sequence uint64
 		err      error
@@ -131,13 +131,14 @@ func (c *Client) transfer(session getty.Session, typ CodecType, req *GettyRPCReq
 		pkg.B = req
 	}
 
-	resp.seq = sequence
-	c.AddPendingResponse(resp)
+	rsp.seq = sequence
+	c.AddPendingResponse(rsp)
 
 	err = session.WritePkg(pkg, 0)
-	if err != nil && resp != nil {
-		c.RemovePendingResponse(resp.seq)
+	if err != nil {
+		c.RemovePendingResponse(rsp.seq)
 	}
+
 	return jerrors.Trace(err)
 }
 
