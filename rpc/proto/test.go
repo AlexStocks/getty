@@ -1,7 +1,8 @@
 package rpc_examples
 
 import (
-	"errors"
+	jerrors "github.com/juju/errors"
+	// "errors"
 )
 
 type TestService struct {
@@ -16,17 +17,16 @@ func (r *TestService) Version() string {
 	return "v1.0"
 }
 
-func (r *TestService) Test(arg TestReq, rsp *TestRsp) error {
-	rsp.A = arg.A + ", " + arg.B + ", " + arg.C
+func (r *TestService) Test(req *TestReq, rsp *TestRsp) error {
+	rsp.A = req.A + ", " + req.B + ", " + req.C
 	return nil
 }
 
-func (r *TestService) Add(n int, res *int) error {
-	r.i += n
-	*res = r.i + 100
+func (r *TestService) Add(req *AddReq, rsp *AddRsp) error {
+	rsp.Sum = req.A + req.B
 	return nil
 }
 
-func (r *TestService) Err(n int, res *int) error {
-	return errors.New("this is a error test")
+func (r *TestService) Err(req *ErrReq, rsp *ErrRsp) error {
+	return jerrors.New("this is a error test")
 }

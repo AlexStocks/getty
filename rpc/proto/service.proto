@@ -33,3 +33,20 @@ message TestReq {
 message TestRsp {
 	optional string A = 1 [(gogoproto.nullable) = false];
 }
+
+message AddReq {
+	optional int32 A = 1 [(gogoproto.nullable) = false];
+	optional int32 B = 2 [(gogoproto.nullable) = false];
+}
+
+message AddRsp {
+	optional int32 Sum = 1 [(gogoproto.nullable) = false];
+}
+
+message ErrReq {
+	optional int32 A = 1 [(gogoproto.nullable) = false];
+}
+
+message ErrRsp {
+	optional int32 A = 1 [(gogoproto.nullable) = false];
+}
