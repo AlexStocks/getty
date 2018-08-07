@@ -19,6 +19,7 @@ import (
 )
 
 import (
+	"github.com/AlexStocks/getty-examples/rpc/proto"
 	"github.com/AlexStocks/getty/rpc"
 	"github.com/AlexStocks/goext/log"
 	"github.com/AlexStocks/goext/net"
@@ -68,7 +69,7 @@ func initServer() {
 		panic(jerrors.ErrorStack(err))
 		return
 	}
-	err = server.Register(new(TestRpc))
+	err = server.Register(&rpc_examples.TestService{})
 	if err != nil {
 		panic(jerrors.ErrorStack(err))
 		return
