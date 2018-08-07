@@ -32,7 +32,7 @@ type Client struct {
 	sequence gxatomic.Uint64
 
 	pendingLock      sync.RWMutex
-	pendingResponses map[uint64]*PendingResponse
+	pendingResponses map[SequenceType]*PendingResponse
 }
 
 func NewClient(conf *ClientConfig) (*Client, error) {
@@ -41,7 +41,7 @@ func NewClient(conf *ClientConfig) (*Client, error) {
 	}
 
 	c := &Client{
-		pendingResponses: make(map[uint64]*PendingResponse),
+		pendingResponses: make(map[SequenceType]*PendingResponse),
 		conf:             *conf,
 	}
 	c.pool = newGettyRPCClientConnPool(c, conf.PoolSize, time.Duration(int(time.Second)*conf.PoolTTL))
@@ -85,7 +85,7 @@ func (c *Client) Call(typ CodecType, addr, service, method string, args interfac
 	select {
 	case <-getty.GetTimeWheel().After(c.conf.GettySessionParam.tcpReadTimeout):
 		err = errClientReadTimeout
-		c.RemovePendingResponse(rsp.seq)
+		c.RemovePendingResponse(SequenceType(rsp.seq))
 	case <-rsp.done:
 		err = rsp.err
 	}
@@ -121,9 +121,9 @@ func (c *Client) transfer(session getty.Session, typ CodecType, req *GettyRPCReq
 	)
 
 	sequence = c.sequence.Add(1)
-	pkg.H.Magic = gettyPackageMagic
-	pkg.H.LogID = (uint32)(randomID())
-	pkg.H.Sequence = sequence
+	pkg.H.Magic = MagicType(gettyPackageMagic)
+	pkg.H.LogID = LogIDType(randomID())
+	pkg.H.Sequence = SequenceType(sequence)
 	pkg.H.Command = gettyCmdHbRequest
 	pkg.H.CodecType = typ
 	if req != nil {
@@ -136,7 +136,7 @@ func (c *Client) transfer(session getty.Session, typ CodecType, req *GettyRPCReq
 
 	err = session.WritePkg(pkg, 0)
 	if err != nil {
-		c.RemovePendingResponse(rsp.seq)
+		c.RemovePendingResponse(SequenceType(rsp.seq))
 	}
 
 	return jerrors.Trace(err)
@@ -151,10 +151,10 @@ func (c *Client) PendingResponseCount() int {
 func (c *Client) AddPendingResponse(pr *PendingResponse) {
 	c.pendingLock.Lock()
 	defer c.pendingLock.Unlock()
-	c.pendingResponses[pr.seq] = pr
+	c.pendingResponses[SequenceType(pr.seq)] = pr
 }
 
-func (c *Client) RemovePendingResponse(seq uint64) *PendingResponse {
+func (c *Client) RemovePendingResponse(seq SequenceType) *PendingResponse {
 	c.pendingLock.Lock()
 	defer c.pendingLock.Unlock()
 	if c.pendingResponses == nil {
@@ -167,7 +167,7 @@ func (c *Client) RemovePendingResponse(seq uint64) *PendingResponse {
 	return nil
 }
 
-func (c *Client) ClearPendingResponses() map[uint64]*PendingResponse {
+func (c *Client) ClearPendingResponses() map[SequenceType]*PendingResponse {
 	c.pendingLock.Lock()
 	defer c.pendingLock.Unlock()
 	presps := c.pendingResponses

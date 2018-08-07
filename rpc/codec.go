@@ -19,7 +19,7 @@ import (
 //  getty command
 ////////////////////////////////////////////
 
-type gettyCommand uint32
+type gettyCommand int32
 
 const (
 	gettyDefaultCmd     gettyCommand = 0x00
@@ -45,7 +45,7 @@ func (c gettyCommand) String() string {
 //  getty error code
 ////////////////////////////////////////////
 
-type GettyErrorCode int32
+type GettyErrorCode int16
 
 const (
 	GettyOK   GettyErrorCode = 0x00
@@ -56,7 +56,7 @@ const (
 //  getty codec type
 ////////////////////////////////////////////
 
-type CodecType uint32
+type CodecType int16
 
 const (
 	CodecUnknown  CodecType = 0x00
@@ -103,6 +103,10 @@ func GetCodecType(codecType string) CodecType {
 
 	return CodecUnknown
 }
+
+////////////////////////////////////////////
+//  getty codec
+////////////////////////////////////////////
 
 type Codec interface {
 	Encode(interface{}) ([]byte, error)
@@ -169,9 +173,9 @@ func (c PBCodec) Decode(buf []byte, msg interface{}) error {
 ////////////////////////////////////////////
 
 const (
-	gettyPackageMagic        = 0x20160905
-	maxPackageLen            = 1024 * 1024
-	rpcPackagePlaceholderLen = 2
+	gettyPackageMagic     = 0x20160905
+	maxPackageLen         = 4 * 1024 * 1024
+	gettyPackageHeaderLen = (int)((uint)(unsafe.Sizeof(GettyPackageHeader{})))
 )
 
 var (
@@ -181,14 +185,6 @@ var (
 	ErrIllegalMagic    = jerrors.New("package magic is not right.")
 )
 
-var (
-	gettyPackageHeaderLen int
-)
-
-func init() {
-	gettyPackageHeaderLen = (int)((uint)(unsafe.Sizeof(GettyPackageHeader{})))
-}
-
 type RPCPackage interface {
 	Marshal(CodecType, *bytes.Buffer) (int, error)
 	// @buf length should be equal to GettyPkg.GettyPackageHeader.Len
@@ -197,16 +193,25 @@ type RPCPackage interface {
 	GetHeader() interface{}
 }
 
+type (
+	MagicType     int32
+	LogIDType     int32
+	SequenceType  uint64
+	ServiceIDType int32
+	PkgLenType    int32
+)
+
 type GettyPackageHeader struct {
-	Magic    uint32 // magic number
-	LogID    uint32 // log id
-	Sequence uint64 // request/response sequence
+	Magic    MagicType    // magic number
+	LogID    LogIDType    // log id
+	Sequence SequenceType // request/response sequence
 
-	Command gettyCommand   // operation command code
-	Code    GettyErrorCode // error code
+	Command   gettyCommand  // operation command code
+	ServiceID ServiceIDType // service id
 
-	ServiceID uint32 // service id
+	Code      GettyErrorCode // error code
 	CodecType CodecType
+	PkgLen    PkgLenType
 }
 
 type GettyPackage struct {
@@ -221,70 +226,60 @@ func (p GettyPackage) String() string {
 
 func (p *GettyPackage) Marshal() (*bytes.Buffer, error) {
 	var (
-		err             error
-		packLen, length int
-		buf             *bytes.Buffer
+		err            error
+		headerBuf, buf *bytes.Buffer
 	)
 
-	packLen = rpcPackagePlaceholderLen + gettyPackageHeaderLen
+	buf = bytes.NewBuffer(make([]byte, gettyPackageHeaderLen))
+
+	// body
 	if p.B != nil {
-		buf = &bytes.Buffer{}
-		length, err = p.B.Marshal(p.H.CodecType, buf)
+		length, err := p.B.Marshal(p.H.CodecType, buf)
 		if err != nil {
 			return nil, jerrors.Trace(err)
 		}
-		packLen = rpcPackagePlaceholderLen + gettyPackageHeaderLen + length
+		p.H.PkgLen = PkgLenType(length)
 	}
-	buf0 := &bytes.Buffer{}
-	err = binary.Write(buf0, binary.LittleEndian, uint16(packLen))
+
+	// header
+	headerBuf = bytes.NewBuffer(nil)
+	err = binary.Write(headerBuf, binary.LittleEndian, p.H)
 	if err != nil {
 		return nil, jerrors.Trace(err)
 	}
-	err = binary.Write(buf0, binary.LittleEndian, p.H)
-	if err != nil {
-		return nil, jerrors.Trace(err)
-	}
-	if p.B != nil {
-		if err = binary.Write(buf0, binary.LittleEndian, buf.Bytes()); err != nil {
-			return nil, jerrors.Trace(err)
-		}
-	}
-	return buf0, nil
+	copy(buf.Bytes(), headerBuf.Bytes()[:gettyPackageHeaderLen])
+
+	return buf, nil
 }
 
 func (p *GettyPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
-	var err error
-	if buf.Len() < rpcPackagePlaceholderLen+gettyPackageHeaderLen {
+	bufLen := buf.Len()
+	if bufLen < gettyPackageHeaderLen {
 		return 0, ErrNotEnoughStream
-	}
-	var packLen uint16
-	err = binary.Read(buf, binary.LittleEndian, &packLen)
-	if err != nil {
-		return 0, jerrors.Trace(err)
-	}
-	if int(packLen) > maxPackageLen {
-		return 0, ErrTooLargePackage
-	}
-	if int(packLen) < gettyPackageHeaderLen {
-		return 0, ErrInvalidPackage
 	}
 
 	// header
 	if err := binary.Read(buf, binary.LittleEndian, &(p.H)); err != nil {
 		return 0, jerrors.Trace(err)
 	}
+
 	if p.H.Magic != gettyPackageMagic {
 		log.Error("@p.H.Magic{%x}, right magic{%x}", p.H.Magic, gettyPackageMagic)
 		return 0, ErrIllegalMagic
 	}
 
-	if int(packLen) > rpcPackagePlaceholderLen+gettyPackageHeaderLen {
-		if err := p.B.Unmarshal(p.H.CodecType, bytes.NewBuffer(buf.Next(int(packLen)-rpcPackagePlaceholderLen-gettyPackageHeaderLen))); err != nil {
+	totalLen := int(PkgLenType(gettyPackageHeaderLen) + p.H.PkgLen)
+	if totalLen > maxPackageLen {
+		return 0, ErrTooLargePackage
+	}
+
+	if bufLen >= totalLen {
+		if err := p.B.Unmarshal(p.H.CodecType, bytes.NewBuffer(buf.Next(int(p.H.PkgLen)))); err != nil {
 			return 0, jerrors.Trace(err)
 		}
 	}
 
-	return int(packLen), nil
+	return totalLen, nil
 }
 
 ////////////////////////////////////////////
