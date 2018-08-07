@@ -90,7 +90,7 @@ func (h *RpcServerHandler) OnMessage(session getty.Session, pkg interface{}) {
 		h.replyCmd(session, req, gettyCmdHbResponse, "")
 		return
 	}
-	if req.header.CallType == gettyTwoWayNoReply {
+	if req.header.CallType == CT_TwoWayNoReply {
 		h.replyCmd(session, req, gettyCmdRPCResponse, "")
 		function := req.methodType.method.Func
 		function.Call([]reflect.Value{req.service.rcvr, req.argv, req.replyv})

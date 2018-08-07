@@ -7,6 +7,7 @@ import (
 
 import (
 	"github.com/AlexStocks/getty"
+	"github.com/AlexStocks/goext/log"
 	log "github.com/AlexStocks/log4go"
 	jerrors "github.com/juju/errors"
 )
@@ -47,12 +48,16 @@ func (p *RpcServerPackageHandler) Read(ss getty.Session, data []byte) (interface
 		return req, length, nil
 	}
 	// get service & method
+	gxlog.CError("req service:%s, service map:%#v", req.header.Service, p.server.serviceMap)
 	req.service = p.server.serviceMap[req.header.Service]
 	if req.service != nil {
 		req.methodType = req.service.method[req.header.Method]
 	}
-	if req.service == nil || req.methodType == nil {
-		return nil, 0, ErrNotFoundServiceOrMethod
+	if req.service == nil {
+		return nil, 0, jerrors.Errorf("request service is nil")
+	}
+	if req.methodType == nil {
+		return nil, 0, jerrors.Errorf("request method is nil")
 	}
 	// get args
 	argIsValue := false

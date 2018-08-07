@@ -9,8 +9,6 @@
 # FILE    : pb.sh
 # ******************************************************
 
-mkdir ./src
-
 # descriptor.proto
 gopath=~/test/golang/lib/src/github.com/gogo/protobuf/protobuf
 # If you are using any gogo.proto extensions you will need to specify the
@@ -21,4 +19,4 @@ gogopath=~/test/golang/lib/src/
 # protoc -I=$gopath:$gogopath:/Users/alex/test/golang/lib/src/github.com/AlexStocks/goext/database/redis/:./ --gogoslick_out=Mredis_meta.proto="github.com/AlexStocks/goext/database/redis":../app/  cluster_meta.proto
 # protoc -I=$gopath:$gogopath:/Users/alex/test/golang/lib/src/github.com/AlexStocks/goext/database/redis/:./ --gogoslick_out=Mredis_meta.proto="github.com/AlexStocks/goext/database/redis":../app/  response.proto
 # protoc -I=$gopath:$gogopath:./ --gogoslick_out=Mrole.proto="github.com/AlexStocks/goext/database/registry":./src/  service.proto
-protoc -I=$gopath:$gogopath:./ --gogoslick_out=./src/  rpc.proto
+protoc -I=$gopath:$gogopath:./ --gogoslick_out=../  codec.proto

@@ -115,7 +115,6 @@ type Connection interface {
 var (
 	ErrSessionClosed  = errors.New("session Already Closed")
 	ErrSessionBlocked = errors.New("session Full Blocked")
-	ErrMsgTooLong     = errors.New("Message Too Long")
 	ErrNullPeerAddr   = errors.New("peer address is nil")
 )
 

@@ -11,7 +11,6 @@ import (
 import (
 	log "github.com/AlexStocks/log4go"
 	proto "github.com/gogo/protobuf/proto"
-	pb "github.com/golang/protobuf/proto"
 	"github.com/json-iterator/go"
 	jerrors "github.com/juju/errors"
 )
@@ -41,18 +40,6 @@ var gettyCommandStrings = [...]string{
 func (c gettyCommand) String() string {
 	return gettyCommandStrings[c]
 }
-
-////////////////////////////////////////////
-//  getty call type
-////////////////////////////////////////////
-
-type gettyCallType uint32
-
-const (
-	gettyOneWay        gettyCallType = 0x01
-	gettyTwoWay                      = 0x02
-	gettyTwoWayNoReply               = 0x03
-)
 
 ////////////////////////////////////////////
 //  getty error code
@@ -117,58 +104,64 @@ func GetCodecType(codecType string) CodecType {
 	return CodecUnknown
 }
 
-// Codec defines the interface that decode/encode body.
 type Codec interface {
-	Encode(i interface{}) ([]byte, error)
-	Decode(data []byte, i interface{}) error
+	Encode(interface{}) ([]byte, error)
+	Decode([]byte, interface{}) error
 }
 
-// JSONCodec uses json marshaler and unmarshaler.
 type JSONCodec struct{}
 
 var (
 	jsonstd = jsoniter.ConfigCompatibleWithStandardLibrary
 )
 
-// Encode encodes an object into slice of bytes.
 func (c JSONCodec) Encode(i interface{}) ([]byte, error) {
 	// return json.Marshal(i)
 	return jsonstd.Marshal(i)
 }
 
-// Decode decodes an object from slice of bytes.
 func (c JSONCodec) Decode(data []byte, i interface{}) error {
 	// return json.Unmarshal(data, i)
 	return jsonstd.Unmarshal(data, i)
 }
 
-// PBCodec uses protobuf marshaler and unmarshaler.
 type PBCodec struct{}
 
-// Encode encodes an object into slice of bytes.
-func (c PBCodec) Encode(i interface{}) ([]byte, error) {
-	if m, ok := i.(proto.Marshaler); ok {
-		return m.Marshal()
+// Encode takes the protocol buffer
+// and encodes it into the wire format, returning the data.
+func (c PBCodec) Encode(msg interface{}) ([]byte, error) {
+	// Can the object marshal itself?
+	if pb, ok := msg.(proto.Marshaler); ok {
+		pbBuf, err := pb.Marshal()
+		return pbBuf, jerrors.Trace(err)
 	}
 
-	if m, ok := i.(pb.Message); ok {
-		return pb.Marshal(m)
+	if pb, ok := msg.(proto.Message); ok {
+		p := proto.NewBuffer(nil)
+		err := p.Marshal(pb)
+		return p.Bytes(), jerrors.Trace(err)
 	}
 
-	return nil, fmt.Errorf("%T is not a proto.Marshaler", i)
+	return nil, fmt.Errorf("protobuf can not marshal %T", msg)
 }
 
-// Decode decodes an object from slice of bytes.
-func (c PBCodec) Decode(data []byte, i interface{}) error {
-	if m, ok := i.(proto.Unmarshaler); ok {
-		return m.Unmarshal(data)
+// Decode parses the protocol buffer representation in buf and
+// writes the decoded result to pb.  If the struct underlying pb does not match
+// the data in buf, the results can be unpredictable.
+//
+// UnmarshalMerge merges into existing data in pb.
+// Most code should use Unmarshal instead.
+func (c PBCodec) Decode(buf []byte, msg interface{}) error {
+	// If the object can unmarshal itself, let it.
+	if u, ok := msg.(proto.Unmarshaler); ok {
+		return jerrors.Trace(u.Unmarshal(buf))
 	}
 
-	if m, ok := i.(pb.Message); ok {
-		return pb.Unmarshal(data, m)
+	if pb, ok := msg.(proto.Message); ok {
+		return jerrors.Trace(proto.NewBuffer(nil).Unmarshal(pb))
 	}
 
-	return fmt.Errorf("%T is not a proto.Unmarshaler", i)
+	return fmt.Errorf("protobuf can not unmarshal %T", msg)
 }
 
 ////////////////////////////////////////////
@@ -182,11 +175,10 @@ const (
 )
 
 var (
-	ErrNotEnoughStream         = jerrors.New("packet stream is not enough")
-	ErrTooLargePackage         = jerrors.New("package length is exceed the getty package's legal maximum length.")
-	ErrInvalidPackage          = jerrors.New("invalid rpc package")
-	ErrNotFoundServiceOrMethod = jerrors.New("server invalid service or method")
-	ErrIllegalMagic            = jerrors.New("package magic is not right.")
+	ErrNotEnoughStream = jerrors.New("packet stream is not enough")
+	ErrTooLargePackage = jerrors.New("package length is exceed the getty package's legal maximum length.")
+	ErrInvalidPackage  = jerrors.New("invalid rpc package")
+	ErrIllegalMagic    = jerrors.New("package magic is not right.")
 )
 
 var (
@@ -301,12 +293,12 @@ func (p *GettyPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
 
 type GettyRPCHeaderLenType uint16
 
-// easyjson:json
-type GettyRPCRequestHeader struct {
-	Service  string
-	Method   string
-	CallType gettyCallType
-}
+// // easyjson:json
+// type GettyRPCRequestHeader struct {
+// 	Service  string
+// 	Method   string
+// 	CallType gettyCallType
+// }
 
 type GettyRPCRequest struct {
 	header GettyRPCRequestHeader
@@ -331,7 +323,7 @@ func (req *GettyRPCRequest) Marshal(sz CodecType, buf *bytes.Buffer) (int, error
 	if codec == nil {
 		return 0, jerrors.Errorf("can not find codec for %s", sz)
 	}
-	headerData, err := codec.Encode(req.header)
+	headerData, err := codec.Encode(&req.header)
 	if err != nil {
 		return 0, jerrors.Trace(err)
 	}
@@ -410,9 +402,9 @@ func (req *GettyRPCRequest) GetHeader() interface{} {
 // GettyRPCResponse
 ////////////////////////////////////////////
 
-type GettyRPCResponseHeader struct {
-	Error string
-}
+// type GettyRPCResponseHeader struct {
+// 	Error string
+// }
 
 type GettyRPCResponse struct {
 	header GettyRPCResponseHeader
@@ -434,7 +426,7 @@ func (resp *GettyRPCResponse) Marshal(sz CodecType, buf *bytes.Buffer) (int, err
 	if codec == nil {
 		return 0, jerrors.Errorf("can not find codec for %d", sz)
 	}
-	headerData, err := codec.Encode(resp.header)
+	headerData, err := codec.Encode(&resp.header)
 	if err != nil {
 		return 0, jerrors.Trace(err)
 	}

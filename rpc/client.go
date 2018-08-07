@@ -57,9 +57,9 @@ func (c *Client) Call(typ CodecType, addr, service, method string, args interfac
 	b := &GettyRPCRequest{}
 	b.header.Service = service
 	b.header.Method = method
-	b.header.CallType = gettyTwoWay
+	b.header.CallType = CT_TwoWay
 	if reply == nil {
-		b.header.CallType = gettyTwoWayNoReply
+		b.header.CallType = CT_TwoWayNoReply
 	}
 	b.body = args
 

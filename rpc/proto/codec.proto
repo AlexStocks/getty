@@ -35,3 +35,7 @@ message GettyRPCRequestHeader {
 	optional string Method = 2 [(gogoproto.nullable) = false];
 	optional CallType CallType = 3 [(gogoproto.nullable) = false];
 }
+
+message GettyRPCResponseHeader {
+	optional string Error = 1 [(gogoproto.nullable) = false];
+}

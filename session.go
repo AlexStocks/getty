@@ -504,7 +504,7 @@ LOOP:
 		case outPkg = <-s.wQ:
 			if flag {
 				if err = s.writer.Write(s, outPkg); err != nil {
-					log.Error("%s, [session.handleLoop] = error{%s}", s.sessionToken(), err)
+					log.Error("%s, [session.handleLoop] = error{%s}", s.sessionToken(), jerrors.ErrorStack(err))
 					s.stop()
 					flag = false
 					// break LOOP
@@ -550,7 +550,7 @@ func (s *session) handlePackage() {
 		log.Info("%s, [session.handlePackage] gr will exit now, left gr num %d", s.sessionToken(), grNum)
 		s.stop()
 		if err != nil {
-			log.Error("%s, [session.handlePackage] error{%s}", s.sessionToken(), err)
+			log.Error("%s, [session.handlePackage] error{%s}", s.sessionToken(), jerrors.ErrorStack(err))
 			s.listener.OnError(s, err)
 		}
 	}()
@@ -628,7 +628,7 @@ func (s *session) handleTCPPackage() error {
 			// pkg, err = s.pkgHandler.Read(s, pktBuf)
 			pkg, pkgLen, err = s.reader.Read(s, pktBuf.Bytes())
 			if err == nil && s.maxMsgLen > 0 && pkgLen > int(s.maxMsgLen) {
-				err = ErrMsgTooLong
+				err = jerrors.Errorf("Message Too Long, pkgLen %d, session max message len %d", pkgLen, s.maxMsgLen)
 			}
 			if err != nil {
 				log.Warn("%s, [session.handleTCPPackage] = len{%d}, error{%s}",
@@ -703,7 +703,7 @@ func (s *session) handleUDPPackage() error {
 		pkg, pkgLen, err = s.reader.Read(s, buf[:bufLen])
 		log.Debug("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%s", pkg, pkgLen, jerrors.ErrorStack(err))
 		if err == nil && s.maxMsgLen > 0 && bufLen > int(s.maxMsgLen) {
-			err = ErrMsgTooLong
+			err = jerrors.Errorf("Message Too Long, bufLen %d, session max message len %d", bufLen, s.maxMsgLen)
 		}
 		if err != nil {
 			log.Warn("%s, [session.handleUDPPackage] = len{%d}, error{%s}",
@@ -753,7 +753,7 @@ func (s *session) handleWSPackage() error {
 		if s.reader != nil {
 			unmarshalPkg, length, err = s.reader.Read(s, pkg)
 			if err == nil && s.maxMsgLen > 0 && length > int(s.maxMsgLen) {
-				err = ErrMsgTooLong
+				err = jerrors.Errorf("Message Too Long, length %d, session max message len %d", length, s.maxMsgLen)
 			}
 			if err != nil {
 				log.Warn("%s, [session.handleWSPackage] = len{%d}, error{%s}",
