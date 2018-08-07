@@ -14,10 +14,16 @@
 ## develop history ##
 ---
 
+- 2018/08/07
+    > Improvement
+    * RPC package format:  {2 Bytes Header len + Header + 2 Body len + Body} ---> {Header + Body}
+    > Bug Fix
+    * do not encode body if package body is nil
+
 - 2018/07/01
     > Feature
     * Add RPC
- 
+
 - 2018/06/25
     > buf fix
     * Using juju/errors.Cause on read/write in case of network i/o timeout
