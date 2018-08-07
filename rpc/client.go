@@ -9,8 +9,6 @@ import (
 import (
 	"github.com/AlexStocks/getty"
 	"github.com/AlexStocks/goext/sync/atomic"
-
-	"github.com/AlexStocks/goext/log"
 	jerrors "github.com/juju/errors"
 )
 
@@ -72,7 +70,6 @@ func (c *Client) Call(typ CodecType, addr, service, method string, args interfac
 		conn    *gettyRPCClientConn
 	)
 	conn, session, err = c.selectSession(typ, addr)
-	gxlog.CError("conn:%p, session:%p", conn, session)
 	if err != nil || session == nil {
 		return errSessionNotExist
 	}
