@@ -7,7 +7,6 @@ import (
 
 import (
 	"github.com/AlexStocks/getty"
-	"github.com/AlexStocks/goext/log"
 	log "github.com/AlexStocks/log4go"
 	jerrors "github.com/juju/errors"
 )
@@ -48,7 +47,6 @@ func (p *RpcServerPackageHandler) Read(ss getty.Session, data []byte) (interface
 		return req, length, nil
 	}
 	// get service & method
-	gxlog.CError("req service:%s, service map:%#v", req.header.Service, p.server.serviceMap)
 	req.service = p.server.serviceMap[req.header.Service]
 	if req.service != nil {
 		req.methodType = req.service.method[req.header.Method]
@@ -144,7 +142,7 @@ func (p *RpcClientPackageHandler) Write(ss getty.Session, pkg interface{}) error
 
 	buf, err := req.Marshal()
 	if err != nil {
-		log.Warn("binary.Write(req{%#v}) = err{%#v}", req, err)
+		log.Warn("binary.Write(req{%#v}) = err{%#v}", req, jerrors.ErrorStack(err))
 		return jerrors.Trace(err)
 	}
 

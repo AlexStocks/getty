@@ -426,14 +426,20 @@ func (resp *GettyRPCResponse) Marshal(sz CodecType, buf *bytes.Buffer) (int, err
 	if codec == nil {
 		return 0, jerrors.Errorf("can not find codec for %d", sz)
 	}
-	headerData, err := codec.Encode(&resp.header)
+
+	var err error
+	var headerData, bodyData []byte
+
+	headerData, err = codec.Encode(&resp.header)
 	if err != nil {
 		return 0, jerrors.Trace(err)
 	}
 
-	bodyData, err := codec.Encode(resp.body)
-	if err != nil {
-		return 0, jerrors.Trace(err)
+	if resp.body != nil {
+		bodyData, err = codec.Encode(resp.body)
+		if err != nil {
+			return 0, jerrors.Trace(err)
+		}
 	}
 
 	err = binary.Write(buf, binary.LittleEndian, uint16(len(headerData)))
