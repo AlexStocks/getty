@@ -45,11 +45,11 @@ func (c gettyCommand) String() string {
 //  getty error code
 ////////////////////////////////////////////
 
-type GettyErrorCode int16
+type ErrorCode int16
 
 const (
-	GettyOK   GettyErrorCode = 0x00
-	GettyFail                = 0x01
+	GettyOK   ErrorCode = 0x00
+	GettyFail           = 0x01
 )
 
 ////////////////////////////////////////////
@@ -208,9 +208,9 @@ type GettyPackageHeader struct {
 	Sequence  SequenceType  // request/response sequence
 	LogID     LogIDType     // log id
 
-	Code      GettyErrorCode // error code
-	CodecType CodecType
-	PkgLen    PkgLenType
+	Code      ErrorCode  // error code
+	CodecType CodecType  // codec type
+	PkgLen    PkgLenType // package body length
 }
 
 type GettyPackage struct {
