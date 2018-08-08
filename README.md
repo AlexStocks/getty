@@ -20,13 +20,13 @@ A open source, Go based, RPC framework.
 
 Feature list:
 
-- 1 Transport: TCP(√), UDP, Websocket
+- 1 Transport: TCP(√), UDP(X), Websocket(X)
 - 2 Codec: ProtoBuf(√), JSON(√)
-- 3 Service Discovery: Service Publish(X), Service Watch(X), Service Notify(X)
-- 4 Registry: ZooKeeper(X), Etcd(x)
+- 3 SOA: Service Publish(X), Service Watch(X), Service Notify(X)
+- 4 Registry: ZooKeeper(X), Etcd(X)
 - 5 Strategy: Failover(√), Failfast(√)
 - 6 Load Balance: Random(X), RoundRobin(X)
-- 7 Metrics:  Invoke Statistics(x), User Auth(x)
+- 7 Metrics:  Invoke Statistics(X), User Auth(X)
 
 Code example:
 
