@@ -22,7 +22,7 @@ Feature list:
 
 - 1 Transport: TCP(√), UDP(X), Websocket(X)
 - 2 Codec: ProtoBuf(√), JSON(√)
-- 3 SOA: Service Publish(X), Service Watch(X), Service Notify(X)
+- 3 Service Discovery: Service Publish(X), Service Watch(X), Service Notify(X)
 - 4 Registry: ZooKeeper(X), Etcd(X)
 - 5 Strategy: Failover(√), Failfast(√)
 - 6 Load Balance: Random(X), RoundRobin(X)

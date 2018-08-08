@@ -19,7 +19,7 @@ import (
 //  getty command
 ////////////////////////////////////////////
 
-type gettyCommand int32
+type gettyCommand int16
 
 const (
 	gettyDefaultCmd     gettyCommand = 0x00
@@ -195,19 +195,18 @@ type RPCPackage interface {
 
 type (
 	MagicType     int32
-	LogIDType     int32
+	LogIDType     int64
 	SequenceType  uint64
-	ServiceIDType int32
+	ServiceIDType int16
 	PkgLenType    int32
 )
 
 type GettyPackageHeader struct {
-	Magic    MagicType    // magic number
-	LogID    LogIDType    // log id
-	Sequence SequenceType // request/response sequence
-
+	Magic     MagicType     // magic number
 	Command   gettyCommand  // operation command code
 	ServiceID ServiceIDType // service id
+	Sequence  SequenceType  // request/response sequence
+	LogID     LogIDType     // log id
 
 	Code      GettyErrorCode // error code
 	CodecType CodecType
