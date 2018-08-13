@@ -82,7 +82,7 @@ func (c *Client) Call(typ CodecType, addr, service, method string, args interfac
 	select {
 	case <-getty.GetTimeWheel().After(c.conf.GettySessionParam.tcpReadTimeout):
 		err = errClientReadTimeout
-		c.RemovePendingResponse(SequenceType(rsp.seq))
+		c.removePendingResponse(SequenceType(rsp.seq))
 	case <-rsp.done:
 		err = rsp.err
 	}
@@ -129,29 +129,29 @@ func (c *Client) transfer(session getty.Session, typ CodecType, req *GettyRPCReq
 	}
 
 	rsp.seq = sequence
-	c.AddPendingResponse(rsp)
+	c.addPendingResponse(rsp)
 
 	err = session.WritePkg(pkg, 0)
 	if err != nil {
-		c.RemovePendingResponse(SequenceType(rsp.seq))
+		c.removePendingResponse(SequenceType(rsp.seq))
 	}
 
 	return jerrors.Trace(err)
 }
 
-func (c *Client) PendingResponseCount() int {
-	c.pendingLock.RLock()
-	defer c.pendingLock.RUnlock()
-	return len(c.pendingResponses)
-}
+// func (c *Client) PendingResponseCount() int {
+// 	c.pendingLock.RLock()
+// 	defer c.pendingLock.RUnlock()
+// 	return len(c.pendingResponses)
+// }
 
-func (c *Client) AddPendingResponse(pr *PendingResponse) {
+func (c *Client) addPendingResponse(pr *PendingResponse) {
 	c.pendingLock.Lock()
 	defer c.pendingLock.Unlock()
 	c.pendingResponses[SequenceType(pr.seq)] = pr
 }
 
-func (c *Client) RemovePendingResponse(seq SequenceType) *PendingResponse {
+func (c *Client) removePendingResponse(seq SequenceType) *PendingResponse {
 	c.pendingLock.Lock()
 	defer c.pendingLock.Unlock()
 	if c.pendingResponses == nil {
@@ -164,10 +164,10 @@ func (c *Client) RemovePendingResponse(seq SequenceType) *PendingResponse {
 	return nil
 }
 
-func (c *Client) ClearPendingResponses() map[SequenceType]*PendingResponse {
-	c.pendingLock.Lock()
-	defer c.pendingLock.Unlock()
-	presps := c.pendingResponses
-	c.pendingResponses = nil
-	return presps
-}
+// func (c *Client) ClearPendingResponses() map[SequenceType]*PendingResponse {
+// 	c.pendingLock.Lock()
+// 	defer c.pendingLock.Unlock()
+// 	presps := c.pendingResponses
+// 	c.pendingResponses = nil
+// 	return presps
+// }

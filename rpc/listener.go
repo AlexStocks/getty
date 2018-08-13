@@ -200,7 +200,7 @@ func (h *RpcClientHandler) OnMessage(session getty.Session, pkg interface{}) {
 	log.Debug("get rpc response{%s}", p)
 	h.conn.updateSession(session)
 
-	pendingResponse := h.conn.pool.rpcClient.RemovePendingResponse(p.H.Sequence)
+	pendingResponse := h.conn.pool.rpcClient.removePendingResponse(p.H.Sequence)
 	if pendingResponse == nil {
 		return
 	}

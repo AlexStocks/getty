@@ -14,6 +14,10 @@
 ## develop history ##
 ---
 
+- 2018/08/13
+    > Feature
+    * Add Micro
+    
 - 2018/08/07
     > Improvement
     * RPC package format:  {2 Bytes Header len + Header + 2 Body len + Body} ---> {Header + Body}

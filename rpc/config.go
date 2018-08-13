@@ -29,15 +29,6 @@ type (
 		SessionName      string `default:"rpc" yaml:"session_name" json:"session_name,omitempty"`
 	}
 
-	RegistryConfig struct {
-		Type             string `default:"etcd" yaml:"type" json:"type,omitempty"`
-		Addr             string `default:"" yaml:"addr" json:"addr,omitempty"`
-		KeepaliveTimeout int    `default:"5" yaml:"keepalive_time" json:"keepalive_timeout,omitempty"`
-		Root             string `default:"getty" yaml:"keepalive_time" json:"keepalive_timeout,omitempty"`
-		IDC              string `default:"idc-bj" yaml:"idc" json:"idc,omitempty"`
-		NodeID           string `default:"node0" yaml:"node_id" json:"node_id,omitempty"`
-	}
-
 	// Config holds supported types by the multiconfig package
 	ServerConfig struct {
 		// local address
@@ -70,7 +61,7 @@ type (
 		ConnectionNum int `default:"16" yaml:"connection_num" json:"connection_num,omitempty"`
 
 		// heartbeat
-		HeartbeatPeriod string `default:"15s" yaml:"heartbeat_period" json:"heartbeat_period, omitempty"`
+		HeartbeatPeriod string `default:"15s" yaml:"heartbeat_period" json:"heartbeat_period,omitempty"`
 		heartbeatPeriod time.Duration
 
 		// session
@@ -78,7 +69,7 @@ type (
 		sessionTimeout time.Duration
 
 		// app
-		FailFastTimeout string `default:"5s" yaml:"fail_fast_timeout" json:"fail_fast_timeout, omitempty"`
+		FailFastTimeout string `default:"5s" yaml:"fail_fast_timeout" json:"fail_fast_timeout,omitempty"`
 		failFastTimeout time.Duration
 
 		// Connection Pool

@@ -229,7 +229,7 @@ func (p *GettyPackage) Marshal() (*bytes.Buffer, error) {
 		headerBuf, buf *bytes.Buffer
 	)
 
-	buf = bytes.NewBuffer(make([]byte, gettyPackageHeaderLen))
+	buf = bytes.NewBuffer(make([]byte, gettyPackageHeaderLen, gettyPackageHeaderLen<<2))
 
 	// body
 	if p.B != nil {

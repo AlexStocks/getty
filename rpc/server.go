@@ -19,10 +19,6 @@ type Server struct {
 	tcpServerList []getty.Server
 }
 
-var (
-	ErrIllegalConf = "illegal conf: "
-)
-
 func NewServer(conf *ServerConfig) (*Server, error) {
 	if err := conf.CheckValidity(); err != nil {
 		return nil, jerrors.Trace(err)

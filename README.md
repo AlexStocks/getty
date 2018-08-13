@@ -26,15 +26,11 @@ Feature list:
 - 4 Registry: ZooKeeper(X), Etcd(X)
 - 5 Strategy: Failover(√), Failfast(√)
 - 6 Load Balance: Random(X), RoundRobin(X)
-- 7 Metrics:  Invoke Statistics(X), User Auth(X)
+- 7 Metrics: Invoke Statistics(X), User Auth(X)
 
 Code example:
 
-The rpc dir of [getty-examples](https://github.com/alexstocks/getty-examples/) shows how to build rpc client/rpc server.
-
-##
-
-
+The subdirectory rpc of [getty-examples](https://github.com/alexstocks/getty-examples/) shows how to build rpc client/rpc server.
 
 ## LICENCE
 
