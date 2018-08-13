@@ -1,0 +1,360 @@
+[2018/08/07 22:56:12 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handleTCPPackage:610] {getty-rpc-server:TCP_SERVER:7:127.0.0.1:10000<->127.0.0.1:49993}, [session.conn.read] = error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: }
+[2018/08/07 22:56:12 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:7:127.0.0.1:10000<->127.0.0.1:49993}, [session.handlePackage] error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 22:56:12 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handleTCPPackage:610] {getty-rpc-server:TCP_SERVER:8:127.0.0.1:10000<->127.0.0.1:49994}, [session.conn.read] = error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: }
+[2018/08/07 22:56:12 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:8:127.0.0.1:10000<->127.0.0.1:49994}, [session.handlePackage] error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 22:56:13 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handleTCPPackage:610] {getty-rpc-server:TCP_SERVER:1:127.0.0.1:20000<->127.0.0.1:49987}, [session.conn.read] = error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: }
+[2018/08/07 22:56:13 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:1:127.0.0.1:20000<->127.0.0.1:49987}, [session.handlePackage] error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 22:56:13 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:5:127.0.0.1:20000<->127.0.0.1:49991}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 22:56:13 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:4:127.0.0.1:10000<->127.0.0.1:49990}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 22:56:13 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:3:127.0.0.1:10000<->127.0.0.1:49989}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 22:56:13 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:6:127.0.0.1:20000<->127.0.0.1:49992}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 22:56:14 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handleTCPPackage:610] {getty-rpc-server:TCP_SERVER:2:127.0.0.1:20000<->127.0.0.1:49988}, [session.conn.read] = error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: }
+[2018/08/07 22:56:14 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:2:127.0.0.1:20000<->127.0.0.1:49988}, [session.handlePackage] error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 22:56:45 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:10:127.0.0.1:20000<->127.0.0.1:50000}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 22:56:45 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:15:127.0.0.1:10000<->127.0.0.1:50005}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 22:56:45 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:11:127.0.0.1:10000<->127.0.0.1:50001}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 22:56:45 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:12:127.0.0.1:10000<->127.0.0.1:50002}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 22:56:45 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:9:127.0.0.1:20000<->127.0.0.1:49999}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 22:56:45 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:13:127.0.0.1:20000<->127.0.0.1:50003}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 22:56:45 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:14:127.0.0.1:20000<->127.0.0.1:50004}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 22:56:45 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:16:127.0.0.1:10000<->127.0.0.1:50006}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:01:30 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handleTCPPackage:610] {getty-rpc-server:TCP_SERVER:17:127.0.0.1:20000<->127.0.0.1:50051}, [session.conn.read] = error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: }
+[2018/08/07 23:01:30 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:17:127.0.0.1:20000<->127.0.0.1:50051}, [session.handlePackage] error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:01:32 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handleTCPPackage:610] {getty-rpc-server:TCP_SERVER:18:127.0.0.1:20000<->127.0.0.1:50052}, [session.conn.read] = error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: }
+[2018/08/07 23:01:32 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:18:127.0.0.1:20000<->127.0.0.1:50052}, [session.handlePackage] error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:01:32 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handleTCPPackage:610] {getty-rpc-server:TCP_SERVER:24:127.0.0.1:10000<->127.0.0.1:50058}, [session.conn.read] = error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: }
+[2018/08/07 23:01:32 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handleTCPPackage:610] {getty-rpc-server:TCP_SERVER:21:127.0.0.1:20000<->127.0.0.1:50055}, [session.conn.read] = error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: }
+[2018/08/07 23:01:32 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:24:127.0.0.1:10000<->127.0.0.1:50058}, [session.handlePackage] error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:01:32 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handleTCPPackage:610] {getty-rpc-server:TCP_SERVER:19:127.0.0.1:10000<->127.0.0.1:50053}, [session.conn.read] = error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: }
+[2018/08/07 23:01:32 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:21:127.0.0.1:20000<->127.0.0.1:50055}, [session.handlePackage] error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:01:32 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:19:127.0.0.1:10000<->127.0.0.1:50053}, [session.handlePackage] error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:01:32 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handleTCPPackage:610] {getty-rpc-server:TCP_SERVER:22:127.0.0.1:20000<->127.0.0.1:50056}, [session.conn.read] = error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: }
+[2018/08/07 23:01:32 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handleTCPPackage:610] {getty-rpc-server:TCP_SERVER:20:127.0.0.1:10000<->127.0.0.1:50054}, [session.conn.read] = error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: }
+[2018/08/07 23:01:32 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:20:127.0.0.1:10000<->127.0.0.1:50054}, [session.handlePackage] error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:01:32 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:22:127.0.0.1:20000<->127.0.0.1:50056}, [session.handlePackage] error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:01:32 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handleTCPPackage:610] {getty-rpc-server:TCP_SERVER:23:127.0.0.1:10000<->127.0.0.1:50057}, [session.conn.read] = error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: }
+[2018/08/07 23:01:32 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:23:127.0.0.1:10000<->127.0.0.1:50057}, [session.handlePackage] error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:01:53 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:26:127.0.0.1:20000<->127.0.0.1:50064}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:01:53 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:25:127.0.0.1:20000<->127.0.0.1:50063}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:01:53 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:31:127.0.0.1:10000<->127.0.0.1:50069}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:01:53 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:27:127.0.0.1:10000<->127.0.0.1:50065}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:01:53 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:28:127.0.0.1:10000<->127.0.0.1:50066}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:01:53 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:29:127.0.0.1:20000<->127.0.0.1:50067}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:01:53 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:32:127.0.0.1:10000<->127.0.0.1:50070}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:01:53 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:30:127.0.0.1:20000<->127.0.0.1:50068}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:04:03 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handleTCPPackage:610] {getty-rpc-server:TCP_SERVER:34:127.0.0.1:20000<->127.0.0.1:50098}, [session.conn.read] = error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: }
+[2018/08/07 23:04:03 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:34:127.0.0.1:20000<->127.0.0.1:50098}, [session.handlePackage] error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:04:04 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handleTCPPackage:610] {getty-rpc-server:TCP_SERVER:33:127.0.0.1:20000<->127.0.0.1:50097}, [session.conn.read] = error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: }
+[2018/08/07 23:04:04 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:33:127.0.0.1:20000<->127.0.0.1:50097}, [session.handlePackage] error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:04:05 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:39:127.0.0.1:10000<->127.0.0.1:50103}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:04:05 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:40:127.0.0.1:10000<->127.0.0.1:50104}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:04:05 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:37:127.0.0.1:20000<->127.0.0.1:50101}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:04:05 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:38:127.0.0.1:20000<->127.0.0.1:50102}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:04:05 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handleTCPPackage:610] {getty-rpc-server:TCP_SERVER:35:127.0.0.1:10000<->127.0.0.1:50099}, [session.conn.read] = error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: }
+[2018/08/07 23:04:05 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:35:127.0.0.1:10000<->127.0.0.1:50099}, [session.handlePackage] error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:04:05 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handleTCPPackage:610] {getty-rpc-server:TCP_SERVER:36:127.0.0.1:10000<->127.0.0.1:50100}, [session.conn.read] = error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: }
+[2018/08/07 23:04:05 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:36:127.0.0.1:10000<->127.0.0.1:50100}, [session.handlePackage] error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:04:33 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:46:127.0.0.1:20000<->127.0.0.1:50112}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:04:33 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:45:127.0.0.1:20000<->127.0.0.1:50111}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:04:33 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:43:127.0.0.1:10000<->127.0.0.1:50109}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:04:33 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:42:127.0.0.1:20000<->127.0.0.1:50108}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:04:33 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:44:127.0.0.1:10000<->127.0.0.1:50110}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:04:33 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:48:127.0.0.1:10000<->127.0.0.1:50114}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:04:33 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:41:127.0.0.1:20000<->127.0.0.1:50107}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:04:33 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:47:127.0.0.1:10000<->127.0.0.1:50113}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:05:09 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:52:127.0.0.1:10000<->127.0.0.1:50122}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:05:09 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:56:127.0.0.1:10000<->127.0.0.1:50126}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:05:09 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:55:127.0.0.1:10000<->127.0.0.1:50125}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:05:09 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:50:127.0.0.1:20000<->127.0.0.1:50120}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:05:09 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:53:127.0.0.1:20000<->127.0.0.1:50123}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:05:09 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:49:127.0.0.1:20000<->127.0.0.1:50119}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:05:09 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:54:127.0.0.1:20000<->127.0.0.1:50124}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:05:09 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:51:127.0.0.1:10000<->127.0.0.1:50121}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:05:38 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handleTCPPackage:610] {getty-rpc-server:TCP_SERVER:58:127.0.0.1:20000<->127.0.0.1:50136}, [session.conn.read] = error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: }
+[2018/08/07 23:05:38 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:58:127.0.0.1:20000<->127.0.0.1:50136}, [session.handlePackage] error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:05:40 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handleTCPPackage:610] {getty-rpc-server:TCP_SERVER:64:127.0.0.1:10000<->127.0.0.1:50142}, [session.conn.read] = error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: }
+[2018/08/07 23:05:40 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:64:127.0.0.1:10000<->127.0.0.1:50142}, [session.handlePackage] error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:05:40 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handleTCPPackage:610] {getty-rpc-server:TCP_SERVER:57:127.0.0.1:20000<->127.0.0.1:50135}, [session.conn.read] = error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: }
+[2018/08/07 23:05:40 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handleTCPPackage:610] {getty-rpc-server:TCP_SERVER:61:127.0.0.1:20000<->127.0.0.1:50139}, [session.conn.read] = error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: }
+[2018/08/07 23:05:40 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:57:127.0.0.1:20000<->127.0.0.1:50135}, [session.handlePackage] error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:05:40 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:61:127.0.0.1:20000<->127.0.0.1:50139}, [session.handlePackage] error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:05:40 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handleTCPPackage:610] {getty-rpc-server:TCP_SERVER:60:127.0.0.1:10000<->127.0.0.1:50138}, [session.conn.read] = error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: }
+[2018/08/07 23:05:40 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handleTCPPackage:610] {getty-rpc-server:TCP_SERVER:59:127.0.0.1:10000<->127.0.0.1:50137}, [session.conn.read] = error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: }
+[2018/08/07 23:05:40 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:59:127.0.0.1:10000<->127.0.0.1:50137}, [session.handlePackage] error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:05:40 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:60:127.0.0.1:10000<->127.0.0.1:50138}, [session.handlePackage] error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:05:40 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handleTCPPackage:610] {getty-rpc-server:TCP_SERVER:63:127.0.0.1:10000<->127.0.0.1:50141}, [session.conn.read] = error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: }
+[2018/08/07 23:05:40 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handleTCPPackage:610] {getty-rpc-server:TCP_SERVER:62:127.0.0.1:20000<->127.0.0.1:50140}, [session.conn.read] = error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: }
+[2018/08/07 23:05:40 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:63:127.0.0.1:10000<->127.0.0.1:50141}, [session.handlePackage] error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:05:40 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:62:127.0.0.1:20000<->127.0.0.1:50140}, [session.handlePackage] error{unexpected EOF
+github.com/AlexStocks/getty/conn.go:255: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:06:08 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:70:127.0.0.1:20000<->127.0.0.1:50152}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:06:08 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:71:127.0.0.1:10000<->127.0.0.1:50153}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:06:08 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:68:127.0.0.1:10000<->127.0.0.1:50150}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:06:08 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:69:127.0.0.1:20000<->127.0.0.1:50151}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:06:08 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:66:127.0.0.1:20000<->127.0.0.1:50148}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:06:08 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:72:127.0.0.1:10000<->127.0.0.1:50155}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:06:08 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:65:127.0.0.1:20000<->127.0.0.1:50147}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }
+[2018/08/07 23:06:08 CST] [EROR] [session.go:github.com/AlexStocks/getty.(*session).handlePackage.func1:553] {getty-rpc-server:TCP_SERVER:67:127.0.0.1:10000<->127.0.0.1:50149}, [session.handlePackage] error{EOF
+github.com/AlexStocks/getty/rpc/codec.go:353: 
+github.com/AlexStocks/getty/rpc/codec.go:278: 
+github.com/AlexStocks/getty/rpc/readwriter.go:39: 
+github.com/AlexStocks/getty/session.go:653: }

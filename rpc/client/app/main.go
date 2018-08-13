@@ -170,7 +170,8 @@ func testProtobuf() {
 }
 
 func test() {
-	testJSON()
-
-	testProtobuf()
+	for i := 0; i < 5; i++ {
+		testJSON()
+		testProtobuf()
+	}
 }
