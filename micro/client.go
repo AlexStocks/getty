@@ -116,7 +116,9 @@ func NewClient(conf *rpc.ClientConfig, regConf *RegistryConfig, opts ...ClientOp
 	return clt, nil
 }
 
-func (c *Client) Call(ctx context.Context, typ rpc.CodecType, service, method string, args interface{}, reply interface{}) error {
+func (c *Client) Call(ctx context.Context, typ rpc.CodecType,
+	service, method string, args interface{}, reply interface{}) error {
+
 	attr := c.attr
 	attr.Service = service
 	attr.Protocol = typ.String()
@@ -130,8 +132,8 @@ func (c *Client) Call(ctx context.Context, typ rpc.CodecType, service, method st
 			flag = true
 		}
 	}
-	var err error
 	if flag {
+		var err error
 		if svcArray, err = c.filter.Filter(attr); err != nil {
 			return jerrors.Trace(err)
 		}
@@ -144,9 +146,13 @@ func (c *Client) Call(ctx context.Context, typ rpc.CodecType, service, method st
 		return jerrors.Trace(err)
 	}
 
-	return jerrors.Trace(c.Client.Call(typ,
-		gxnet.HostAddress(svc.Nodes[0].Address, int(svc.Nodes[0].Port)),
-		service, method, args, reply))
+	if len(svc.Nodes) != 1 {
+		return jerrors.Errorf("illegal service %#v", svc)
+	}
+
+	addr := gxnet.HostAddress(svc.Nodes[0].Address, int(svc.Nodes[0].Port))
+
+	return jerrors.Trace(c.Client.Call(typ, addr, service, method, args, reply))
 }
 
 func (c *Client) Close() {

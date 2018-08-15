@@ -1,6 +1,7 @@
 package micro
 
 import (
+	"github.com/AlexStocks/goext/net"
 	"strconv"
 	"strings"
 	"time"
@@ -70,7 +71,8 @@ func NewServer(conf *rpc.ServerConfig, regConf *RegistryConfig) (*Server, error)
 
 		nodes = append(nodes,
 			&gxregistry.Node{
-				ID:      regConf.NodeID,
+				// use host port as part of NodeID to defeat the case: on process listens on many ports
+				ID:      regConf.NodeID + "@" + gxnet.HostAddress(conf.Host, port),
 				Address: conf.Host,
 				Port:    int32(port),
 			},
@@ -104,8 +106,6 @@ func (s *Server) Register(rcvr rpc.GettyRPCService) error {
 	if err := s.registry.Register(service); err != nil {
 		return jerrors.Trace(err)
 	}
-
-	s.Stop()
 
 	return nil
 }
