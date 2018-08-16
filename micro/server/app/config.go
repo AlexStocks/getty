@@ -16,6 +16,7 @@ import (
 )
 
 import (
+	"github.com/AlexStocks/getty/micro"
 	"github.com/AlexStocks/getty/rpc"
 	log "github.com/AlexStocks/log4go"
 	jerrors "github.com/juju/errors"
@@ -27,8 +28,13 @@ const (
 	APP_LOG_CONF_FILE = "APP_LOG_CONF_FILE"
 )
 
+type microConfig struct {
+	rpc.ServerConfig
+	Registry micro.RegistryConfig
+}
+
 var (
-	conf *rpc.ServerConfig
+	conf *microConfig
 )
 
 func initConf() {
@@ -42,13 +48,18 @@ func initConf() {
 		panic(fmt.Sprintf("application configure file name{%v} suffix must be .toml", confFile))
 		return
 	}
-	conf = &rpc.ServerConfig{}
+	conf = &microConfig{}
 	config.MustLoadWithPath(confFile, conf)
-	if err := conf.CheckValidity(); err != nil {
+	if err := conf.ServerConfig.CheckValidity(); err != nil {
 		panic(jerrors.ErrorStack(err))
 		return
 	}
-
+	if err := conf.Registry.CheckValidity(); err != nil {
+		panic(jerrors.ErrorStack(err))
+		return
+	}
+	
+	
 	// log
 	confFile = os.Getenv(APP_LOG_CONF_FILE)
 	if confFile == "" {

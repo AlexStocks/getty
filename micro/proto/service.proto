@@ -1,6 +1,6 @@
 syntax = "proto2";
 
-package rpc_examples;
+package micro_examples;
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 

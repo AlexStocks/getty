@@ -19,7 +19,8 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/getty-examples/rpc/proto"
+	"github.com/AlexStocks/getty-examples/micro/proto"
+	"github.com/AlexStocks/getty/micro"
 	"github.com/AlexStocks/getty/rpc"
 	"github.com/AlexStocks/goext/net"
 	log "github.com/AlexStocks/log4go"
@@ -31,7 +32,7 @@ const (
 )
 
 var (
-	client *rpc.Client
+	client *micro.Client
 )
 
 ////////////////////////////////////////////////////////////////////
@@ -44,7 +45,6 @@ func main() {
 	initProfiling()
 
 	initClient()
-	// gxlog.CInfo("%s starts successfull! its version=%s\n", conf.AppName, Version)
 	log.Info("%s starts successfull! its version=%s\n", conf.AppName, Version)
 
 	go test()
@@ -66,7 +66,7 @@ func initProfiling() {
 
 func initClient() {
 	var err error
-	client, err = rpc.NewClient(conf)
+	client, err = micro.NewClient(&conf.ClientConfig, &conf.Registry)
 	if err != nil {
 		panic(jerrors.ErrorStack(err))
 	}
@@ -108,28 +108,28 @@ func initSignal() {
 }
 
 func testJSON() {
-	ts := rpc_examples.TestService{}
-	testReq := rpc_examples.TestReq{"aaa", "bbb", "ccc"}
-	testRsp := rpc_examples.TestRsp{}
-	err := client.Call(rpc.CodecJson, "127.0.0.1:20000", ts.Service(), "Test", &testReq, &testRsp)
+	ts := micro_examples.TestService{}
+	testReq := micro_examples.TestReq{"aaa", "bbb", "ccc"}
+	testRsp := micro_examples.TestRsp{}
+	err := client.Call(nil, rpc.CodecJson, ts.Service(), ts.Version(), "Test", &testReq, &testRsp)
 	if err != nil {
 		log.Error("client.Call(Json, TestService::Test) = error:%s", jerrors.ErrorStack(err))
 		return
 	}
 	log.Info("TestService::Test(Json, param:%#v) = res:%s", testReq, testRsp)
 
-	addReq := rpc_examples.AddReq{1, 10}
-	addRsp := rpc_examples.AddRsp{}
-	err = client.Call(rpc.CodecJson, "127.0.0.1:10000", ts.Service(), "Add", &addReq, &addRsp)
+	addReq := micro_examples.AddReq{1, 10}
+	addRsp := micro_examples.AddRsp{}
+	err = client.Call(nil, rpc.CodecJson, ts.Service(), ts.Version(), "Add", &addReq, &addRsp)
 	if err != nil {
 		log.Error("client.Call(Json, TestService::Add) = error:%s", jerrors.ErrorStack(err))
 		return
 	}
 	log.Info("TestService::Add(Json, req:%#v) = res:%#v", addReq, addRsp)
 
-	errReq := rpc_examples.ErrReq{1}
-	errRsp := rpc_examples.ErrRsp{}
-	err = client.Call(rpc.CodecJson, "127.0.0.1:20000", ts.Service(), "Err", &errReq, &errRsp)
+	errReq := micro_examples.ErrReq{1}
+	errRsp := micro_examples.ErrRsp{}
+	err = client.Call(nil, rpc.CodecJson, ts.Service(), ts.Version(), "Err", &errReq, &errRsp)
 	if err != nil {
 		// error test case, this invocation should step into this branch.
 		log.Error("client.Call(Json, TestService::Err) = error:%s", jerrors.ErrorStack(err))
@@ -139,28 +139,28 @@ func testJSON() {
 }
 
 func testProtobuf() {
-	ts := rpc_examples.TestService{}
-	testReq := rpc_examples.TestReq{"aaa", "bbb", "ccc"}
-	testRsp := rpc_examples.TestRsp{}
-	err := client.Call(rpc.CodecProtobuf, "127.0.0.1:20000", ts.Service(), "Test", &testReq, &testRsp)
+	ts := micro_examples.TestService{}
+	testReq := micro_examples.TestReq{"aaa", "bbb", "ccc"}
+	testRsp := micro_examples.TestRsp{}
+	err := client.Call(nil, rpc.CodecProtobuf, ts.Service(), ts.Version(), "Test", &testReq, &testRsp)
 	if err != nil {
 		log.Error("client.Call(protobuf, TestService::Test) = error:%s", jerrors.ErrorStack(err))
 		return
 	}
 	log.Info("TestService::Test(protobuf, param:%#v) = res:%s", testReq, testRsp)
 
-	addReq := rpc_examples.AddReq{1, 10}
-	addRsp := rpc_examples.AddRsp{}
-	err = client.Call(rpc.CodecProtobuf, "127.0.0.1:10000", ts.Service(), "Add", &addReq, &addRsp)
+	addReq := micro_examples.AddReq{1, 10}
+	addRsp := micro_examples.AddRsp{}
+	err = client.Call(nil, rpc.CodecProtobuf, ts.Service(), ts.Version(), "Add", &addReq, &addRsp)
 	if err != nil {
 		log.Error("client.Call(protobuf, TestService::Add) = error:%s", jerrors.ErrorStack(err))
 		return
 	}
 	log.Info("TestService::Add(protobuf, req:%#v) = res:%#v", addReq, addRsp)
 
-	errReq := rpc_examples.ErrReq{1}
-	errRsp := rpc_examples.ErrRsp{}
-	err = client.Call(rpc.CodecProtobuf, "127.0.0.1:20000", ts.Service(), "Err", &errReq, &errRsp)
+	errReq := micro_examples.ErrReq{1}
+	errRsp := micro_examples.ErrRsp{}
+	err = client.Call(nil, rpc.CodecProtobuf, ts.Service(), ts.Version(), "Err", &errReq, &errRsp)
 	if err != nil {
 		// error test case, this invocation should step into this branch.
 		log.Error("client.Call(protobuf, TestService::Err) = error:%s", jerrors.ErrorStack(err))
@@ -170,8 +170,8 @@ func testProtobuf() {
 }
 
 func test() {
-	for i := 0; i < 5; i++ {
-		testJSON()
+	for i := 0; i < 1; i++ {
+		// testJSON()
 		testProtobuf()
 	}
 }

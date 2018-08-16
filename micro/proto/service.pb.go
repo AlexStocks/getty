@@ -2,7 +2,7 @@
 // source: service.proto
 
 /*
-	Package rpc_examples is a generated protocol buffer package.
+	Package micro_examples is a generated protocol buffer package.
 
 	It is generated from these files:
 		service.proto
@@ -15,7 +15,7 @@
 		ErrReq
 		ErrRsp
 */
-package rpc_examples
+package micro_examples
 
 import proto "github.com/gogo/protobuf/proto"
 import fmt "fmt"
@@ -90,12 +90,12 @@ func (*ErrRsp) ProtoMessage()               {}
 func (*ErrRsp) Descriptor() ([]byte, []int) { return fileDescriptorService, []int{5} }
 
 func init() {
-	proto.RegisterType((*TestReq)(nil), "rpc_examples.TestReq")
-	proto.RegisterType((*TestRsp)(nil), "rpc_examples.TestRsp")
-	proto.RegisterType((*AddReq)(nil), "rpc_examples.AddReq")
-	proto.RegisterType((*AddRsp)(nil), "rpc_examples.AddRsp")
-	proto.RegisterType((*ErrReq)(nil), "rpc_examples.ErrReq")
-	proto.RegisterType((*ErrRsp)(nil), "rpc_examples.ErrRsp")
+	proto.RegisterType((*TestReq)(nil), "micro_examples.TestReq")
+	proto.RegisterType((*TestRsp)(nil), "micro_examples.TestRsp")
+	proto.RegisterType((*AddReq)(nil), "micro_examples.AddReq")
+	proto.RegisterType((*AddRsp)(nil), "micro_examples.AddRsp")
+	proto.RegisterType((*ErrReq)(nil), "micro_examples.ErrReq")
+	proto.RegisterType((*ErrRsp)(nil), "micro_examples.ErrRsp")
 }
 func (this *TestReq) VerboseEqual(that interface{}) error {
 	if that == nil {
@@ -480,7 +480,7 @@ func (this *TestReq) GoString() string {
 		return "nil"
 	}
 	s := make([]string, 0, 7)
-	s = append(s, "&rpc_examples.TestReq{")
+	s = append(s, "&micro_examples.TestReq{")
 	s = append(s, "A: "+fmt.Sprintf("%#v", this.A)+",\n")
 	s = append(s, "B: "+fmt.Sprintf("%#v", this.B)+",\n")
 	s = append(s, "C: "+fmt.Sprintf("%#v", this.C)+",\n")
@@ -492,7 +492,7 @@ func (this *TestRsp) GoString() string {
 		return "nil"
 	}
 	s := make([]string, 0, 5)
-	s = append(s, "&rpc_examples.TestRsp{")
+	s = append(s, "&micro_examples.TestRsp{")
 	s = append(s, "A: "+fmt.Sprintf("%#v", this.A)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
@@ -502,7 +502,7 @@ func (this *AddReq) GoString() string {
 		return "nil"
 	}
 	s := make([]string, 0, 6)
-	s = append(s, "&rpc_examples.AddReq{")
+	s = append(s, "&micro_examples.AddReq{")
 	s = append(s, "A: "+fmt.Sprintf("%#v", this.A)+",\n")
 	s = append(s, "B: "+fmt.Sprintf("%#v", this.B)+",\n")
 	s = append(s, "}")
@@ -513,7 +513,7 @@ func (this *AddRsp) GoString() string {
 		return "nil"
 	}
 	s := make([]string, 0, 5)
-	s = append(s, "&rpc_examples.AddRsp{")
+	s = append(s, "&micro_examples.AddRsp{")
 	s = append(s, "Sum: "+fmt.Sprintf("%#v", this.Sum)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
@@ -523,7 +523,7 @@ func (this *ErrReq) GoString() string {
 		return "nil"
 	}
 	s := make([]string, 0, 5)
-	s = append(s, "&rpc_examples.ErrReq{")
+	s = append(s, "&micro_examples.ErrReq{")
 	s = append(s, "A: "+fmt.Sprintf("%#v", this.A)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
@@ -533,7 +533,7 @@ func (this *ErrRsp) GoString() string {
 		return "nil"
 	}
 	s := make([]string, 0, 5)
-	s = append(s, "&rpc_examples.ErrRsp{")
+	s = append(s, "&micro_examples.ErrRsp{")
 	s = append(s, "A: "+fmt.Sprintf("%#v", this.A)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")

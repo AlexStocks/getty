@@ -49,9 +49,13 @@ func initConf() {
 		return
 	}
 
-	conf = new(rpc.ClientConfig)
+	conf = &microConfig{}
 	config.MustLoadWithPath(confFile, conf)
-	if err := conf.CheckValidity(); err != nil {
+	if err := conf.ClientConfig.CheckValidity(); err != nil {
+		panic(jerrors.ErrorStack(err))
+		return
+	}
+	if err := conf.Registry.CheckValidity(); err != nil {
 		panic(jerrors.ErrorStack(err))
 		return
 	}

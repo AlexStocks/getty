@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ******************************************************
-# DESC    : getty rpc app devops script
+# DESC    : getty micro app devops script
 # AUTHOR  : Alex Stocks
 # VERSION : 1.0
 # LICENCE : LGPL V3

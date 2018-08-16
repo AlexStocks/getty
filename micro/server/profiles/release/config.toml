@@ -1,7 +1,7 @@
 # toml configure file
 # toml中key的首字母可以小写，但是对应的golang中的struct成员首字母必须大写
 
-AppName                 = "RPC-SERVER"
+AppName                 = "MICRO-SERVER"
 
 Host                    = "127.0.0.1"
 
@@ -30,4 +30,14 @@ FailFastTimeout         = "3s"
     TcpWriteTimeout     = "5s"
     WaitTimeout         = "1s"
     MaxMsgLen           = 1024
-    SessionName         = "getty-rpc-server"
+    SessionName         = "getty-micro-server"
+
+[Registry]
+    Type                = "zookeeper"
+    Addr                = "127.0.0.1:2181"
+    # 与 registry 之间的 lease 时长
+    KeepaliveTimeout    = 10
+    Root                = "/getty-root"
+    IDC                 = "bj-yizhuang"
+    NodeID              = "srv-node1"
+    Codec               = "protobuf"

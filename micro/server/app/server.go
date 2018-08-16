@@ -19,8 +19,8 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/getty-examples/rpc/proto"
-	"github.com/AlexStocks/getty/rpc"
+	"github.com/AlexStocks/getty-examples/micro/proto"
+	"github.com/AlexStocks/getty/micro"
 	"github.com/AlexStocks/goext/log"
 	"github.com/AlexStocks/goext/net"
 	log "github.com/AlexStocks/log4go"
@@ -32,7 +32,7 @@ const (
 )
 
 var (
-	server *rpc.Server
+	server *micro.Server
 )
 
 func main() {
@@ -64,12 +64,12 @@ func initProfiling() {
 
 func initServer() {
 	var err error
-	server, err = rpc.NewServer(conf)
+	server, err = micro.NewServer(&conf.ServerConfig, &conf.Registry)
 	if err != nil {
 		panic(jerrors.ErrorStack(err))
 		return
 	}
-	err = server.Register(&rpc_examples.TestService{})
+	err = server.Register(&micro_examples.TestService{})
 	if err != nil {
 		panic(jerrors.ErrorStack(err))
 		return

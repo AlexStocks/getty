@@ -1,4 +1,4 @@
-package rpc_examples
+package micro_examples
 
 import (
 	jerrors "github.com/juju/errors"
