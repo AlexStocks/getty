@@ -14,6 +14,10 @@
 ## develop history ##
 ---
 
+- 2018/08/16
+    > Feature
+    * Add gxpool.watcher filter
+
 - 2018/08/13
     > Feature
     * Add Micro

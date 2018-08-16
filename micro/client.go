@@ -7,7 +7,7 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/getty/rpc"
+	"github.com/AlexStocks/goext/context"
 	"github.com/AlexStocks/goext/database/filter"
 	"github.com/AlexStocks/goext/database/filter/pool"
 	"github.com/AlexStocks/goext/database/registry"
@@ -16,6 +16,10 @@ import (
 	"github.com/AlexStocks/goext/net"
 
 	jerrors "github.com/juju/errors"
+)
+
+import (
+	"github.com/AlexStocks/getty/rpc"
 )
 
 type ClientOption func(*ClientOptions)
@@ -78,8 +82,16 @@ func NewClient(conf *rpc.ClientConfig, regConf *RegistryConfig, opts ...ClientOp
 		return nil, jerrors.Trace(err)
 	}
 
+	serviceAttrFilter := gxregistry.ServiceAttr{
+		Group: regConf.IDC,
+		Role:  gxregistry.SRT_Provider,
+	}
+	gxctx := gxcontext.NewValuesContext(nil)
+	gxctx.Set(gxpool.GxfilterServiceAttrKey, serviceAttrFilter)
+
 	if filter, err = gxpool.NewFilter(
 		gxfilter.WithRegistry(registry),
+		gxfilter.WithContext(gxctx),
 		gxpool.WithTTL(time.Duration(1e9*regConf.KeepaliveTimeout)),
 	); err != nil {
 		return nil, jerrors.Trace(err)
@@ -106,7 +118,11 @@ func NewClient(conf *rpc.ClientConfig, regConf *RegistryConfig, opts ...ClientOp
 	clt := &Client{
 		Client:   rpcClient,
 		registry: registry,
-		filter:   filter,
+		attr: gxregistry.ServiceAttr{
+			Group: regConf.IDC,
+		},
+		filter: filter,
+		svcMap: make(map[gxregistry.ServiceAttr]*gxfilter.ServiceArray),
 	}
 
 	for _, o := range opts {
@@ -117,11 +133,13 @@ func NewClient(conf *rpc.ClientConfig, regConf *RegistryConfig, opts ...ClientOp
 }
 
 func (c *Client) Call(ctx context.Context, typ rpc.CodecType,
-	service, method string, args interface{}, reply interface{}) error {
+	service, version, method string, args interface{}, reply interface{}) error {
 
 	attr := c.attr
 	attr.Service = service
 	attr.Protocol = typ.String()
+	attr.Role = gxregistry.SRT_Provider
+	attr.Version = version
 
 	flag := false
 	svcArray, ok := c.svcMap[attr]
