@@ -16,21 +16,32 @@ You can get code example in https://github.com/AlexStocks/getty-examples.
 
 ## RPC
 
-A open source, Go based, RPC framework.
+An open source, Go based, RPC framework.
 
 Feature list:
 
 - 1 Transport: TCP(√), UDP(X), Websocket(X)
 - 2 Codec: ProtoBuf(√), JSON(√)
-- 3 Service Discovery: Service Publish(X), Service Watch(X), Service Notify(X)
-- 4 Registry: ZooKeeper(X), Etcd(X)
-- 5 Strategy: Failover(√), Failfast(√)
-- 6 Load Balance: Random(X), RoundRobin(X)
-- 7 Metrics: Invoke Statistics(X), User Auth(X)
+- 3 Strategy: Failover(√), Failfast(√)
+- 4 Metrics: Invoke Statistics(X), User Auth(X)
 
 Code example:
 
 The subdirectory rpc of [getty-examples](https://github.com/alexstocks/getty-examples/) shows how to build rpc client/rpc server.
+
+## Micro
+
+An micro service framework based on getty/rpc.
+
+Feature list:
+
+- 1 Registry: ZooKeeper(√), Etcd(√)
+- 2 Load Balance: Random(X), RoundRobin(√)
+- 3 Service Discovery: Service Publish(√), Service Watch(√), Service Notify(√)
+
+Code example:
+
+The subdirectory micro of [getty-examples](https://github.com/alexstocks/getty-examples/) shows how to build micro client/rpc server.
 
 ## LICENCE
 
