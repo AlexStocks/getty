@@ -272,7 +272,7 @@ func (p *GettyPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
 		return 0, ErrTooLargePackage
 	}
 
-	if bufLen >= totalLen {
+	if bufLen >= totalLen && p.H.PkgLen != 0 {
 		if err := p.B.Unmarshal(p.H.CodecType, bytes.NewBuffer(buf.Next(int(p.H.PkgLen)))); err != nil {
 			return 0, jerrors.Trace(err)
 		}
@@ -345,7 +345,7 @@ func (req *GettyRPCRequest) Marshal(sz CodecType, buf *bytes.Buffer) (int, error
 	return 2 + len(headerData) + 2 + len(bodyData), nil
 }
 
-func (req *GettyRPCRequest) Unmarshal(sz CodecType, buf *bytes.Buffer) error {
+func (req *GettyRPCRequest) Unmarshal(ct CodecType, buf *bytes.Buffer) error {
 	var headerLen uint16
 	err := binary.Read(buf, binary.LittleEndian, &headerLen)
 	if err != nil {
@@ -370,9 +370,9 @@ func (req *GettyRPCRequest) Unmarshal(sz CodecType, buf *bytes.Buffer) error {
 		return jerrors.Trace(err)
 	}
 
-	codec := Codecs[sz]
+	codec := Codecs[ct]
 	if codec == nil {
-		return jerrors.Errorf("can not find codec for %d", sz)
+		return jerrors.Errorf("can not find codec for %d", ct)
 	}
 
 	err = codec.Decode(header, &req.header)
