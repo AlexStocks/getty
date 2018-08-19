@@ -11,6 +11,7 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path"
 )
@@ -18,9 +19,10 @@ import (
 import (
 	"github.com/AlexStocks/getty/micro"
 	"github.com/AlexStocks/getty/rpc"
+	"github.com/AlexStocks/goext/log"
 	log "github.com/AlexStocks/log4go"
 	jerrors "github.com/juju/errors"
-	config "github.com/koding/multiconfig"
+	"gopkg.in/yaml.v2"
 )
 
 const (
@@ -29,8 +31,8 @@ const (
 )
 
 type microConfig struct {
-	rpc.ServerConfig
-	Registry micro.RegistryConfig
+	rpc.ServerConfig `yaml:"core" json:"core, omitempty"`
+	Registry         micro.ProviderRegistryConfig `yaml:"registry" json:"registry, omitempty"`
 }
 
 var (
@@ -44,12 +46,25 @@ func initConf() {
 		panic(fmt.Sprintf("application configure file name is nil"))
 		return // I know it is of no usage. Just Err Protection.
 	}
-	if path.Ext(confFile) != ".toml" {
-		panic(fmt.Sprintf("application configure file name{%v} suffix must be .toml", confFile))
+	if path.Ext(confFile) != ".yml" {
+		panic(fmt.Sprintf("application configure file name{%v} suffix must be .yml", confFile))
 		return
 	}
 	conf = &microConfig{}
-	config.MustLoadWithPath(confFile, conf)
+
+	confFileStream, err := ioutil.ReadFile(confFile)
+	if err != nil {
+		panic(fmt.Sprintf("ioutil.ReadFile(file:%s) = error:%s", confFile, jerrors.ErrorStack(err)))
+		return
+	}
+	err = yaml.Unmarshal(confFileStream, conf)
+	if err != nil {
+		panic(fmt.Sprintf("yaml.Unmarshal() = error:%s", jerrors.ErrorStack(err)))
+		return
+	}
+
+	gxlog.CError("conf:%#v", conf)
+
 	if err := conf.ServerConfig.CheckValidity(); err != nil {
 		panic(jerrors.ErrorStack(err))
 		return
@@ -58,8 +73,7 @@ func initConf() {
 		panic(jerrors.ErrorStack(err))
 		return
 	}
-	
-	
+
 	// log
 	confFile = os.Getenv(APP_LOG_CONF_FILE)
 	if confFile == "" {

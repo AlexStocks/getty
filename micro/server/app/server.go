@@ -21,7 +21,6 @@ import (
 import (
 	"github.com/AlexStocks/getty-examples/micro/proto"
 	"github.com/AlexStocks/getty/micro"
-	"github.com/AlexStocks/goext/log"
 	"github.com/AlexStocks/goext/net"
 	log "github.com/AlexStocks/log4go"
 	jerrors "github.com/juju/errors"
@@ -41,8 +40,6 @@ func main() {
 	initProfiling()
 
 	initServer()
-	gxlog.CInfo("%s starts successfull! its version=%s, its listen ends=%s:%s\n",
-		conf.AppName, Version, conf.Host, conf.Ports)
 	log.Info("%s starts successfull! its version=%s, its listen ends=%s:%s\n",
 		conf.AppName, Version, conf.Host, conf.Ports)
 

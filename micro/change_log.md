@@ -1,6 +1,6 @@
-# rpc #
+# Micro #
 ---
-*getty rpc examples*
+*getty micro examples*
 
 ## LICENSE ##
 ---
@@ -10,6 +10,10 @@
 ## develop history ##
 ---
 
-- 2018/08/06
+- 2018/08/19
+    > Feature
+    * use multiple service config
+
+- 2018/08/13
     > Init
     * add client/server
