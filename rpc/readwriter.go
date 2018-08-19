@@ -39,13 +39,12 @@ func (p *RpcServerPackageHandler) Read(ss getty.Session, data []byte) (interface
 		return nil, 0, jerrors.Trace(err)
 	}
 
-	req := GettyRPCRequestPackage{
-		H:      pkg.H,
-		header: pkg.B.GetHeader().(GettyRPCRequestHeader),
-	}
-	if req.H.Command == gettyCmdHbRequest {
+	req := GettyRPCRequestPackage{H: pkg.H}
+	if pkg.H.Command == gettyCmdHbRequest {
 		return req, length, nil
 	}
+	req.header = pkg.B.GetHeader().(GettyRPCRequestHeader)
+
 	// get service & method
 	req.service = p.server.serviceMap[req.header.Service]
 	if req.service != nil {

@@ -14,6 +14,12 @@
 ## develop history ##
 ---
 
+- 2018/08/19
+    > Feature
+    * use multiple service config in service configuration
+    * do not register consumer
+    * version: v1.0.2
+
 - 2018/08/16
     > Feature
     * Add gxpool.watcher filter

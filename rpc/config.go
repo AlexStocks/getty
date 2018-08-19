@@ -32,7 +32,7 @@ type (
 	// Config holds supported types by the multiconfig package
 	ServerConfig struct {
 		// local address
-		AppName     string   `default:"rcp-server" yaml:"app_name" json:"app_name,omitempty"`
+		AppName     string   `default:"rpc-server" yaml:"app_name" json:"app_name,omitempty"`
 		Host        string   `default:"127.0.0.1" yaml:"host" json:"host,omitempty"`
 		Ports       []string `yaml:"ports" json:"ports,omitempty"` // `default:["10000"]`
 		ProfilePort int      `default:"10086" yaml:"profile_port" json:"profile_port,omitempty"`
@@ -53,12 +53,12 @@ type (
 	// Config holds supported types by the multiconfig package
 	ClientConfig struct {
 		// local address
-		AppName     string `default:"rcp-client" yaml:"app_name" json:"app_name,omitempty"`
+		AppName     string `default:"rpc-client" yaml:"app_name" json:"app_name,omitempty"`
 		Host        string `default:"127.0.0.1" yaml:"host" json:"host,omitempty"`
 		ProfilePort int    `default:"10086" yaml:"profile_port" json:"profile_port,omitempty"`
 
 		// session pool
-		ConnectionNum int `default:"16" yaml:"connection_num" json:"connection_num,omitempty"`
+		ConnectionNum int `default:"16" yaml:"connection_number" json:"connection_number,omitempty"`
 
 		// heartbeat
 		HeartbeatPeriod string `default:"15s" yaml:"heartbeat_period" json:"heartbeat_period,omitempty"`

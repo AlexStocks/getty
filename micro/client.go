@@ -45,7 +45,7 @@ type Client struct {
 }
 
 // NewServer initialize a micro service consumer
-func NewClient(conf *rpc.ClientConfig, regConf *RegistryConfig, opts ...ClientOption) (*Client, error) {
+func NewClient(conf *rpc.ClientConfig, regConf *ConsumerRegistryConfig, opts ...ClientOption) (*Client, error) {
 	var (
 		err       error
 		rpcClient *rpc.Client
@@ -61,17 +61,17 @@ func NewClient(conf *rpc.ClientConfig, regConf *RegistryConfig, opts ...ClientOp
 		return nil, jerrors.Trace(err)
 	}
 
-	addrList := strings.Split(regConf.Addr, ",")
+	regAddrList := strings.Split(regConf.RegAddr, ",")
 	switch regConf.Type {
 	case "etcd":
 		registry, err = gxetcd.NewRegistry(
-			gxregistry.WithAddrs(addrList...),
+			gxregistry.WithAddrs(regAddrList...),
 			gxregistry.WithTimeout(time.Duration(1e9*regConf.KeepaliveTimeout)),
 			gxregistry.WithRoot(regConf.Root),
 		)
 	case "zookeeper":
 		registry, err = gxzookeeper.NewRegistry(
-			gxregistry.WithAddrs(addrList...),
+			gxregistry.WithAddrs(regAddrList...),
 			gxregistry.WithTimeout(time.Duration(1e9*regConf.KeepaliveTimeout)),
 			gxregistry.WithRoot(regConf.Root),
 		)
@@ -83,8 +83,7 @@ func NewClient(conf *rpc.ClientConfig, regConf *RegistryConfig, opts ...ClientOp
 	}
 
 	serviceAttrFilter := gxregistry.ServiceAttr{
-		Group: regConf.IDC,
-		Role:  gxregistry.SRT_Provider,
+		Role: gxregistry.SRT_Provider,
 	}
 	gxctx := gxcontext.NewValuesContext(nil)
 	gxctx.Set(gxpool.GxfilterServiceAttrKey, serviceAttrFilter)
@@ -97,29 +96,29 @@ func NewClient(conf *rpc.ClientConfig, regConf *RegistryConfig, opts ...ClientOp
 		return nil, jerrors.Trace(err)
 	}
 
-	service := gxregistry.Service{
-		Attr: &gxregistry.ServiceAttr{
-			Group:    regConf.IDC,
-			Role:     gxregistry.SRT_Consumer,
-			Protocol: regConf.Codec,
-		},
-		Nodes: []*gxregistry.Node{
-			&gxregistry.Node{
-				ID:      regConf.NodeID,
-				Address: conf.Host,
-				// Port:    0,
-			},
-		},
-	}
-	if err = registry.Register(service); err != nil {
-		return nil, jerrors.Trace(err)
-	}
+	// service := gxregistry.Service{
+	// 	Attr: &gxregistry.ServiceAttr{
+	// 		Group:    regConf.IDC,
+	// 		Role:     gxregistry.SRT_Consumer,
+	// 		Protocol: regConf.Codec,
+	// 	},
+	// 	Nodes: []*gxregistry.Node{
+	// 		&gxregistry.Node{
+	// 			ID:      regConf.NodeID,
+	// 			Address: conf.Host,
+	// 			// Port:    0,
+	// 		},
+	// 	},
+	// }
+	// if err = registry.Register(service); err != nil {
+	// 	return nil, jerrors.Trace(err)
+	// }
 
 	clt := &Client{
 		Client:   rpcClient,
 		registry: registry,
 		attr: gxregistry.ServiceAttr{
-			Group: regConf.IDC,
+			Group: regConf.Group,
 		},
 		filter: filter,
 		svcMap: make(map[gxregistry.ServiceAttr]*gxfilter.ServiceArray),

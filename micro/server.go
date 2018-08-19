@@ -2,6 +2,8 @@ package micro
 
 import (
 	"github.com/AlexStocks/goext/net"
+	"github.com/AlexStocks/goext/strings"
+	"net"
 	"strconv"
 	"strings"
 	"time"
@@ -19,19 +21,17 @@ import (
 type Server struct {
 	*rpc.Server
 	// registry
-	regConf  RegistryConfig
+	regConf  ProviderRegistryConfig
 	registry gxregistry.Registry
-	attr     gxregistry.ServiceAttr
 	nodes    []*gxregistry.Node
 }
 
 // NewServer initialize a micro service provider
-func NewServer(conf *rpc.ServerConfig, regConf *RegistryConfig) (*Server, error) {
+func NewServer(conf *rpc.ServerConfig, regConf *ProviderRegistryConfig) (*Server, error) {
 	var (
 		err       error
 		rpcServer *rpc.Server
 		registry  gxregistry.Registry
-		nodes     []*gxregistry.Node
 	)
 
 	if err = regConf.CheckValidity(); err != nil {
@@ -42,17 +42,17 @@ func NewServer(conf *rpc.ServerConfig, regConf *RegistryConfig) (*Server, error)
 		return nil, jerrors.Trace(err)
 	}
 
-	addrList := strings.Split(regConf.Addr, ",")
+	regAddrList := strings.Split(regConf.RegAddr, ",")
 	switch regConf.Type {
 	case "etcd":
 		registry, err = gxetcd.NewRegistry(
-			gxregistry.WithAddrs(addrList...),
+			gxregistry.WithAddrs(regAddrList...),
 			gxregistry.WithTimeout(time.Duration(1e9*regConf.KeepaliveTimeout)),
 			gxregistry.WithRoot(regConf.Root),
 		)
 	case "zookeeper":
 		registry, err = gxzookeeper.NewRegistry(
-			gxregistry.WithAddrs(addrList...),
+			gxregistry.WithAddrs(regAddrList...),
 			gxregistry.WithTimeout(time.Duration(1e9*regConf.KeepaliveTimeout)),
 			gxregistry.WithRoot(regConf.Root),
 		)
@@ -63,47 +63,70 @@ func NewServer(conf *rpc.ServerConfig, regConf *RegistryConfig) (*Server, error)
 		return nil, jerrors.Trace(err)
 	}
 
+	var localAddrArr []string
 	for _, p := range conf.Ports {
 		port, err := strconv.Atoi(p)
 		if err != nil {
+			return nil, jerrors.Trace(err)
+		}
+
+		if port <= 0 || 65535 < port {
 			return nil, jerrors.Errorf("illegal port %s", p)
 		}
 
-		nodes = append(nodes,
-			&gxregistry.Node{
-				// use host port as part of NodeID to defeat the case: on process listens on many ports
-				ID:      regConf.NodeID + "@" + gxnet.HostAddress(conf.Host, port),
-				Address: conf.Host,
-				Port:    int32(port),
-			},
-		)
+		localAddrArr = append(localAddrArr, net.JoinHostPort(conf.Host, p))
+	}
+
+	for _, svr := range regConf.ServiceArray {
+		addr := gxnet.HostAddress(svr.LocalHost, svr.LocalPort)
+		if ok := gxstrings.Contains(localAddrArr, addr); !ok {
+			return nil, jerrors.Errorf("can not find ServiceConfig addr %s in conf address array %#v",
+				addr, localAddrArr)
+		}
 	}
 
 	return &Server{
 		Server:   rpcServer,
 		regConf:  *regConf,
 		registry: registry,
-		nodes:    nodes,
-
-		attr: gxregistry.ServiceAttr{
-			Group:    regConf.IDC,
-			Role:     gxregistry.SRT_Provider,
-			Protocol: regConf.Codec,
-		},
 	}, nil
 }
 
 // Register the @rcvr
 func (s *Server) Register(rcvr rpc.GettyRPCService) error {
-	if err := s.Server.Register(rcvr); err != nil {
-		return jerrors.Trace(err)
-	}
+	var (
+		flag bool
+		attr gxregistry.ServiceAttr
+	)
 
-	attr := s.attr
+	attr.Role = gxregistry.SRT_Provider
 	attr.Service = rcvr.Service()
 	attr.Version = rcvr.Version()
-	service := gxregistry.Service{Attr: &attr, Nodes: s.nodes}
-	if err := s.registry.Register(service); err != nil {
+	for _, c := range s.regConf.ServiceArray {
+		if c.Service == rcvr.Service() && c.Version == rcvr.Version() {
+			flag = true
+			attr.Group = c.Group
+			attr.Protocol = c.Protocol
+
+			service := gxregistry.Service{Attr: &attr}
+			service.Nodes = append(service.Nodes,
+				&gxregistry.Node{
+					ID:      c.NodeID,
+					Address: c.LocalHost,
+					Port:    int32(c.LocalPort),
+				},
+			)
+			if err := s.registry.Register(service); err != nil {
+				return jerrors.Trace(err)
+			}
+		}
+	}
+	if !flag {
+		return jerrors.Errorf("can not find @rcvr{service:%s, version:%s} in registry config:%#v",
+			rcvr.Service(), rcvr.Version(), s.regConf)
+	}
+
+	if err := s.Server.Register(rcvr); err != nil {
 		return jerrors.Trace(err)
 	}
 

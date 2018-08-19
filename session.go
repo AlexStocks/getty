@@ -618,7 +618,7 @@ func (s *session) handleTCPPackage() error {
 			break
 		}
 		if 0 == bufLen {
-			continue // just continue if connection has read no more stream bytes.
+			continue // just continue if session can not read no more stream bytes.
 		}
 		pktBuf.Write(buf[:bufLen])
 		for {
@@ -628,7 +628,7 @@ func (s *session) handleTCPPackage() error {
 			// pkg, err = s.pkgHandler.Read(s, pktBuf)
 			pkg, pkgLen, err = s.reader.Read(s, pktBuf.Bytes())
 			if err == nil && s.maxMsgLen > 0 && pkgLen > int(s.maxMsgLen) {
-				err = jerrors.Errorf("Message Too Long, pkgLen %d, session max message len %d", pkgLen, s.maxMsgLen)
+				err = jerrors.Errorf("pkgLen %d > session max message len %d", pkgLen, s.maxMsgLen)
 			}
 			if err != nil {
 				log.Warn("%s, [session.handleTCPPackage] = len{%d}, error{%s}",
