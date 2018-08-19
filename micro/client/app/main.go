@@ -171,7 +171,9 @@ func testProtobuf() {
 
 func test() {
 	for i := 0; i < 1; i++ {
-		// testJSON()
+		log.Debug("start to test json:")
+		testJSON()
+		log.Debug("start to test pb:")
 		testProtobuf()
 	}
 }
