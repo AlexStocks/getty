@@ -13,6 +13,7 @@
 - 2018/08/19
     > Feature
     * use multiple service config
+    * Config using yml file instead toml
 
 - 2018/08/13
     > Init

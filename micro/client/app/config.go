@@ -11,6 +11,7 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"os"
 	"path"
 )
@@ -20,7 +21,7 @@ import (
 	"github.com/AlexStocks/getty/rpc"
 	log "github.com/AlexStocks/log4go"
 	jerrors "github.com/juju/errors"
-	config "github.com/koding/multiconfig"
+	"gopkg.in/yaml.v2"
 )
 
 const (
@@ -29,8 +30,8 @@ const (
 )
 
 type microConfig struct {
-	rpc.ClientConfig
-	Registry micro.RegistryConfig
+	rpc.ClientConfig `yaml:"core" json:"core, omitempty"`
+	Registry         micro.ConsumerRegistryConfig `yaml:"registry" json:"registry, omitempty"`
 }
 
 var (
@@ -44,13 +45,24 @@ func initConf() {
 		panic(fmt.Sprintf("application configure file name is nil"))
 		return // I know it is of no usage. Just Err Protection.
 	}
-	if path.Ext(confFile) != ".toml" {
+	if path.Ext(confFile) != ".yml" {
 		panic(fmt.Sprintf("application configure file name{%v} suffix must be .toml", confFile))
 		return
 	}
 
 	conf = &microConfig{}
-	config.MustLoadWithPath(confFile, conf)
+
+	confFileStream, err := ioutil.ReadFile(confFile)
+	if err != nil {
+		panic(fmt.Sprintf("ioutil.ReadFile(file:%s) = error:%s", confFile, jerrors.ErrorStack(err)))
+		return
+	}
+	err = yaml.Unmarshal(confFileStream, conf)
+	if err != nil {
+		panic(fmt.Sprintf("yaml.Unmarshal() = error:%s", jerrors.ErrorStack(err)))
+		return
+	}
+
 	if err := conf.ClientConfig.CheckValidity(); err != nil {
 		panic(jerrors.ErrorStack(err))
 		return

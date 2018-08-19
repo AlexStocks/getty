@@ -19,7 +19,6 @@ import (
 import (
 	"github.com/AlexStocks/getty/micro"
 	"github.com/AlexStocks/getty/rpc"
-	"github.com/AlexStocks/goext/log"
 	log "github.com/AlexStocks/log4go"
 	jerrors "github.com/juju/errors"
 	"gopkg.in/yaml.v2"
@@ -62,8 +61,6 @@ func initConf() {
 		panic(fmt.Sprintf("yaml.Unmarshal() = error:%s", jerrors.ErrorStack(err)))
 		return
 	}
-
-	gxlog.CError("conf:%#v", conf)
 
 	if err := conf.ServerConfig.CheckValidity(); err != nil {
 		panic(jerrors.ErrorStack(err))
