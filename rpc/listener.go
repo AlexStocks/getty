@@ -169,10 +169,10 @@ func (h *RpcServerHandler) callService(session getty.Session, req GettyRPCReques
 ////////////////////////////////////////////
 
 type RpcClientHandler struct {
-	conn *gettyRPCClientConn
+	conn *gettyRPCClient
 }
 
-func NewRpcClientHandler(client *gettyRPCClientConn) *RpcClientHandler {
+func NewRpcClientHandler(client *gettyRPCClient) *RpcClientHandler {
 	return &RpcClientHandler{conn: client}
 }
 

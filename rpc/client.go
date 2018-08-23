@@ -26,7 +26,7 @@ func init() {
 
 type Client struct {
 	conf     ClientConfig
-	pool     *gettyRPCClientConnPool
+	pool     *gettyRPCClientPool
 	sequence gxatomic.Uint64
 
 	pendingLock      sync.RWMutex
@@ -67,7 +67,7 @@ func (c *Client) Call(typ CodecType, addr, service, method string, args interfac
 	var (
 		err     error
 		session getty.Session
-		conn    *gettyRPCClientConn
+		conn    *gettyRPCClient
 	)
 	conn, session, err = c.selectSession(typ, addr)
 	if err != nil || session == nil {
@@ -97,7 +97,7 @@ func (c *Client) Close() {
 	c.pool = nil
 }
 
-func (c *Client) selectSession(typ CodecType, addr string) (*gettyRPCClientConn, getty.Session, error) {
+func (c *Client) selectSession(typ CodecType, addr string) (*gettyRPCClient, getty.Session, error) {
 	rpcConn, err := c.pool.getConn(typ.String(), addr)
 	if err != nil {
 		return nil, nil, jerrors.Trace(err)

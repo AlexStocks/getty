@@ -15,13 +15,13 @@ import (
 	jerrors "github.com/juju/errors"
 )
 
-type gettyRPCClientConn struct {
+type gettyRPCClient struct {
 	once     sync.Once
 	protocol string
 	addr     string
 	created  int64 // 为0，则说明没有被创建或者被销毁了
 
-	pool *gettyRPCClientConnPool
+	pool *gettyRPCClientPool
 
 	lock        sync.RWMutex
 	gettyClient getty.Client
@@ -32,8 +32,8 @@ var (
 	errClientPoolClosed = jerrors.New("client pool closed")
 )
 
-func newGettyRPCClientConn(pool *gettyRPCClientConnPool, protocol, addr string) (*gettyRPCClientConn, error) {
-	c := &gettyRPCClientConn{
+func newGettyRPCClientConn(pool *gettyRPCClientPool, protocol, addr string) (*gettyRPCClient, error) {
+	c := &gettyRPCClient{
 		protocol: protocol,
 		addr:     addr,
 		pool:     pool,
@@ -61,7 +61,7 @@ func newGettyRPCClientConn(pool *gettyRPCClientConnPool, protocol, addr string) 
 	return c, nil
 }
 
-func (c *gettyRPCClientConn) newSession(session getty.Session) error {
+func (c *gettyRPCClient) newSession(session getty.Session) error {
 	var (
 		ok      bool
 		tcpConn *net.TCPConn
@@ -100,7 +100,7 @@ func (c *gettyRPCClientConn) newSession(session getty.Session) error {
 	return nil
 }
 
-func (c *gettyRPCClientConn) selectSession() getty.Session {
+func (c *gettyRPCClient) selectSession() getty.Session {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
@@ -115,7 +115,7 @@ func (c *gettyRPCClientConn) selectSession() getty.Session {
 	return c.sessions[rand.Int31n(int32(count))].session
 }
 
-func (c *gettyRPCClientConn) addSession(session getty.Session) {
+func (c *gettyRPCClient) addSession(session getty.Session) {
 	log.Debug("add session{%s}", session.Stat())
 	if session == nil {
 		return
@@ -126,7 +126,7 @@ func (c *gettyRPCClientConn) addSession(session getty.Session) {
 	c.lock.Unlock()
 }
 
-func (c *gettyRPCClientConn) removeSession(session getty.Session) {
+func (c *gettyRPCClient) removeSession(session getty.Session) {
 	if session == nil {
 		return
 	}
@@ -150,7 +150,7 @@ func (c *gettyRPCClientConn) removeSession(session getty.Session) {
 	}
 }
 
-func (c *gettyRPCClientConn) updateSession(session getty.Session) {
+func (c *gettyRPCClient) updateSession(session getty.Session) {
 	if session == nil {
 		return
 	}
@@ -168,7 +168,7 @@ func (c *gettyRPCClientConn) updateSession(session getty.Session) {
 	}
 }
 
-func (c *gettyRPCClientConn) getClientRpcSession(session getty.Session) (rpcSession, error) {
+func (c *gettyRPCClient) getClientRpcSession(session getty.Session) (rpcSession, error) {
 	var (
 		err        error
 		rpcSession rpcSession
@@ -191,7 +191,7 @@ func (c *gettyRPCClientConn) getClientRpcSession(session getty.Session) (rpcSess
 	return rpcSession, jerrors.Trace(err)
 }
 
-func (c *gettyRPCClientConn) isAvailable() bool {
+func (c *gettyRPCClient) isAvailable() bool {
 	if c.selectSession() == nil {
 		return false
 	}
@@ -199,8 +199,8 @@ func (c *gettyRPCClientConn) isAvailable() bool {
 	return true
 }
 
-func (c *gettyRPCClientConn) close() error {
-	err := jerrors.Errorf("close gettyRPCClientConn{%#v} again", c)
+func (c *gettyRPCClient) close() error {
+	err := jerrors.Errorf("close gettyRPCClient{%#v} again", c)
 	c.once.Do(func() {
 		// delete @c from client pool
 		c.pool.remove(c)
@@ -219,25 +219,25 @@ func (c *gettyRPCClientConn) close() error {
 	return err
 }
 
-type gettyRPCClientConnPool struct {
+type gettyRPCClientPool struct {
 	rpcClient *Client
-	size      int   // []*gettyRPCClientConn数组的size
-	ttl       int64 // 每个gettyRPCClientConn的有效期时间. pool对象会在getConn时执行ttl检查
+	size      int   // []*gettyRPCClient数组的size
+	ttl       int64 // 每个gettyRPCClient的有效期时间. pool对象会在getConn时执行ttl检查
 
 	sync.Mutex
-	connMap map[string][]*gettyRPCClientConn // 从[]*gettyRPCClientConn 可见key是连接地址，而value是对应这个地址的连接数组
+	connMap map[string][]*gettyRPCClient // 从[]*gettyRPCClient 可见key是连接地址，而value是对应这个地址的连接数组
 }
 
-func newGettyRPCClientConnPool(rpcClient *Client, size int, ttl time.Duration) *gettyRPCClientConnPool {
-	return &gettyRPCClientConnPool{
+func newGettyRPCClientConnPool(rpcClient *Client, size int, ttl time.Duration) *gettyRPCClientPool {
+	return &gettyRPCClientPool{
 		rpcClient: rpcClient,
 		size:      size,
 		ttl:       int64(ttl.Seconds()),
-		connMap:   make(map[string][]*gettyRPCClientConn),
+		connMap:   make(map[string][]*gettyRPCClient),
 	}
 }
 
-func (p *gettyRPCClientConnPool) close() {
+func (p *gettyRPCClientPool) close() {
 	p.Lock()
 	connMap := p.connMap
 	p.connMap = nil
@@ -249,7 +249,7 @@ func (p *gettyRPCClientConnPool) close() {
 	}
 }
 
-func (p *gettyRPCClientConnPool) getConn(protocol, addr string) (*gettyRPCClientConn, error) {
+func (p *gettyRPCClientPool) getConn(protocol, addr string) (*gettyRPCClient, error) {
 	var builder strings.Builder
 
 	builder.WriteString(addr)
@@ -284,7 +284,7 @@ func (p *gettyRPCClientConnPool) getConn(protocol, addr string) (*gettyRPCClient
 	return newGettyRPCClientConn(p, protocol, addr)
 }
 
-func (p *gettyRPCClientConnPool) release(conn *gettyRPCClientConn, err error) {
+func (p *gettyRPCClientPool) release(conn *gettyRPCClient, err error) {
 	if conn == nil || conn.created == 0 {
 		return
 	}
@@ -316,7 +316,7 @@ func (p *gettyRPCClientConnPool) release(conn *gettyRPCClientConn, err error) {
 	p.connMap[key] = append(connArray, conn)
 }
 
-func (p *gettyRPCClientConnPool) remove(conn *gettyRPCClientConn) {
+func (p *gettyRPCClientPool) remove(conn *gettyRPCClient) {
 	if conn == nil || conn.created == 0 {
 		return
 	}
