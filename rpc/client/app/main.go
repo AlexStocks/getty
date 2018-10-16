@@ -113,14 +113,14 @@ func testJSON() {
 	ts := rpc_examples.TestService{}
 	testReq := rpc_examples.TestReq{"aaa", "bbb", "ccc"}
 	testRsp := rpc_examples.TestRsp{}
-  addr := net.JoinHostPort(conf.ServerHost, strconv.Itoa(conf.ServerPort))
-  
-	eventReq := rpc_examples.EventReq{A:"hello"}
-	err := client.Notify(rpc.CodecJson, addr, ts.Service(), "Event", &eventReq,
+	addr := net.JoinHostPort(conf.ServerHost, strconv.Itoa(conf.ServerPort))
+
+	eventReq := rpc_examples.EventReq{A: "hello"}
+	err := client.CallOneway(rpc.CodecJson, addr, ts.Service(), "Event", &eventReq,
 		rpc.CallRequestTimeout(100e6), rpc.CallResponseTimeout(100e6))
 	if err != nil {
-		log.Error("client.Call(Json, TestService::Event) = error:%s", jerrors.ErrorStack(err))
-	  return
+		log.Error("client.CallOneway(Json, TestService::Event) = error:%s", jerrors.ErrorStack(err))
+		return
 	}
 	log.Info("TestService::Event(Json, req:%#v)", eventReq)
 
@@ -154,18 +154,59 @@ func testJSON() {
 	log.Info("TestService::Err(Json, req:%#v) = res:%s", errReq, errRsp)
 }
 
+func Callback(rsp rpc.AsyncResponse) {
+	log.Info("method:%s, cost time span:%s, error:%s, reply:%#v",
+		rsp.Opts.Meta["hello"].(string),
+		time.Since(rsp.Start),
+		jerrors.ErrorStack(rsp.Cause),
+		rsp.Reply)
+}
+
+func testAsyncJSON() {
+	ts := rpc_examples.TestService{}
+	testReq := rpc_examples.TestReq{"aaa", "bbb", "ccc"}
+	testRsp := rpc_examples.TestRsp{}
+	addr := net.JoinHostPort(conf.ServerHost, strconv.Itoa(conf.ServerPort))
+
+	err := client.AsyncCall(rpc.CodecJson, addr, ts.Service(), "Test", &testReq, Callback, &testRsp,
+		rpc.CallRequestTimeout(100e6), rpc.CallResponseTimeout(100e6), rpc.CallMeta("hello", "Service::Test::Json"))
+	if err != nil {
+		log.Error("client.AsyncCall(Json, TestService::Test) = error:%s", jerrors.ErrorStack(err))
+		return
+	}
+
+	addReq := rpc_examples.AddReq{1, 10}
+	addRsp := rpc_examples.AddRsp{}
+	err = client.AsyncCall(rpc.CodecJson, addr, ts.Service(), "Add", &addReq, Callback, &addRsp,
+		rpc.CallRequestTimeout(100e6), rpc.CallResponseTimeout(100e6), rpc.CallMeta("hello", "Service::Add::Json"))
+	if err != nil {
+		log.Error("client.AsyncCall(Json, TestService::Add) = error:%s", jerrors.ErrorStack(err))
+		return
+	}
+
+	errReq := rpc_examples.ErrReq{1}
+	errRsp := rpc_examples.ErrRsp{}
+	err = client.AsyncCall(rpc.CodecJson, addr, ts.Service(), "Err", &errReq, Callback, &errRsp,
+		rpc.CallRequestTimeout(100e6), rpc.CallResponseTimeout(100e6), rpc.CallMeta("hello", "Service::Err::Json"))
+	if err != nil {
+		// error test case, this invocation should step into this branch.
+		log.Error("client.Call(Json, TestService::Err) = error:%s", jerrors.ErrorStack(err))
+		return
+	}
+}
+
 func testProtobuf() {
 	ts := rpc_examples.TestService{}
 	testReq := rpc_examples.TestReq{"aaa", "bbb", "ccc"}
 	testRsp := rpc_examples.TestRsp{}
 	addr := net.JoinHostPort(conf.ServerHost, strconv.Itoa(conf.ServerPort))
-	
-	eventReq := rpc_examples.EventReq{A:"hello"}
-	err := client.Notify(rpc.CodecProtobuf, addr, ts.Service(), "Event", &eventReq,
+
+	eventReq := rpc_examples.EventReq{A: "hello"}
+	err := client.CallOneway(rpc.CodecProtobuf, addr, ts.Service(), "Event", &eventReq,
 		rpc.CallRequestTimeout(100e6), rpc.CallResponseTimeout(100e6))
 	if err != nil {
-		log.Error("client.Call(Protobuf, TestService::Event) = error:%s", jerrors.ErrorStack(err))
-	  return
+		log.Error("client.CallOneway(Protobuf, TestService::Event) = error:%s", jerrors.ErrorStack(err))
+		return
 	}
 	log.Info("TestService::Event(Protobuf, req:%#v)", eventReq)
 
@@ -199,9 +240,44 @@ func testProtobuf() {
 	log.Info("TestService::Err(protobuf, req:%#v) = res:%#v", errReq, errRsp)
 }
 
-func test() {
-	for i := 0; i < 1; i++ {
-		testJSON()
-		testProtobuf()
+func testAsyncProtobuf() {
+	ts := rpc_examples.TestService{}
+	testReq := rpc_examples.TestReq{"aaa", "bbb", "ccc"}
+	testRsp := rpc_examples.TestRsp{}
+	addr := net.JoinHostPort(conf.ServerHost, strconv.Itoa(conf.ServerPort))
+
+	err := client.AsyncCall(rpc.CodecProtobuf, addr, ts.Service(), "Test", &testReq, Callback, &testRsp,
+		rpc.CallRequestTimeout(100e6), rpc.CallResponseTimeout(100e6), rpc.CallMeta("hello", "Service::Test::Protobuf"))
+	if err != nil {
+		log.Error("client.AsyncCall(protobuf, TestService::Test) = error:%s", jerrors.ErrorStack(err))
+		return
 	}
+
+	addReq := rpc_examples.AddReq{1, 10}
+	addRsp := rpc_examples.AddRsp{}
+	err = client.AsyncCall(rpc.CodecProtobuf, addr, ts.Service(), "Add", &addReq, Callback, &addRsp,
+		rpc.CallRequestTimeout(100e6), rpc.CallResponseTimeout(100e6), rpc.CallMeta("hello", "Service::Add::Protobuf"))
+	if err != nil {
+		log.Error("client.AsyncCall(protobuf, TestService::Add) = error:%s", jerrors.ErrorStack(err))
+		return
+	}
+
+	errReq := rpc_examples.ErrReq{1}
+	errRsp := rpc_examples.ErrRsp{}
+	err = client.AsyncCall(rpc.CodecProtobuf, addr, ts.Service(), "Err", &errReq, Callback, &errRsp,
+		rpc.CallRequestTimeout(100e6), rpc.CallResponseTimeout(100e6), rpc.CallMeta("hello", "Service::Err::protobuf"))
+	if err != nil {
+		// error test case, this invocation should step into this branch.
+		log.Error("client.Call(protobuf, TestService::Err) = error:%s", jerrors.ErrorStack(err))
+		return
+	}
+}
+
+func test() {
+	// for i := 0; i < 1; i++ {
+	testJSON()
+	testAsyncJSON()
+	testAsyncProtobuf()
+	testProtobuf()
+	// }
 }
