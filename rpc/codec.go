@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"reflect"
+	"time"
 	"unsafe"
 )
 
@@ -507,14 +508,27 @@ func (resp *GettyRPCResponse) GetHeader() interface{} {
 ////////////////////////////////////////////
 
 type PendingResponse struct {
-	seq     uint64
-	err     error
-	handler AsyncHandler
-	reply   interface{}
-	opts CallOptions
-	done    chan struct{}
+	seq      uint64
+	err      error
+	start    time.Time
+	callback AsyncCallback
+	reply    interface{}
+	opts     CallOptions
+	done     chan struct{}
 }
 
 func NewPendingResponse() *PendingResponse {
-	return &PendingResponse{done: make(chan struct{})}
+	return &PendingResponse{
+		start: time.Now(),
+		done:  make(chan struct{}),
+	}
+}
+
+func (r PendingResponse) GenAsyncResponse() AsyncResponse {
+	return AsyncResponse{
+		Opts:  r.opts,
+		Cause: r.err,
+		Start: r.start,
+		Reply: r.reply,
+	}
 }

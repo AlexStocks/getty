@@ -1,7 +1,7 @@
 package rpc
 
 import (
-		"reflect"
+	"reflect"
 	"sync"
 	"time"
 )
@@ -103,7 +103,7 @@ func (h *RpcServerHandler) OnMessage(session getty.Session, pkg interface{}) {
 	}
 	err := h.callService(session, req, req.service, req.methodType, req.argv, req.replyv)
 	if err != nil {
-     log.Error("h.callService(session:%#v, req:%#v) = %s", session, req, jerrors.ErrorStack(err))
+		log.Error("h.callService(session:%#v, req:%#v) = %s", session, req, jerrors.ErrorStack(err))
 	}
 }
 
@@ -205,7 +205,7 @@ func (h *RpcClientHandler) OnMessage(session getty.Session, pkg interface{}) {
 		log.Error("illegal packge{%#v}", pkg)
 		return
 	}
-	log.Debug("get rpc response{%s}", p)
+	log.Debug("get rpc response{%#v}", p)
 	h.conn.updateSession(session)
 
 	pendingResponse := h.conn.pool.rpcClient.removePendingResponse(p.H.Sequence)
@@ -217,7 +217,11 @@ func (h *RpcClientHandler) OnMessage(session getty.Session, pkg interface{}) {
 	}
 	if p.H.Code == GettyFail && len(p.header.Error) > 0 {
 		pendingResponse.err = jerrors.New(p.header.Error)
-		pendingResponse.done <- struct{}{}
+		if pendingResponse.callback == nil {
+			pendingResponse.done <- struct{}{}
+		} else {
+			pendingResponse.callback(pendingResponse.GenAsyncResponse())
+		}
 		return
 	}
 	codec := Codecs[p.H.CodecType]
@@ -227,16 +231,12 @@ func (h *RpcClientHandler) OnMessage(session getty.Session, pkg interface{}) {
 		return
 	}
 	err := codec.Decode(p.body, pendingResponse.reply)
-	if err != nil {
-		if pendingResponse.handler == nil {
-			pendingResponse.err = err
-			pendingResponse.done <- struct{}{}
-		} else {
-			pendingResponse.handler(pendingResponse.reply, pendingResponse.opts)
-		}
-		return
+	pendingResponse.err = err
+	if pendingResponse.callback == nil {
+		pendingResponse.done <- struct{}{}
+	} else {
+		pendingResponse.callback(pendingResponse.GenAsyncResponse())
 	}
-	pendingResponse.done <- struct{}{}
 }
 
 func (h *RpcClientHandler) OnCron(session getty.Session) {

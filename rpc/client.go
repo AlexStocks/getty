@@ -55,7 +55,14 @@ func CallMeta(k, v interface{}) CallOption {
 	}
 }
 
-type AsyncHandler func(reply interface{}, opts CallOptions)
+type AsyncResponse struct {
+	Opts  CallOptions
+	Cause error
+	Start time.Time
+	Reply interface{}
+}
+
+type AsyncCallback func(response AsyncResponse)
 
 type Client struct {
 	conf     ClientConfig
@@ -80,7 +87,8 @@ func NewClient(conf *ClientConfig) (*Client, error) {
 	return c, nil
 }
 
-func (c *Client) Notify(typ CodecType, addr, service, method string, args interface{}, opts ...CallOption) error {
+// call one way
+func (c *Client) CallOneway(typ CodecType, addr, service, method string, args interface{}, opts ...CallOption) error {
 	var copts CallOptions
 
 	for _, o := range opts {
@@ -106,18 +114,19 @@ func (c *Client) Call(typ CodecType, addr, service, method string, args, reply i
 	return jerrors.Trace(c.call(ct, typ, addr, service, method, args, reply, nil, copts))
 }
 
-func (c *Client) AsyncCall(typ CodecType, addr, service, method string, args, reply interface{}, handler AsyncHandler, opts ...CallOption) error {
-	var copts CallOptions
+func (c *Client) AsyncCall(typ CodecType, addr, service, method string, args interface{},
+	callback AsyncCallback, reply interface{}, opts ...CallOption) error {
 
+	var copts CallOptions
 	for _, o := range opts {
 		o(&copts)
 	}
 
-	return jerrors.Trace(c.call(CT_TwoWay, typ, addr, service, method, args, reply, handler, copts))
+	return jerrors.Trace(c.call(CT_TwoWay, typ, addr, service, method, args, reply, callback, copts))
 }
 
 func (c *Client) call(ct CallType, typ CodecType, addr, service, method string,
-	args, reply interface{}, handler AsyncHandler, opts CallOptions) error {
+	args, reply interface{}, callback AsyncCallback, opts CallOptions) error {
 
 	if opts.RequestTimeout == 0 {
 		opts.RequestTimeout = c.conf.GettySessionParam.tcpWriteTimeout
@@ -139,7 +148,7 @@ func (c *Client) call(ct CallType, typ CodecType, addr, service, method string,
 	if ct != CT_OneWay {
 		rsp = NewPendingResponse()
 		rsp.reply = reply
-		rsp.handler = handler
+		rsp.callback = callback
 		rsp.opts = opts
 	}
 
@@ -158,7 +167,7 @@ func (c *Client) call(ct CallType, typ CodecType, addr, service, method string,
 		return jerrors.Trace(err)
 	}
 
-	if ct == CT_OneWay || handler != nil {
+	if ct == CT_OneWay || callback != nil {
 		return nil
 	}
 
