@@ -61,9 +61,12 @@ func suitableMethods(typ reflect.Type) map[string]*methodType {
 		if method.PkgPath != "" {
 			continue
 		}
-		// Method needs three ins: receiver, *args, *reply.
-		if mtype.NumIn() != 3 {
-			log.Warn("method %s has wrong number of ins %d which should be 3", mname, mtype.NumIn())
+		// service Method needs three ins: receiver, *args, *reply.
+		// notify Method needs two ins: receiver, *args.
+		mInNum := mtype.NumIn()
+		if mInNum != 2 && mInNum != 3 {
+			log.Warn("method %s has wrong number of ins %d which should be " +
+				"2(notify method) or 3(serive method)", mname, mtype.NumIn())
 			continue
 		}
 		// First arg need not be a pointer.
@@ -72,16 +75,20 @@ func suitableMethods(typ reflect.Type) map[string]*methodType {
 			log.Error("method{%s} argument type not exported{%v}", mname, argType)
 			continue
 		}
-		// Second arg must be a pointer.
-		replyType := mtype.In(2)
-		if replyType.Kind() != reflect.Ptr {
-			log.Error("method{%s} reply type not a pointer{%v}", mname, replyType)
-			continue
-		}
-		// Reply type must be exported.
-		if !isExportedOrBuiltinType(replyType) {
-			log.Error("method{%s} reply type not exported{%v}", mname, replyType)
-			continue
+		
+		var replyType reflect.Type
+		if mInNum == 3 {
+			// Second arg must be a pointer.
+			replyType = mtype.In(2)
+			if replyType.Kind() != reflect.Ptr {
+				log.Error("method{%s} reply type not a pointer{%v}", mname, replyType)
+				continue
+			}
+			// Reply type must be exported.
+			if !isExportedOrBuiltinType(replyType) {
+				log.Error("method{%s} reply type not exported{%v}", mname, replyType)
+				continue
+			}
 		}
 		// Method needs one out.
 		if mtype.NumOut() != 1 {

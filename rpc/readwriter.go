@@ -76,7 +76,9 @@ func (p *RpcServerPackageHandler) Read(ss getty.Session, data []byte) (interface
 		req.argv = req.argv.Elem()
 	}
 	// get reply
-	req.replyv = reflect.New(req.methodType.ReplyType.Elem())
+	if req.methodType.ReplyType != nil {
+		req.replyv = reflect.New(req.methodType.ReplyType.Elem())
+	}
 
 	return req, length, nil
 }

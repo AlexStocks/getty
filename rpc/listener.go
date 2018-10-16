@@ -92,7 +92,7 @@ func (h *RpcServerHandler) OnMessage(session getty.Session, pkg interface{}) {
 	}
 	if req.header.CallType == CT_OneWay {
 		function := req.methodType.method.Func
-		function.Call([]reflect.Value{req.service.rcvr, req.argv, req.replyv})
+		function.Call([]reflect.Value{req.service.rcvr, req.argv})
 		return
 	}
 	if req.header.CallType == CT_TwoWayNoReply {
