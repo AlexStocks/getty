@@ -309,7 +309,6 @@ func (p *gettyRPCClientPool) release(conn *gettyRPCClient, err error) {
 
 	connArray := p.connMap[key]
 	if len(connArray) >= p.size {
-		p.Unlock()
 		conn.close()
 		return
 	}

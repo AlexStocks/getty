@@ -29,7 +29,7 @@ type CallOptions struct {
 	RequestTimeout time.Duration
 	// response timeout
 	ResponseTimeout time.Duration
-	Meta map[interface{}]interface{}
+	Meta            map[interface{}]interface{}
 }
 
 type CallOption func(*CallOptions)
@@ -82,49 +82,48 @@ func NewClient(conf *ClientConfig) (*Client, error) {
 
 func (c *Client) Notify(typ CodecType, addr, service, method string, args interface{}, opts ...CallOption) error {
 	var copts CallOptions
-	
+
 	for _, o := range opts {
 		o(&copts)
 	}
-	
+
 	return jerrors.Trace(c.call(CT_OneWay, typ, addr, service, method, args, nil, nil, copts))
 }
 
 // if @reply is nil, the transport layer will get the response without notify the invoker.
 func (c *Client) Call(typ CodecType, addr, service, method string, args, reply interface{}, opts ...CallOption) error {
-  var copts CallOptions
-	
+	var copts CallOptions
+
 	for _, o := range opts {
 		o(&copts)
 	}
-	
+
 	ct := CT_TwoWay
 	if reply == nil {
 		ct = CT_TwoWayNoReply
 	}
-	
+
 	return jerrors.Trace(c.call(ct, typ, addr, service, method, args, reply, nil, copts))
 }
 
-func (c *Client) AsyncCall(typ CodecType, addr, service, method string,
-	args, reply interface{}, handler AsyncHandler, opts ...CallOption) error {
+func (c *Client) AsyncCall(typ CodecType, addr, service, method string, args, reply interface{}, handler AsyncHandler, opts ...CallOption) error {
 	var copts CallOptions
-	
+
 	for _, o := range opts {
 		o(&copts)
 	}
-	
+
 	return jerrors.Trace(c.call(CT_TwoWay, typ, addr, service, method, args, reply, handler, copts))
 }
 
 func (c *Client) call(ct CallType, typ CodecType, addr, service, method string,
 	args, reply interface{}, handler AsyncHandler, opts CallOptions) error {
-	
-	if opts.RequestTimeout == 0  {
+
+	if opts.RequestTimeout == 0 {
 		opts.RequestTimeout = c.conf.GettySessionParam.tcpWriteTimeout
 	}
 	if opts.ResponseTimeout == 0 {
-	opts.ResponseTimeout = c.conf.GettySessionParam.tcpReadTimeout
+		opts.ResponseTimeout = c.conf.GettySessionParam.tcpReadTimeout
 	}
 	if !typ.CheckValidity() {
 		return errInvalidCodecType
@@ -135,7 +134,7 @@ func (c *Client) call(ct CallType, typ CodecType, addr, service, method string,
 	b.header.Method = method
 	b.header.CallType = ct
 	b.body = args
-	
+
 	var rsp *PendingResponse
 	if ct != CT_OneWay {
 		rsp = NewPendingResponse()
@@ -158,9 +157,9 @@ func (c *Client) call(ct CallType, typ CodecType, addr, service, method string,
 	if err = c.transfer(session, typ, b, rsp, opts); err != nil {
 		return jerrors.Trace(err)
 	}
-	
+
 	if ct == CT_OneWay || handler != nil {
-		return  nil
+		return nil
 	}
 
 	select {
@@ -193,9 +192,9 @@ func (c *Client) heartbeat(session getty.Session, typ CodecType) error {
 	return c.transfer(session, typ, nil, NewPendingResponse(), CallOptions{})
 }
 
-func (c *Client) transfer(session getty.Session, typ CodecType,req *GettyRPCRequest,
+func (c *Client) transfer(session getty.Session, typ CodecType, req *GettyRPCRequest,
 	rsp *PendingResponse, opts CallOptions) error {
-	
+
 	var (
 		sequence uint64
 		err      error
@@ -212,7 +211,7 @@ func (c *Client) transfer(session getty.Session, typ CodecType,req *GettyRPCRequ
 		pkg.H.Command = gettyCmdRPCRequest
 		pkg.B = req
 	}
-	
+
 	if rsp != nil {
 		rsp.seq = sequence
 		c.addPendingResponse(rsp)
