@@ -1,7 +1,7 @@
 package rpc
 
 import (
-	"reflect"
+		"reflect"
 	"sync"
 	"time"
 )
@@ -90,13 +90,21 @@ func (h *RpcServerHandler) OnMessage(session getty.Session, pkg interface{}) {
 		h.replyCmd(session, req, gettyCmdHbResponse, "")
 		return
 	}
+	if req.header.CallType == CT_OneWay {
+		function := req.methodType.method.Func
+		function.Call([]reflect.Value{req.service.rcvr, req.argv, req.replyv})
+		return
+	}
 	if req.header.CallType == CT_TwoWayNoReply {
 		h.replyCmd(session, req, gettyCmdRPCResponse, "")
 		function := req.methodType.method.Func
 		function.Call([]reflect.Value{req.service.rcvr, req.argv, req.replyv})
 		return
 	}
-	h.callService(session, req, req.service, req.methodType, req.argv, req.replyv)
+	err := h.callService(session, req, req.service, req.methodType, req.argv, req.replyv)
+	if err != nil {
+     log.Error("h.callService(session:%#v, req:%#v) = %s", session, req, jerrors.ErrorStack(err))
+	}
 }
 
 func (h *RpcServerHandler) OnCron(session getty.Session) {
@@ -142,14 +150,14 @@ func (h *RpcServerHandler) replyCmd(session getty.Session, req GettyRPCRequestPa
 }
 
 func (h *RpcServerHandler) callService(session getty.Session, req GettyRPCRequestPackage,
-	service *service, methodType *methodType, argv, replyv reflect.Value) {
+	service *service, methodType *methodType, argv, replyv reflect.Value) error {
 
 	function := methodType.method.Func
 	returnValues := function.Call([]reflect.Value{service.rcvr, argv, replyv})
 	errInter := returnValues[0].Interface()
 	if errInter != nil {
 		h.replyCmd(session, req, gettyCmdRPCResponse, errInter.(error).Error())
-		return
+		return nil
 	}
 
 	resp := GettyPackage{
@@ -161,7 +169,7 @@ func (h *RpcServerHandler) callService(session getty.Session, req GettyRPCReques
 		body: replyv.Interface(),
 	}
 
-	session.WritePkg(resp, 5*time.Second)
+	return jerrors.Trace(session.WritePkg(resp, 5*time.Second))
 }
 
 ////////////////////////////////////////////
@@ -220,8 +228,12 @@ func (h *RpcClientHandler) OnMessage(session getty.Session, pkg interface{}) {
 	}
 	err := codec.Decode(p.body, pendingResponse.reply)
 	if err != nil {
-		pendingResponse.err = err
-		pendingResponse.done <- struct{}{}
+		if pendingResponse.handler == nil {
+			pendingResponse.err = err
+			pendingResponse.done <- struct{}{}
+		} else {
+			pendingResponse.handler(pendingResponse.reply, pendingResponse.opts)
+		}
 		return
 	}
 	pendingResponse.done <- struct{}{}

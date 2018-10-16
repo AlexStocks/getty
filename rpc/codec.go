@@ -507,10 +507,12 @@ func (resp *GettyRPCResponse) GetHeader() interface{} {
 ////////////////////////////////////////////
 
 type PendingResponse struct {
-	seq   uint64
-	err   error
-	reply interface{}
-	done  chan struct{}
+	seq     uint64
+	err     error
+	handler AsyncHandler
+	reply   interface{}
+	opts CallOptions
+	done    chan struct{}
 }
 
 func NewPendingResponse() *PendingResponse {

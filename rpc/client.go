@@ -24,6 +24,39 @@ func init() {
 	rand.Seed(time.Now().UnixNano())
 }
 
+type CallOptions struct {
+	// request timeout
+	RequestTimeout time.Duration
+	// response timeout
+	ResponseTimeout time.Duration
+	Meta map[interface{}]interface{}
+}
+
+type CallOption func(*CallOptions)
+
+func CallRequestTimeout(d time.Duration) CallOption {
+	return func(o *CallOptions) {
+		o.RequestTimeout = d
+	}
+}
+
+func CallResponseTimeout(d time.Duration) CallOption {
+	return func(o *CallOptions) {
+		o.ResponseTimeout = d
+	}
+}
+
+func CallMeta(k, v interface{}) CallOption {
+	return func(o *CallOptions) {
+		if o.Meta == nil {
+			o.Meta = make(map[interface{}]interface{})
+		}
+		o.Meta[k] = v
+	}
+}
+
+type AsyncHandler func(reply interface{}, opts CallOptions)
+
 type Client struct {
 	conf     ClientConfig
 	pool     *gettyRPCClientPool
@@ -47,7 +80,52 @@ func NewClient(conf *ClientConfig) (*Client, error) {
 	return c, nil
 }
 
-func (c *Client) Call(typ CodecType, addr, service, method string, args interface{}, reply interface{}) error {
+func (c *Client) Notify(typ CodecType, addr, service, method string, args interface{}, opts ...CallOption) error {
+	var copts CallOptions
+	
+	for _, o := range opts {
+		o(&copts)
+	}
+	
+	return jerrors.Trace(c.call(CT_OneWay, typ, addr, service, method, args, nil, nil, copts))
+}
+
+// if @reply is nil, the transport layer will get the response without notify the invoker.
+func (c *Client) Call(typ CodecType, addr, service, method string, args, reply interface{}, opts ...CallOption) error {
+  var copts CallOptions
+	
+	for _, o := range opts {
+		o(&copts)
+	}
+	
+	ct := CT_TwoWay
+	if reply == nil {
+		ct = CT_TwoWayNoReply
+	}
+	
+	return jerrors.Trace(c.call(ct, typ, addr, service, method, args, reply, nil, copts))
+}
+
+func (c *Client) AsyncCall(typ CodecType, addr, service, method string,
+	args, reply interface{}, handler AsyncHandler, opts ...CallOption) error {
+	var copts CallOptions
+	
+	for _, o := range opts {
+		o(&copts)
+	}
+	
+	return jerrors.Trace(c.call(CT_TwoWay, typ, addr, service, method, args, reply, handler, copts))
+}
+
+func (c *Client) call(ct CallType, typ CodecType, addr, service, method string,
+	args, reply interface{}, handler AsyncHandler, opts CallOptions) error {
+	
+	if opts.RequestTimeout == 0  {
+		opts.RequestTimeout = c.conf.GettySessionParam.tcpWriteTimeout
+	}
+	if opts.ResponseTimeout == 0 {
+	opts.ResponseTimeout = c.conf.GettySessionParam.tcpReadTimeout
+	}
 	if !typ.CheckValidity() {
 		return errInvalidCodecType
 	}
@@ -55,14 +133,16 @@ func (c *Client) Call(typ CodecType, addr, service, method string, args interfac
 	b := &GettyRPCRequest{}
 	b.header.Service = service
 	b.header.Method = method
-	b.header.CallType = CT_TwoWay
-	if reply == nil {
-		b.header.CallType = CT_TwoWayNoReply
-	}
+	b.header.CallType = ct
 	b.body = args
-
-	rsp := NewPendingResponse()
-	rsp.reply = reply
+	
+	var rsp *PendingResponse
+	if ct != CT_OneWay {
+		rsp = NewPendingResponse()
+		rsp.reply = reply
+		rsp.handler = handler
+		rsp.opts = opts
+	}
 
 	var (
 		err     error
@@ -75,12 +155,16 @@ func (c *Client) Call(typ CodecType, addr, service, method string, args interfac
 	}
 	defer c.pool.release(conn, err)
 
-	if err = c.transfer(session, typ, b, rsp); err != nil {
+	if err = c.transfer(session, typ, b, rsp, opts); err != nil {
 		return jerrors.Trace(err)
+	}
+	
+	if ct == CT_OneWay || handler != nil {
+		return  nil
 	}
 
 	select {
-	case <-getty.GetTimeWheel().After(c.conf.GettySessionParam.tcpReadTimeout):
+	case <-getty.GetTimeWheel().After(opts.ResponseTimeout):
 		err = errClientReadTimeout
 		c.removePendingResponse(SequenceType(rsp.seq))
 	case <-rsp.done:
@@ -106,11 +190,12 @@ func (c *Client) selectSession(typ CodecType, addr string) (*gettyRPCClient, get
 }
 
 func (c *Client) heartbeat(session getty.Session, typ CodecType) error {
-	rsp := NewPendingResponse()
-	return c.transfer(session, typ, nil, rsp)
+	return c.transfer(session, typ, nil, NewPendingResponse(), CallOptions{})
 }
 
-func (c *Client) transfer(session getty.Session, typ CodecType, req *GettyRPCRequest, rsp *PendingResponse) error {
+func (c *Client) transfer(session getty.Session, typ CodecType,req *GettyRPCRequest,
+	rsp *PendingResponse, opts CallOptions) error {
+	
 	var (
 		sequence uint64
 		err      error
@@ -127,11 +212,13 @@ func (c *Client) transfer(session getty.Session, typ CodecType, req *GettyRPCReq
 		pkg.H.Command = gettyCmdRPCRequest
 		pkg.B = req
 	}
+	
+	if rsp != nil {
+		rsp.seq = sequence
+		c.addPendingResponse(rsp)
+	}
 
-	rsp.seq = sequence
-	c.addPendingResponse(rsp)
-
-	err = session.WritePkg(pkg, 0)
+	err = session.WritePkg(pkg, opts.RequestTimeout)
 	if err != nil {
 		c.removePendingResponse(SequenceType(rsp.seq))
 	}
