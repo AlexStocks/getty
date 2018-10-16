@@ -1,8 +1,11 @@
 package rpc_examples
 
 import (
+	log "github.com/AlexStocks/log4go"
+)
+
+import (
 	jerrors "github.com/juju/errors"
-	// "errors"
 )
 
 type TestService struct {
@@ -29,4 +32,9 @@ func (r *TestService) Add(req *AddReq, rsp *AddRsp) error {
 
 func (r *TestService) Err(req *ErrReq, rsp *ErrRsp) error {
 	return jerrors.New("this is a error test")
+}
+
+func (r *TestService) Event(req *EventReq) error {
+	log.Info("got event %s", req.A)
+	return nil
 }

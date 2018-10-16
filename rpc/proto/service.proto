@@ -50,3 +50,7 @@ message ErrReq {
 message ErrRsp {
 	optional int32 A = 1 [(gogoproto.nullable) = false];
 }
+
+message EventReq {
+	optional string A = 1 [(gogoproto.nullable) = false];
+}

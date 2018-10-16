@@ -114,9 +114,18 @@ func testJSON() {
 	testReq := rpc_examples.TestReq{"aaa", "bbb", "ccc"}
 	testRsp := rpc_examples.TestRsp{}
   addr := net.JoinHostPort(conf.ServerHost, strconv.Itoa(conf.ServerPort))
-	
-	err := client.Call(rpc.CodecJson, addr, ts.Service(), "Test", &testReq,
-		&testRsp)
+  
+	eventReq := rpc_examples.EventReq{A:"hello"}
+	err := client.Notify(rpc.CodecJson, addr, ts.Service(), "Event", &eventReq,
+		rpc.CallRequestTimeout(100e6), rpc.CallResponseTimeout(100e6))
+	if err != nil {
+		log.Error("client.Call(Json, TestService::Event) = error:%s", jerrors.ErrorStack(err))
+	  return
+	}
+	log.Info("TestService::Event(Json, req:%#v)", eventReq)
+
+	err = client.Call(rpc.CodecJson, addr, ts.Service(), "Test", &testReq, &testRsp,
+		rpc.CallRequestTimeout(100e6), rpc.CallResponseTimeout(100e6))
 	if err != nil {
 		log.Error("client.Call(Json, TestService::Test) = error:%s", jerrors.ErrorStack(err))
 		return
@@ -125,7 +134,8 @@ func testJSON() {
 
 	addReq := rpc_examples.AddReq{1, 10}
 	addRsp := rpc_examples.AddRsp{}
-	err = client.Call(rpc.CodecJson, addr, ts.Service(), "Add", &addReq, &addRsp)
+	err = client.Call(rpc.CodecJson, addr, ts.Service(), "Add", &addReq, &addRsp,
+		rpc.CallRequestTimeout(100e6), rpc.CallResponseTimeout(100e6))
 	if err != nil {
 		log.Error("client.Call(Json, TestService::Add) = error:%s", jerrors.ErrorStack(err))
 		return
@@ -134,7 +144,8 @@ func testJSON() {
 
 	errReq := rpc_examples.ErrReq{1}
 	errRsp := rpc_examples.ErrRsp{}
-	err = client.Call(rpc.CodecJson, addr, ts.Service(), "Err", &errReq, &errRsp)
+	err = client.Call(rpc.CodecJson, addr, ts.Service(), "Err", &errReq, &errRsp,
+		rpc.CallRequestTimeout(100e6), rpc.CallResponseTimeout(100e6))
 	if err != nil {
 		// error test case, this invocation should step into this branch.
 		log.Error("client.Call(Json, TestService::Err) = error:%s", jerrors.ErrorStack(err))
@@ -149,8 +160,17 @@ func testProtobuf() {
 	testRsp := rpc_examples.TestRsp{}
 	addr := net.JoinHostPort(conf.ServerHost, strconv.Itoa(conf.ServerPort))
 	
-	err := client.Call(rpc.CodecProtobuf, addr, ts.Service(), "Test", &testReq,
-		&testRsp)
+	eventReq := rpc_examples.EventReq{A:"hello"}
+	err := client.Notify(rpc.CodecProtobuf, addr, ts.Service(), "Event", &eventReq,
+		rpc.CallRequestTimeout(100e6), rpc.CallResponseTimeout(100e6))
+	if err != nil {
+		log.Error("client.Call(Protobuf, TestService::Event) = error:%s", jerrors.ErrorStack(err))
+	  return
+	}
+	log.Info("TestService::Event(Protobuf, req:%#v)", eventReq)
+
+	err = client.Call(rpc.CodecProtobuf, addr, ts.Service(), "Test", &testReq, &testRsp,
+		rpc.CallRequestTimeout(500e6), rpc.CallResponseTimeout(500e6))
 	if err != nil {
 		log.Error("client.Call(protobuf, TestService::Test) = error:%s", jerrors.ErrorStack(err))
 		return
@@ -159,8 +179,8 @@ func testProtobuf() {
 
 	addReq := rpc_examples.AddReq{1, 10}
 	addRsp := rpc_examples.AddRsp{}
-	err = client.Call(rpc.CodecProtobuf, addr, ts.Service(), "Add", &addReq,
-		&addRsp)
+	err = client.Call(rpc.CodecProtobuf, addr, ts.Service(), "Add", &addReq, &addRsp,
+		rpc.CallRequestTimeout(500e6), rpc.CallResponseTimeout(500e6))
 	if err != nil {
 		log.Error("client.Call(protobuf, TestService::Add) = error:%s", jerrors.ErrorStack(err))
 		return
@@ -169,8 +189,8 @@ func testProtobuf() {
 
 	errReq := rpc_examples.ErrReq{1}
 	errRsp := rpc_examples.ErrRsp{}
-	err = client.Call(rpc.CodecProtobuf, addr, ts.Service(), "Err", &errReq,
-		&errRsp)
+	err = client.Call(rpc.CodecProtobuf, addr, ts.Service(), "Err", &errReq, &errRsp,
+		rpc.CallRequestTimeout(500e6), rpc.CallResponseTimeout(500e6))
 	if err != nil {
 		// error test case, this invocation should step into this branch.
 		log.Error("client.Call(protobuf, TestService::Err) = error:%s", jerrors.ErrorStack(err))

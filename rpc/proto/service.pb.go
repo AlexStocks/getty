@@ -14,6 +14,7 @@
 		AddRsp
 		ErrReq
 		ErrRsp
+		EventReq
 */
 package rpc_examples
 
@@ -89,6 +90,14 @@ func (m *ErrRsp) Reset()                    { *m = ErrRsp{} }
 func (*ErrRsp) ProtoMessage()               {}
 func (*ErrRsp) Descriptor() ([]byte, []int) { return fileDescriptorService, []int{5} }
 
+type EventReq struct {
+	A string `protobuf:"bytes,1,opt,name=A" json:"A"`
+}
+
+func (m *EventReq) Reset()                    { *m = EventReq{} }
+func (*EventReq) ProtoMessage()               {}
+func (*EventReq) Descriptor() ([]byte, []int) { return fileDescriptorService, []int{6} }
+
 func init() {
 	proto.RegisterType((*TestReq)(nil), "rpc_examples.TestReq")
 	proto.RegisterType((*TestRsp)(nil), "rpc_examples.TestRsp")
@@ -96,6 +105,7 @@ func init() {
 	proto.RegisterType((*AddRsp)(nil), "rpc_examples.AddRsp")
 	proto.RegisterType((*ErrReq)(nil), "rpc_examples.ErrReq")
 	proto.RegisterType((*ErrRsp)(nil), "rpc_examples.ErrRsp")
+	proto.RegisterType((*EventReq)(nil), "rpc_examples.EventReq")
 }
 func (this *TestReq) VerboseEqual(that interface{}) error {
 	if that == nil {
@@ -475,6 +485,66 @@ func (this *ErrRsp) Equal(that interface{}) bool {
 	}
 	return true
 }
+func (this *EventReq) VerboseEqual(that interface{}) error {
+	if that == nil {
+		if this == nil {
+			return nil
+		}
+		return fmt.Errorf("that == nil && this != nil")
+	}
+
+	that1, ok := that.(*EventReq)
+	if !ok {
+		that2, ok := that.(EventReq)
+		if ok {
+			that1 = &that2
+		} else {
+			return fmt.Errorf("that is not of type *EventReq")
+		}
+	}
+	if that1 == nil {
+		if this == nil {
+			return nil
+		}
+		return fmt.Errorf("that is type *EventReq but is nil && this != nil")
+	} else if this == nil {
+		return fmt.Errorf("that is type *EventReq but is not nil && this == nil")
+	}
+	if this.A != that1.A {
+		return fmt.Errorf("A this(%v) Not Equal that(%v)", this.A, that1.A)
+	}
+	return nil
+}
+func (this *EventReq) Equal(that interface{}) bool {
+	if that == nil {
+		if this == nil {
+			return true
+		}
+		return false
+	}
+
+	that1, ok := that.(*EventReq)
+	if !ok {
+		that2, ok := that.(EventReq)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		if this == nil {
+			return true
+		}
+		return false
+	} else if this == nil {
+		return false
+	}
+	if this.A != that1.A {
+		return false
+	}
+	return true
+}
 func (this *TestReq) GoString() string {
 	if this == nil {
 		return "nil"
@@ -534,6 +604,16 @@ func (this *ErrRsp) GoString() string {
 	}
 	s := make([]string, 0, 5)
 	s = append(s, "&rpc_examples.ErrRsp{")
+	s = append(s, "A: "+fmt.Sprintf("%#v", this.A)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *EventReq) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 5)
+	s = append(s, "&rpc_examples.EventReq{")
 	s = append(s, "A: "+fmt.Sprintf("%#v", this.A)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
@@ -685,6 +765,28 @@ func (m *ErrRsp) MarshalTo(dAtA []byte) (int, error) {
 	return i, nil
 }
 
+func (m *EventReq) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *EventReq) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	dAtA[i] = 0xa
+	i++
+	i = encodeVarintService(dAtA, i, uint64(len(m.A)))
+	i += copy(dAtA[i:], m.A)
+	return i, nil
+}
+
 func encodeFixed64Service(dAtA []byte, offset int, v uint64) int {
 	dAtA[offset] = uint8(v)
 	dAtA[offset+1] = uint8(v >> 8)
@@ -761,6 +863,14 @@ func (m *ErrRsp) Size() (n int) {
 	return n
 }
 
+func (m *EventReq) Size() (n int) {
+	var l int
+	_ = l
+	l = len(m.A)
+	n += 1 + l + sovService(uint64(l))
+	return n
+}
+
 func sovService(x uint64) (n int) {
 	for {
 		n++
@@ -832,6 +942,16 @@ func (this *ErrRsp) String() string {
 		return "nil"
 	}
 	s := strings.Join([]string{`&ErrRsp{`,
+		`A:` + fmt.Sprintf("%v", this.A) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *EventReq) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&EventReq{`,
 		`A:` + fmt.Sprintf("%v", this.A) + `,`,
 		`}`,
 	}, "")
@@ -1356,6 +1476,85 @@ func (m *ErrRsp) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
+func (m *EventReq) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowService
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: EventReq: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: EventReq: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field A", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowService
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthService
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.A = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipService(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthService
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
 func skipService(dAtA []byte) (n int, err error) {
 	l := len(dAtA)
 	iNdEx := 0
@@ -1464,7 +1663,7 @@ var (
 func init() { proto.RegisterFile("service.proto", fileDescriptorService) }
 
 var fileDescriptorService = []byte{
-	// 244 bytes of a gzipped FileDescriptorProto
+	// 254 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0x2d, 0x4e, 0x2d, 0x2a,
 	0xcb, 0x4c, 0x4e, 0xd5, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0xe2, 0x29, 0x2a, 0x48, 0x8e, 0x4f,
 	0xad, 0x48, 0xcc, 0x2d, 0xc8, 0x49, 0x2d, 0x96, 0xd2, 0x4d, 0xcf, 0x2c, 0xc9, 0x28, 0x4d, 0xd2,
@@ -1475,10 +1674,10 @@ var fileDescriptorService = []byte{
 	0x82, 0x19, 0x59, 0xcc, 0x59, 0x49, 0x16, 0x6a, 0x4c, 0x71, 0x01, 0x36, 0x63, 0x94, 0x0c, 0xb8,
 	0xd8, 0x1c, 0x53, 0x52, 0x50, 0x2c, 0x61, 0xc5, 0x62, 0x09, 0x5c, 0xcc, 0x49, 0x49, 0x01, 0xa2,
 	0xa3, 0xb8, 0x40, 0x48, 0x8c, 0x8b, 0x39, 0xb8, 0x34, 0x17, 0x45, 0x0f, 0x48, 0x40, 0x49, 0x86,
-	0x8b, 0xcd, 0xb5, 0xa8, 0x08, 0x87, 0x99, 0x30, 0x59, 0x64, 0xf7, 0x20, 0x64, 0x9d, 0x4c, 0x4e,
-	0x3c, 0x94, 0x63, 0xb8, 0xf0, 0x50, 0x8e, 0xe1, 0xc6, 0x43, 0x39, 0x86, 0x07, 0x0f, 0xe5, 0x18,
-	0x3f, 0x3c, 0x94, 0x63, 0x6c, 0x78, 0x24, 0xc7, 0xb8, 0xe2, 0x91, 0x1c, 0xe3, 0x89, 0x47, 0x72,
-	0x8c, 0x17, 0x1e, 0xc9, 0x31, 0x3e, 0x78, 0x24, 0xc7, 0xf8, 0xe2, 0x91, 0x1c, 0xc3, 0x87, 0x47,
-	0x72, 0x8c, 0x13, 0x1e, 0xcb, 0x31, 0x00, 0x02, 0x00, 0x00, 0xff, 0xff, 0x93, 0x7b, 0x45, 0x26,
-	0x78, 0x01, 0x00, 0x00,
+	0x8b, 0xcd, 0xb5, 0xa8, 0x08, 0x87, 0x99, 0x30, 0x59, 0x64, 0xf7, 0x20, 0xc9, 0xca, 0x71, 0x71,
+	0xb8, 0x96, 0xa5, 0xe6, 0xe1, 0xf2, 0xb6, 0x93, 0xc9, 0x89, 0x87, 0x72, 0x0c, 0x17, 0x1e, 0xca,
+	0x31, 0xdc, 0x78, 0x28, 0xc7, 0xf0, 0xe0, 0xa1, 0x1c, 0xe3, 0x87, 0x87, 0x72, 0x8c, 0x0d, 0x8f,
+	0xe4, 0x18, 0x57, 0x3c, 0x92, 0x63, 0x3c, 0xf1, 0x48, 0x8e, 0xf1, 0xc2, 0x23, 0x39, 0xc6, 0x07,
+	0x8f, 0xe4, 0x18, 0x5f, 0x3c, 0x92, 0x63, 0xf8, 0xf0, 0x48, 0x8e, 0x71, 0xc2, 0x63, 0x39, 0x06,
+	0x40, 0x00, 0x00, 0x00, 0xff, 0xff, 0x23, 0x67, 0x16, 0xad, 0x98, 0x01, 0x00, 0x00,
 }
