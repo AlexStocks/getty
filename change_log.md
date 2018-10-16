@@ -14,6 +14,11 @@
 ## develop history ##
 ---
 
+- 2018/10/16
+    > Feature
+    * add CallOneway/AsyncCall
+    * version: v1.0.3
+    
 - 2018/08/19
     > Feature
     * use multiple service config in service configuration
