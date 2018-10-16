@@ -46,7 +46,7 @@ func initConf() {
 		return // I know it is of no usage. Just Err Protection.
 	}
 	if path.Ext(confFile) != ".yml" {
-		panic(fmt.Sprintf("application configure file name{%v} suffix must be .toml", confFile))
+		panic(fmt.Sprintf("application configure file name{%v} suffix must be .yml", confFile))
 		return
 	}
 

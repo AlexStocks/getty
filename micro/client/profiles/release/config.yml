@@ -33,7 +33,7 @@ core:
         tcp_write_timeout : "5s"
         wait_timeout : "1s"
         max_msg_len : 1024
-        session_name : "getty-micro-server"
+        session_name : "getty-micro-client"
 
 registry:
     basic:

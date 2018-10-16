@@ -1,5 +1,9 @@
+# server
+server_host : "127.0.0.1"
+server_port : 10000
+
 core:
-    app_name : "MICRO-CLIENT"
+    app_name : "RPC-CLIENT"
     host : "127.0.0.1"
     profile_port : 20086
 
@@ -33,13 +37,5 @@ core:
         tcp_write_timeout : "5s"
         wait_timeout : "1s"
         max_msg_len : 1024
-        session_name : "getty-micro-client"
+        session_name : "getty-micro-server"
 
-registry:
-    basic:
-        type : "zookeeper"
-        reg_addr : "127.0.0.1:2181"
-        # 与 registry 之间的 lease 时长
-        keepalive_timeout : 10
-        root : "/getty"
-    group : "bj-yizhuang"

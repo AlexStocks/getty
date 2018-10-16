@@ -10,10 +10,12 @@
 package main
 
 import (
+	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 )
@@ -66,7 +68,7 @@ func initProfiling() {
 
 func initClient() {
 	var err error
-	client, err = rpc.NewClient(conf)
+	client, err = rpc.NewClient(&conf.ClientConfig)
 	if err != nil {
 		panic(jerrors.ErrorStack(err))
 	}
@@ -111,7 +113,10 @@ func testJSON() {
 	ts := rpc_examples.TestService{}
 	testReq := rpc_examples.TestReq{"aaa", "bbb", "ccc"}
 	testRsp := rpc_examples.TestRsp{}
-	err := client.Call(rpc.CodecJson, "127.0.0.1:20000", ts.Service(), "Test", &testReq, &testRsp)
+  addr := net.JoinHostPort(conf.ServerHost, strconv.Itoa(conf.ServerPort))
+	
+	err := client.Call(rpc.CodecJson, addr, ts.Service(), "Test", &testReq,
+		&testRsp)
 	if err != nil {
 		log.Error("client.Call(Json, TestService::Test) = error:%s", jerrors.ErrorStack(err))
 		return
@@ -120,7 +125,7 @@ func testJSON() {
 
 	addReq := rpc_examples.AddReq{1, 10}
 	addRsp := rpc_examples.AddRsp{}
-	err = client.Call(rpc.CodecJson, "127.0.0.1:10000", ts.Service(), "Add", &addReq, &addRsp)
+	err = client.Call(rpc.CodecJson, addr, ts.Service(), "Add", &addReq, &addRsp)
 	if err != nil {
 		log.Error("client.Call(Json, TestService::Add) = error:%s", jerrors.ErrorStack(err))
 		return
@@ -129,7 +134,7 @@ func testJSON() {
 
 	errReq := rpc_examples.ErrReq{1}
 	errRsp := rpc_examples.ErrRsp{}
-	err = client.Call(rpc.CodecJson, "127.0.0.1:20000", ts.Service(), "Err", &errReq, &errRsp)
+	err = client.Call(rpc.CodecJson, addr, ts.Service(), "Err", &errReq, &errRsp)
 	if err != nil {
 		// error test case, this invocation should step into this branch.
 		log.Error("client.Call(Json, TestService::Err) = error:%s", jerrors.ErrorStack(err))
@@ -142,7 +147,10 @@ func testProtobuf() {
 	ts := rpc_examples.TestService{}
 	testReq := rpc_examples.TestReq{"aaa", "bbb", "ccc"}
 	testRsp := rpc_examples.TestRsp{}
-	err := client.Call(rpc.CodecProtobuf, "127.0.0.1:20000", ts.Service(), "Test", &testReq, &testRsp)
+	addr := net.JoinHostPort(conf.ServerHost, strconv.Itoa(conf.ServerPort))
+	
+	err := client.Call(rpc.CodecProtobuf, addr, ts.Service(), "Test", &testReq,
+		&testRsp)
 	if err != nil {
 		log.Error("client.Call(protobuf, TestService::Test) = error:%s", jerrors.ErrorStack(err))
 		return
@@ -151,7 +159,8 @@ func testProtobuf() {
 
 	addReq := rpc_examples.AddReq{1, 10}
 	addRsp := rpc_examples.AddRsp{}
-	err = client.Call(rpc.CodecProtobuf, "127.0.0.1:10000", ts.Service(), "Add", &addReq, &addRsp)
+	err = client.Call(rpc.CodecProtobuf, addr, ts.Service(), "Add", &addReq,
+		&addRsp)
 	if err != nil {
 		log.Error("client.Call(protobuf, TestService::Add) = error:%s", jerrors.ErrorStack(err))
 		return
@@ -160,7 +169,8 @@ func testProtobuf() {
 
 	errReq := rpc_examples.ErrReq{1}
 	errRsp := rpc_examples.ErrRsp{}
-	err = client.Call(rpc.CodecProtobuf, "127.0.0.1:20000", ts.Service(), "Err", &errReq, &errRsp)
+	err = client.Call(rpc.CodecProtobuf, addr, ts.Service(), "Err", &errReq,
+		&errRsp)
 	if err != nil {
 		// error test case, this invocation should step into this branch.
 		log.Error("client.Call(protobuf, TestService::Err) = error:%s", jerrors.ErrorStack(err))
@@ -170,7 +180,7 @@ func testProtobuf() {
 }
 
 func test() {
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 1; i++ {
 		testJSON()
 		testProtobuf()
 	}
