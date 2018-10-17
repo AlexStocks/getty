@@ -26,6 +26,7 @@ type ClientOption func(*ClientOptions)
 
 type ClientOptions struct {
 	hash gxfilter.ServiceHash
+	rpc.CallOptions
 }
 
 func WithServiceHash(hash gxfilter.ServiceHash) ClientOption {
