@@ -1,0 +1,56 @@
+syntax = "proto2";
+
+package rpc_examples;
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+option (gogoproto.gostring_all) = true;
+option (gogoproto.equal_all) = true;
+option (gogoproto.verbose_equal_all) = true;
+// option (gogoproto.goproto_stringer_all) = false;
+// option (gogoproto.stringer_all) =  true;
+// option (gogoproto.populate_all) = true;
+// option (gogoproto.testgen_all) = true;
+// option (gogoproto.benchgen_all) = true;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.sizer_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+option (gogoproto.goproto_getters_all) = false;
+option (gogoproto.goproto_enum_prefix_all) = false;
+
+
+//////////////////////////////////////////
+// Request Header
+//////////////////////////////////////////
+
+
+message TestReq {
+	optional string A = 1 [(gogoproto.nullable) = false];
+	optional string B = 2 [(gogoproto.nullable) = false];
+	optional string C = 3 [(gogoproto.nullable) = false];
+}
+
+message TestRsp {
+	optional string A = 1 [(gogoproto.nullable) = false];
+}
+
+message AddReq {
+	optional int32 A = 1 [(gogoproto.nullable) = false];
+	optional int32 B = 2 [(gogoproto.nullable) = false];
+}
+
+message AddRsp {
+	optional int32 Sum = 1 [(gogoproto.nullable) = false];
+}
+
+message ErrReq {
+	optional int32 A = 1 [(gogoproto.nullable) = false];
+}
+
+message ErrRsp {
+	optional int32 A = 1 [(gogoproto.nullable) = false];
+}
+
+message EventReq {
+	optional string A = 1 [(gogoproto.nullable) = false];
+}
