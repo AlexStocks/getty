@@ -16,7 +16,7 @@
 
 - 2018/10/16
     > Feature
-    * add CallOneway/AsyncCall
+    * add rpc/micro CallOneway/AsyncCall
     * version: v1.0.3
     
 - 2018/08/19
