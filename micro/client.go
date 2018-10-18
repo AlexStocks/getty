@@ -22,18 +22,41 @@ import (
 	"github.com/AlexStocks/getty/rpc"
 )
 
-type ClientOption func(*ClientOptions)
+////////////////////////////////
+// Options
+////////////////////////////////
 
 type ClientOptions struct {
 	hash gxfilter.ServiceHash
-	rpc.CallOptions
 }
+
+type ClientOption func(*ClientOptions)
 
 func WithServiceHash(hash gxfilter.ServiceHash) ClientOption {
 	return func(o *ClientOptions) {
 		o.hash = hash
 	}
 }
+
+////////////////////////////////
+// meta data
+////////////////////////////////
+
+const (
+	DefaultMetaKey = "getty-micro-meta-key"
+)
+
+func GetServiceNodeMetadata(service *gxregistry.Service) string {
+	if service != nil && len(service.Nodes) == 1 && service.Nodes[0].Metadata != nil {
+		return service.Nodes[0].Metadata[DefaultMetaKey]
+	}
+
+	return ""
+}
+
+////////////////////////////////
+// Client
+////////////////////////////////
 
 type Client struct {
 	ClientOptions
@@ -132,8 +155,8 @@ func NewClient(conf *rpc.ClientConfig, regConf *ConsumerRegistryConfig, opts ...
 	return clt, nil
 }
 
-func (c *Client) Call(ctx context.Context, typ rpc.CodecType,
-	service, version, method string, args interface{}, reply interface{}) error {
+func (c *Client) Call(ctx context.Context, typ rpc.CodecType, service, version, method string,
+	args interface{}, reply interface{}, opts ...rpc.CallOption) error {
 
 	attr := c.attr
 	attr.Service = service
@@ -170,7 +193,7 @@ func (c *Client) Call(ctx context.Context, typ rpc.CodecType,
 
 	addr := gxnet.HostAddress(svc.Nodes[0].Address, int(svc.Nodes[0].Port))
 
-	return jerrors.Trace(c.Client.Call(typ, addr, service, method, args, reply))
+	return jerrors.Trace(c.Client.Call(typ, addr, service, method, args, reply, opts...))
 }
 
 func (c *Client) Close() {

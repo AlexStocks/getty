@@ -1,8 +1,6 @@
 package micro
 
 import (
-	"github.com/AlexStocks/goext/net"
-	"github.com/AlexStocks/goext/strings"
 	"net"
 	"strconv"
 	"strings"
@@ -10,11 +8,16 @@ import (
 )
 
 import (
+	jerrors "github.com/juju/errors"
+)
+
+import (
 	"github.com/AlexStocks/getty/rpc"
 	"github.com/AlexStocks/goext/database/registry"
 	"github.com/AlexStocks/goext/database/registry/etcdv3"
 	"github.com/AlexStocks/goext/database/registry/zookeeper"
-	jerrors "github.com/juju/errors"
+	"github.com/AlexStocks/goext/net"
+	"github.com/AlexStocks/goext/strings"
 )
 
 // Server micro service provider
@@ -23,7 +26,6 @@ type Server struct {
 	// registry
 	regConf  ProviderRegistryConfig
 	registry gxregistry.Registry
-	nodes    []*gxregistry.Node
 }
 
 // NewServer initialize a micro service provider
@@ -108,14 +110,17 @@ func (s *Server) Register(rcvr rpc.GettyRPCService) error {
 			attr.Group = c.Group
 			attr.Protocol = c.Protocol
 
+			node := &gxregistry.Node{
+				ID:      c.NodeID,
+				Address: c.LocalHost,
+				Port:    int32(c.LocalPort),
+			}
+			if len(c.Meta) != 0 {
+				node.Metadata = map[string]string{DefaultMetaKey: c.Meta}
+			}
+
 			service := gxregistry.Service{Attr: &attr}
-			service.Nodes = append(service.Nodes,
-				&gxregistry.Node{
-					ID:      c.NodeID,
-					Address: c.LocalHost,
-					Port:    int32(c.LocalPort),
-				},
-			)
+			service.Nodes = append(service.Nodes, node)
 			if err := s.registry.Register(service); err != nil {
 				return jerrors.Trace(err)
 			}

@@ -220,7 +220,7 @@ func (h *RpcClientHandler) OnMessage(session getty.Session, pkg interface{}) {
 		if pendingResponse.callback == nil {
 			pendingResponse.done <- struct{}{}
 		} else {
-			pendingResponse.callback(pendingResponse.GenAsyncResponse())
+			pendingResponse.callback(pendingResponse.GetCallResponse())
 		}
 		return
 	}
@@ -235,7 +235,7 @@ func (h *RpcClientHandler) OnMessage(session getty.Session, pkg interface{}) {
 	if pendingResponse.callback == nil {
 		pendingResponse.done <- struct{}{}
 	} else {
-		pendingResponse.callback(pendingResponse.GenAsyncResponse())
+		pendingResponse.callback(pendingResponse.GetCallResponse())
 	}
 }
 

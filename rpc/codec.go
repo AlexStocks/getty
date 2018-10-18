@@ -508,13 +508,14 @@ func (resp *GettyRPCResponse) GetHeader() interface{} {
 ////////////////////////////////////////////
 
 type PendingResponse struct {
-	seq      uint64
-	err      error
-	start    time.Time
-	callback AsyncCallback
-	reply    interface{}
-	opts     CallOptions
-	done     chan struct{}
+	seq       uint64
+	err       error
+	start     time.Time
+	readStart time.Time
+	callback  AsyncCallback
+	reply     interface{}
+	opts      CallOptions
+	done      chan struct{}
 }
 
 func NewPendingResponse() *PendingResponse {
@@ -524,11 +525,12 @@ func NewPendingResponse() *PendingResponse {
 	}
 }
 
-func (r PendingResponse) GenAsyncResponse() AsyncResponse {
-	return AsyncResponse{
-		Opts:  r.opts,
-		Cause: r.err,
-		Start: r.start,
-		Reply: r.reply,
+func (r PendingResponse) GetCallResponse() CallResponse {
+	return CallResponse{
+		Opts:      r.opts,
+		Cause:     r.err,
+		Start:     r.start,
+		ReadStart: r.readStart,
+		Reply:     r.reply,
 	}
 }

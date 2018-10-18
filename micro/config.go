@@ -22,6 +22,7 @@ type ServiceConfig struct {
 	Protocol  string `default:"json" yaml:"protocol" json:"protocol,omitempty"`
 	Service   string `default:"test" yaml:"service" json:"service,omitempty"`
 	Version   string `default:"v1" yaml:"version" json:"version,omitempty"`
+	Meta      string `default:"default-meta" yaml:"meta" json:"meta,omitempty"`
 }
 
 // CheckValidity check parameter validity

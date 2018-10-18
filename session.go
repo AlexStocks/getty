@@ -257,8 +257,8 @@ func (s *session) SetRQLen(readQLen int) {
 
 	s.lock.Lock()
 	s.rQ = make(chan interface{}, readQLen)
-	log.Info("%s, [session.SetRQLen] rQ{len:%d, cap:%d}", s.Stat(), len(s.rQ), cap(s.rQ))
 	s.lock.Unlock()
+	log.Debug("%s, [session.SetRQLen] rQ{len:%d, cap:%d}", s.Stat(), len(s.rQ), cap(s.rQ))
 }
 
 // set @session's Write queue size
@@ -269,8 +269,8 @@ func (s *session) SetWQLen(writeQLen int) {
 
 	s.lock.Lock()
 	s.wQ = make(chan interface{}, writeQLen)
-	log.Info("%s, [session.SetWQLen] wQ{len:%d, cap:%d}", s.Stat(), len(s.wQ), cap(s.wQ))
 	s.lock.Unlock()
+	log.Debug("%s, [session.SetWQLen] wQ{len:%d, cap:%d}", s.Stat(), len(s.wQ), cap(s.wQ))
 }
 
 // set maximum wait time when session got error or got exit signal

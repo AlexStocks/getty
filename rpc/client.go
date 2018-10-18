@@ -34,19 +34,19 @@ type CallOptions struct {
 
 type CallOption func(*CallOptions)
 
-func CallRequestTimeout(d time.Duration) CallOption {
+func WithCallRequestTimeout(d time.Duration) CallOption {
 	return func(o *CallOptions) {
 		o.RequestTimeout = d
 	}
 }
 
-func CallResponseTimeout(d time.Duration) CallOption {
+func WithCallResponseTimeout(d time.Duration) CallOption {
 	return func(o *CallOptions) {
 		o.ResponseTimeout = d
 	}
 }
 
-func CallMeta(k, v interface{}) CallOption {
+func WithCallMeta(k, v interface{}) CallOption {
 	return func(o *CallOptions) {
 		if o.Meta == nil {
 			o.Meta = make(map[interface{}]interface{})
@@ -55,14 +55,15 @@ func CallMeta(k, v interface{}) CallOption {
 	}
 }
 
-type AsyncResponse struct {
-	Opts  CallOptions
-	Cause error
-	Start time.Time
-	Reply interface{}
+type CallResponse struct {
+	Opts      CallOptions
+	Cause     error
+	Start     time.Time // invoke(call) start time == write start time
+	ReadStart time.Time // read start time, write duration = ReadStart - Start
+	Reply     interface{}
 }
 
-type AsyncCallback func(response AsyncResponse)
+type AsyncCallback func(response CallResponse)
 
 type Client struct {
 	conf     ClientConfig
@@ -221,6 +222,7 @@ func (c *Client) transfer(session getty.Session, typ CodecType, req *GettyRPCReq
 		pkg.B = req
 	}
 
+	// cond1
 	if rsp != nil {
 		rsp.seq = sequence
 		c.addPendingResponse(rsp)
@@ -229,6 +231,10 @@ func (c *Client) transfer(session getty.Session, typ CodecType, req *GettyRPCReq
 	err = session.WritePkg(pkg, opts.RequestTimeout)
 	if err != nil {
 		c.removePendingResponse(SequenceType(rsp.seq))
+	} else if rsp != nil { // cond2
+		// cond2 should not merged with cond1. cause the response package may be returned very
+		// soon and it will be handled by other goroutine.
+		rsp.readStart = time.Now()
 	}
 
 	return jerrors.Trace(err)
