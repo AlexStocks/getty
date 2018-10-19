@@ -27,7 +27,6 @@ import (
 
 import (
 	"github.com/AlexStocks/goext/context"
-	"github.com/AlexStocks/goext/runtime"
 	"github.com/AlexStocks/goext/sync"
 	"github.com/AlexStocks/goext/time"
 )
@@ -37,7 +36,6 @@ const (
 	netIOTimeout          = 1e9      // 1s
 	period                = 60 * 1e9 // 1 minute
 	pendingDuration       = 3e9
-	grPoolIdle            = 10e9
 	defaultSessionName    = "session"
 	defaultTCPSessionName = "tcp-session"
 	defaultUDPSessionName = "udp-session"
@@ -83,9 +81,6 @@ type session struct {
 	// goroutines sync
 	grNum int32
 	lock  sync.RWMutex
-
-	// goroutine pool
-	pool *gxruntime.Pool
 }
 
 func newSession(endPoint EndPoint, conn Connection) *session {
@@ -98,7 +93,6 @@ func newSession(endPoint EndPoint, conn Connection) *session {
 		period:     period,
 		wait:       pendingDuration,
 		attrs:      gxcontext.NewValuesContext(nil),
-		pool:       gxruntime.NewGoroutinePool(grPoolIdle),
 	}
 
 	ss.Connection.setSession(ss)
@@ -495,9 +489,7 @@ LOOP:
 			if flag {
 				log.Debug("%#v <-s.rQ", inPkg)
 				pkg := inPkg
-				s.pool.Go(func() {
-					s.listener.OnMessage(s, pkg)
-				})
+				go s.listener.OnMessage(s, pkg)
 				s.incReadPkgNum()
 			} else {
 				log.Info("[session.handleLoop] drop readin package{%#v}", inPkg)
@@ -518,15 +510,13 @@ LOOP:
 
 		case <-wheel.After(s.period):
 			if flag {
-				s.pool.Go(func() {
-					if wsFlag {
-						err := wsConn.writePing()
-						if err != nil {
-							log.Warn("wsConn.writePing() = error{%s}", err)
-						}
+				if wsFlag {
+					err := wsConn.writePing()
+					if err != nil {
+						log.Warn("wsConn.writePing() = error{%s}", err)
 					}
-					s.listener.OnCron(s)
-				})
+				}
+				s.listener.OnCron(s)
 			}
 		}
 	}
@@ -784,7 +774,6 @@ func (s *session) stop() {
 				conn.SetWriteDeadline(now.Add(s.writeTimeout()))
 			}
 			close(s.done)
-			s.pool.Close()
 		})
 	}
 }
