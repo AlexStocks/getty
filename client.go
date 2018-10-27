@@ -36,6 +36,7 @@ const (
 )
 
 var (
+	sessionClientKey   = "session-client-owner"
 	connectPingPackage = []byte("connect-ping")
 )
 
@@ -363,6 +364,7 @@ func (c *client) connect() {
 			c.Lock()
 			c.ssMap[ss] = gxsync.Empty{}
 			c.Unlock()
+			ss.SetAttribute(sessionClientKey, c)
 			break
 		}
 		// don't distinguish between tcp connection and websocket connection. Because
@@ -382,42 +384,34 @@ func (c *client) RunEventLoop(newSession NewSessionCallback) {
 	c.Lock()
 	c.newSession = newSession
 	c.Unlock()
+	c.reConnect()
+}
 
-	c.wg.Add(1)
-	// a for-loop goroutine to make sure the connection is valid
-	go func() {
-		var num, max, times int
-		defer c.wg.Done()
+// a for-loop connect to make sure the connection pool is valid
+func (c *client) reConnect() {
+	var num, max, times int
 
-		c.Lock()
-		max = c.number
-		c.Unlock()
-		// log.Info("maximum client connection number:%d", max)
-		for {
-			if c.IsClosed() {
-				log.Warn("client{peer:%s} goroutine exit now.", c.addr)
-				break
-			}
-
-			num = c.sessionNum()
-			// log.Info("current client connction number:%d", num)
-			if max <= num {
-				times++
-				if maxTimes < times {
-					times = maxTimes
-				}
-				// time.Sleep(time.Duration(int64(times) * connInterval))
-				<-wheel.After(time.Duration(int64(times) * connInterval))
-				continue
-			}
-			times = 0
-			c.connect()
-			//if c.endPointType == UDP_CLIENT {
-			//	break
-			//}
-			// time.Sleep(c.interval) // build c.number connections asap
+	// c.Lock()
+	max = c.number
+	// c.Unlock()
+	for {
+		if c.IsClosed() {
+			log.Warn("client{peer:%s} goroutine exit now.", c.addr)
+			break
 		}
-	}()
+
+		num = c.sessionNum()
+		if max <= num {
+			break
+		}
+		c.connect()
+		times++
+		if maxTimes < times {
+			times = maxTimes
+		}
+		// time.Sleep(time.Duration(int64(times) * connInterval))
+		<-wheel.After(time.Duration(int64(times) * connInterval))
+	}
 }
 
 func (c *client) stop() {
@@ -429,6 +423,7 @@ func (c *client) stop() {
 			close(c.done)
 			c.Lock()
 			for s := range c.ssMap {
+				s.RemoveAttribute(sessionClientKey)
 				s.Close()
 			}
 			c.ssMap = nil

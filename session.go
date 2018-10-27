@@ -774,6 +774,10 @@ func (s *session) stop() {
 				conn.SetWriteDeadline(now.Add(s.writeTimeout()))
 			}
 			close(s.done)
+			c := s.GetAttribute(sessionClientKey)
+			if clt, ok := c.(*client); ok {
+				clt.reConnect()
+			}
 		})
 	}
 }
@@ -791,9 +795,9 @@ func (s *session) gc() {
 	s.lock.Unlock()
 }
 
-// Close will be invoked by NewSessionCallback(if return error is not nil) or (session)handleLoop automatically.
-// It's thread safe.
+// Close will be invoked by NewSessionCallback(if return error is not nil)
+// or (session)handleLoop automatically. It's thread safe.
 func (s *session) Close() {
 	s.stop()
-	log.Info("%s closed now, its current gr num %d", s.sessionToken(), atomic.LoadInt32(&(s.grNum)))
+	log.Info("%s closed now. its current gr num is %d", s.sessionToken(), atomic.LoadInt32(&(s.grNum)))
 }
