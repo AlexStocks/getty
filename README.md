@@ -36,7 +36,7 @@ An micro service framework based on getty/rpc.
 Feature list:
 
 - 1 Registry: ZooKeeper(√), Etcd(√)
-- 2 Load Balance: Random(X), RoundRobin(√)
+- 2 Load Balance: Random(X), RoundRobin(√), [Self-Defined(√)](https://github.com/alexstocks/getty-examples/blob/master/micro/client/app/main.go#L86)
 - 3 Service Discovery: Service Publish(√), Service Watch(√), Service Notify(√)
 
 Code example:
