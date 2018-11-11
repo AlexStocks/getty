@@ -489,7 +489,8 @@ LOOP:
 			if flag {
 				log.Debug("%#v <-s.rQ", inPkg)
 				pkg := inPkg
-				go s.listener.OnMessage(s, pkg)
+				// go s.listener.OnMessage(s, pkg)
+				s.listener.OnMessage(s, pkg)
 				s.incReadPkgNum()
 			} else {
 				log.Info("[session.handleLoop] drop readin package{%#v}", inPkg)
