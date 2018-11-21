@@ -23,7 +23,6 @@ import (
 
 import (
 	"github.com/AlexStocks/goext/net"
-	"github.com/AlexStocks/goext/sync"
 	"github.com/AlexStocks/goext/time"
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
@@ -46,7 +45,7 @@ type server struct {
 	server         *http.Server // for ws or wss server
 
 	sync.Once
-	done chan gxsync.Empty
+	done chan struct{}
 	wg   sync.WaitGroup
 }
 
@@ -59,7 +58,7 @@ func (s *server) init(opts ...ServerOption) {
 func newServer(t EndPointType, opts ...ServerOption) *server {
 	s := &server{
 		endPointType: t,
-		done:         make(chan gxsync.Empty),
+		done:         make(chan struct{}),
 	}
 
 	s.init(opts...)

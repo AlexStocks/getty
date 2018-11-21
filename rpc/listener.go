@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	errTooManySessions = jerrors.New("too many echo sessions")
+	errTooManySessions = jerrors.New("too many sessions")
 )
 
 type rpcSession struct {
@@ -44,7 +44,7 @@ func NewRpcServerHandler(maxSessionNum int, sessionTimeout time.Duration) *RpcSe
 func (h *RpcServerHandler) OnOpen(session getty.Session) error {
 	var err error
 	h.rwlock.RLock()
-	if h.maxSessionNum < len(h.sessionMap) {
+	if h.maxSessionNum <= len(h.sessionMap) {
 		err = errTooManySessions
 	}
 	h.rwlock.RUnlock()

@@ -27,7 +27,6 @@ import (
 
 import (
 	"github.com/AlexStocks/goext/context"
-	"github.com/AlexStocks/goext/sync"
 	"github.com/AlexStocks/goext/time"
 )
 
@@ -68,7 +67,7 @@ type session struct {
 	writer   Writer
 	listener EventListener
 	once     sync.Once
-	done     chan gxsync.Empty
+	done     chan struct{}
 	// errFlag  bool
 
 	period time.Duration
@@ -89,7 +88,7 @@ func newSession(endPoint EndPoint, conn Connection) *session {
 		endPoint:   endPoint,
 		maxMsgLen:  maxReadBufLen,
 		Connection: conn,
-		done:       make(chan gxsync.Empty),
+		done:       make(chan struct{}),
 		period:     period,
 		wait:       pendingDuration,
 		attrs:      gxcontext.NewValuesContext(nil),
@@ -129,7 +128,7 @@ func newWSSession(conn *websocket.Conn, endPoint EndPoint) Session {
 func (s *session) Reset() {
 	s.name = defaultSessionName
 	s.once = sync.Once{}
-	s.done = make(chan gxsync.Empty)
+	s.done = make(chan struct{})
 	// s.errFlag = false
 	s.period = period
 	s.wait = pendingDuration

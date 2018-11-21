@@ -23,7 +23,6 @@ import (
 
 import (
 	"github.com/AlexStocks/goext/net"
-	"github.com/AlexStocks/goext/sync"
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
 	jerrors "github.com/juju/errors"
@@ -52,10 +51,10 @@ type client struct {
 	endPointType EndPointType
 
 	newSession NewSessionCallback
-	ssMap      map[Session]gxsync.Empty
+	ssMap      map[Session]struct{}
 
 	sync.Once
-	done chan gxsync.Empty
+	done chan struct{}
 	wg   sync.WaitGroup
 }
 
@@ -68,7 +67,7 @@ func (c *client) init(opts ...ClientOption) {
 func newClient(t EndPointType, opts ...ClientOption) *client {
 	c := &client{
 		endPointType: t,
-		done:         make(chan gxsync.Empty),
+		done:         make(chan struct{}),
 	}
 
 	c.init(opts...)
@@ -77,7 +76,7 @@ func newClient(t EndPointType, opts ...ClientOption) *client {
 		panic(fmt.Sprintf("client type:%s, @connNum:%d, @serverAddr:%s", t, c.number, c.addr))
 	}
 
-	c.ssMap = make(map[Session]gxsync.Empty, c.number)
+	c.ssMap = make(map[Session]struct{}, c.number)
 
 	return c
 }
@@ -362,7 +361,7 @@ func (c *client) connect() {
 			// ss.RunEventLoop()
 			ss.(*session).run()
 			c.Lock()
-			c.ssMap[ss] = gxsync.Empty{}
+			c.ssMap[ss] = struct{}{}
 			c.Unlock()
 			ss.SetAttribute(sessionClientKey, c)
 			break
