@@ -465,7 +465,7 @@ func (s *session) handleLoop() {
 	wsConn, wsFlag = s.Connection.(*gettyWSConn)
 LOOP:
 	for {
-		// A select blocks until one of its cases can run, then it executes that case.
+		// A select blocks until one of its cases is ready to run.
 		// It choose one at random if multiple are ready. Otherwise it choose default branch if none is ready.
 		select {
 		case <-s.done:
