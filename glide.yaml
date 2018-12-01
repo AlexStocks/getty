@@ -1,7 +1,7 @@
 package: github.com/AlexStocks/getty
 import:
 - package: github.com/AlexStocks/goext
-  version: ^0.3.1
+  version: ~0.3.1
   subpackages:
   - container/set/strset
   - context
@@ -16,7 +16,7 @@ import:
   - sync/atomic
   - time
 - package: github.com/AlexStocks/log4go
-  version: ^1.0.0
+  version: ~1.0.0
 - package: github.com/gogo/protobuf
   version: ^1.1.1
   subpackages:
