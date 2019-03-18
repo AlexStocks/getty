@@ -81,7 +81,7 @@ func NewServer(conf *rpc.ServerConfig, regConf *ProviderRegistryConfig) (*Server
 
 	for _, svr := range regConf.ServiceArray {
 		addr := gxnet.HostAddress(svr.LocalHost, svr.LocalPort)
-		if ok := gxstrings.Contains(localAddrArr, addr); !ok {
+		if ok := gxstrings.Contains(gxstrings.Strings2Ifs(localAddrArr), addr); !ok {
 			return nil, jerrors.Errorf("can not find ServiceConfig addr %s in conf address array %#v",
 				addr, localAddrArr)
 		}

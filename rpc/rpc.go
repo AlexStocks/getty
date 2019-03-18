@@ -65,7 +65,7 @@ func suitableMethods(typ reflect.Type) map[string]*methodType {
 		// notify Method needs two ins: receiver, *args.
 		mInNum := mtype.NumIn()
 		if mInNum != 2 && mInNum != 3 {
-			log.Warn("method %s has wrong number of ins %d which should be " +
+			log.Warn("method %s has wrong number of ins %d which should be "+
 				"2(notify method) or 3(serive method)", mname, mtype.NumIn())
 			continue
 		}
@@ -75,7 +75,7 @@ func suitableMethods(typ reflect.Type) map[string]*methodType {
 			log.Error("method{%s} argument type not exported{%v}", mname, argType)
 			continue
 		}
-		
+
 		var replyType reflect.Type
 		if mInNum == 3 {
 			// Second arg must be a pointer.
