@@ -104,10 +104,6 @@ func (c *gettyRPCClient) selectSession() getty.Session {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
-	if c.sessions == nil {
-		return nil
-	}
-
 	count := len(c.sessions)
 	if count == 0 {
 		return nil
