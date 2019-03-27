@@ -1,8 +1,8 @@
 module github.com/AlexStocks/getty
 
 require (
-	github.com/AlexStocks/goext v0.3.1
-	github.com/AlexStocks/log4go v1.0.0
+	github.com/AlexStocks/goext v0.3.2
+	github.com/AlexStocks/log4go v1.0.2
 	github.com/cheekybits/is v0.0.0-20150225183255-68e9c0620927 // indirect
 	github.com/coreos/bbolt v1.3.2 // indirect
 	github.com/coreos/etcd v3.3.12+incompatible // indirect
