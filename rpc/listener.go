@@ -82,7 +82,7 @@ func (h *RpcServerHandler) OnMessage(session getty.Session, pkg interface{}) {
 
 	req, ok := pkg.(GettyRPCRequestPackage)
 	if !ok {
-		log.Error("illegal packge{%#v}", pkg)
+		log.Error("illegal package{%#v}", pkg)
 		return
 	}
 	// heartbeat
@@ -202,7 +202,7 @@ func (h *RpcClientHandler) OnClose(session getty.Session) {
 func (h *RpcClientHandler) OnMessage(session getty.Session, pkg interface{}) {
 	p, ok := pkg.(*GettyRPCResponsePackage)
 	if !ok {
-		log.Error("illegal packge{%#v}", pkg)
+		log.Error("illegal package{%#v}", pkg)
 		return
 	}
 	log.Debug("get rpc response{%#v}", p)
