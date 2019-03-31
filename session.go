@@ -280,6 +280,10 @@ func (s *session) SetWaitTime(waitTime time.Duration) {
 // set attribute of key @session:key
 func (s *session) GetAttribute(key interface{}) interface{} {
 	s.lock.RLock()
+	if s.attrs == nil {
+		s.lock.Unlock()
+		return nil
+	}
 	ret, flag := s.attrs.Get(key)
 	s.lock.RUnlock()
 
@@ -293,14 +297,18 @@ func (s *session) GetAttribute(key interface{}) interface{} {
 // get attribute of key @session:key
 func (s *session) SetAttribute(key interface{}, value interface{}) {
 	s.lock.Lock()
-	s.attrs.Set(key, value)
+	if s.attrs != nil {
+		s.attrs.Set(key, value)
+	}
 	s.lock.Unlock()
 }
 
 // delete attribute of key @session:key
 func (s *session) RemoveAttribute(key interface{}) {
 	s.lock.Lock()
-	s.attrs.Delete(key)
+	if s.attrs != nil {
+		s.attrs.Delete(key)
+	}
 	s.lock.Unlock()
 }
 
