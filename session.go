@@ -20,7 +20,7 @@ import (
 )
 
 import (
-	log "github.com/AlexStocks/log4go"
+	log "github.com/dubbogo/log4go"
 	"github.com/gorilla/websocket"
 	jerrors "github.com/juju/errors"
 )

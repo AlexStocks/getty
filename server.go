@@ -24,7 +24,7 @@ import (
 import (
 	"github.com/AlexStocks/goext/net"
 	"github.com/AlexStocks/goext/time"
-	log "github.com/AlexStocks/log4go"
+	log "github.com/dubbogo/log4go"
 	"github.com/gorilla/websocket"
 	jerrors "github.com/juju/errors"
 )
