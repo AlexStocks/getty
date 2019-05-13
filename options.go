@@ -70,6 +70,7 @@ type ClientOption func(*ClientOptions)
 type ClientOptions struct {
 	addr   string
 	number int
+	reconnectInterval int// reConnect Interval
 
 	// the cert file of wss server which may contain server domain, server ip, the starting effective date, effective
 	// duration, the hash alg, the len of the private key.
@@ -81,6 +82,13 @@ type ClientOptions struct {
 func WithServerAddress(addr string) ClientOption {
 	return func(o *ClientOptions) {
 		o.addr = addr
+	}
+}
+
+// @reconnectInterval is server address.
+func WithReconnectInterval(reconnectInterval int) ClientOption {
+	return func(o *ClientOptions) {
+		o.reconnectInterval = reconnectInterval
 	}
 }
 
