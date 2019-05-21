@@ -26,11 +26,11 @@ import (
 	"github.com/AlexStocks/goext/time"
 	log "github.com/dubbogo/log4go"
 	"github.com/gorilla/websocket"
-	jerrors "github.com/juju/errors"
+	"github.com/pkg/errors"
 )
 
 var (
-	errSelfConnect        = jerrors.New("connect self!")
+	errSelfConnect        = errors.New("connect self!")
 	serverFastFailTimeout = gxtime.TimeSecondDuration(1)
 )
 
@@ -157,7 +157,7 @@ func (s *server) listenTCP() error {
 
 	streamListener, err = net.Listen("tcp", s.addr)
 	if err != nil {
-		return jerrors.Annotatef(err, "net.Listen(tcp, addr:%s))", s.addr)
+		return errors.Wrapf(err, "net.Listen(tcp, addr:%s))", s.addr)
 	}
 
 	s.streamListener = streamListener
@@ -174,11 +174,11 @@ func (s *server) listenUDP() error {
 
 	localAddr, err = net.ResolveUDPAddr("udp", s.addr)
 	if err != nil {
-		return jerrors.Annotatef(err, "net.ResolveUDPAddr(udp, addr:%s)", s.addr)
+		return errors.Wrapf(err, "net.ResolveUDPAddr(udp, addr:%s)", s.addr)
 	}
 	pktListener, err = net.ListenUDP("udp", localAddr)
 	if err != nil {
-		return jerrors.Annotatef(err, "net.ListenUDP((udp, localAddr:%#v)", localAddr)
+		return errors.Wrapf(err, "net.ListenUDP((udp, localAddr:%#v)", localAddr)
 	}
 	// if err = setUDPSocketOptions(pktListener); err != nil {
 	//  	return errors.Wrapf(err, "setUDPSocketOptions(pktListener:%#v)", pktListener)
@@ -193,9 +193,9 @@ func (s *server) listenUDP() error {
 func (s *server) listen() error {
 	switch s.endPointType {
 	case TCP_SERVER, WS_SERVER, WSS_SERVER:
-		return jerrors.Trace(s.listenTCP())
+		return errors.WithStack(s.listenTCP())
 	case UDP_ENDPOINT:
-		return jerrors.Trace(s.listenUDP())
+		return errors.WithStack(s.listenUDP())
 	}
 
 	return nil
@@ -204,7 +204,7 @@ func (s *server) listen() error {
 func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 	conn, err := s.streamListener.Accept()
 	if err != nil {
-		return nil, jerrors.Trace(err)
+		return nil, errors.WithStack(err)
 	}
 	if gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 		log.Warn("conn.localAddr{%s} == conn.RemoteAddr", conn.LocalAddr().String(), conn.RemoteAddr().String())
@@ -215,7 +215,7 @@ func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 	err = newSession(ss)
 	if err != nil {
 		conn.Close()
-		return nil, jerrors.Trace(err)
+		return nil, errors.WithStack(err)
 	}
 
 	return ss, nil
@@ -252,7 +252,7 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 					}
 					continue
 				}
-				log.Warn("server{%s}.Accept() = err {%#v}", s.addr, jerrors.ErrorStack(err))
+				log.Warn("server{%s}.Accept() = err {%+v}", s.addr, err)
 				continue
 			}
 			delay = 0
@@ -309,7 +309,7 @@ func (s *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Warn("upgrader.Upgrader(http.Request{%#v}) = error{%s}", r, err)
+		log.Warn("upgrader.Upgrader(http.Request{%#v}) = error:%+v", r, err)
 		return
 	}
 	if conn.RemoteAddr().String() == conn.LocalAddr().String() {
@@ -355,7 +355,7 @@ func (s *server) runWSEventLoop(newSession NewSessionCallback) {
 		s.lock.Unlock()
 		err = server.Serve(s.streamListener)
 		if err != nil {
-			log.Error("http.server.Serve(addr{%s}) = err{%s}", s.addr, jerrors.ErrorStack(err))
+			log.Error("http.server.Serve(addr{%s}) = err{%+v}", s.addr, err)
 			// panic(err)
 		}
 	}()
@@ -378,8 +378,8 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 		defer s.wg.Done()
 
 		if certificate, err = tls.LoadX509KeyPair(s.cert, s.privateKey); err != nil {
-			panic(fmt.Sprintf("tls.LoadX509KeyPair(cert{%s}, privateKey{%s}) = err{%s}",
-				s.cert, s.privateKey, jerrors.ErrorStack(err)))
+			panic(fmt.Sprintf("tls.LoadX509KeyPair(cert{%s}, privateKey{%s}) = err{%+v}",
+				s.cert, s.privateKey, err))
 			return
 		}
 		config = &tls.Config{
@@ -392,7 +392,7 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 		if s.caCert != "" {
 			certPem, err = ioutil.ReadFile(s.caCert)
 			if err != nil {
-				panic(fmt.Errorf("ioutil.ReadFile(certFile{%s}) = err{%s}", s.caCert, jerrors.ErrorStack(err)))
+				panic(fmt.Errorf("ioutil.ReadFile(certFile{%s}) = err{%+v}", s.caCert, err))
 			}
 			certPool = x509.NewCertPool()
 			if ok := certPool.AppendCertsFromPEM(certPem); !ok {
@@ -417,7 +417,7 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 		s.lock.Unlock()
 		err = server.Serve(tls.NewListener(s.streamListener, config))
 		if err != nil {
-			log.Error("http.server.Serve(addr{%s}) = err{%s}", s.addr, jerrors.ErrorStack(err))
+			log.Error("http.server.Serve(addr{%s}) = err{%+v}", s.addr, err)
 			panic(err)
 		}
 	}()
@@ -427,7 +427,7 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 // @newSession: new connection callback
 func (s *server) RunEventLoop(newSession NewSessionCallback) {
 	if err := s.listen(); err != nil {
-		panic(fmt.Errorf("server.listen() = error:%s", jerrors.ErrorStack(err)))
+		panic(fmt.Errorf("server.listen() = error:%+v", err))
 	}
 
 	switch s.endPointType {

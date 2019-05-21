@@ -7,13 +7,14 @@ require (
 	github.com/dubbogo/log4go v0.0.0-20190406152735-41c57e1073e9
 	github.com/golang/snappy v0.0.1
 	github.com/gorilla/websocket v1.4.0
-	github.com/juju/errors v0.0.0-20190207033735-e65537c515d7
+	github.com/juju/errors v0.0.0-20190207033735-e65537c515d7 // indirect
 	github.com/juju/loggo v0.0.0-20190212223446-d976af380377 // indirect
 	github.com/juju/testing v0.0.0-20180920084828-472a3e8b2073 // indirect
 	github.com/k0kubun/colorstring v0.0.0-20150214042306-9440f1994b88 // indirect
 	github.com/k0kubun/pp v3.0.1+incompatible // indirect
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/mattn/go-colorable v0.1.1 // indirect
+	github.com/pkg/errors v0.8.1
 	github.com/stretchr/testify v1.3.0 // indirect
 	golang.org/x/net v0.0.0-20190320064053-1272bf9dcd53
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect

@@ -68,9 +68,9 @@ func WithWebsocketServerRootCert(cert string) ServerOption {
 type ClientOption func(*ClientOptions)
 
 type ClientOptions struct {
-	addr   string
-	number int
-	reconnectInterval int// reConnect Interval
+	addr              string
+	number            int
+	reconnectInterval int // reConnect Interval
 
 	// the cert file of wss server which may contain server domain, server ip, the starting effective date, effective
 	// duration, the hash alg, the len of the private key.
