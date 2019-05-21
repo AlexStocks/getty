@@ -776,7 +776,7 @@ func (s *session) stop() {
 	default:
 		s.once.Do(func() {
 			// let read/Write timeout asap
-			now := wheel.Now()
+			now := time.Now()
 			if conn := s.Conn(); conn != nil {
 				conn.SetReadDeadline(now.Add(s.readTimeout()))
 				conn.SetWriteDeadline(now.Add(s.writeTimeout()))

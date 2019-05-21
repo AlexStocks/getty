@@ -240,7 +240,7 @@ func (t *gettyTCPConn) read(p []byte) (int, error) {
 		// Optimization: update read deadline only if more than 25%
 		// of the last read deadline exceeded.
 		// See https://github.com/golang/go/issues/15133 for details.
-		currentTime = wheel.Now()
+		currentTime = time.Now()
 		if currentTime.Sub(t.rLastDeadline) > (t.rTimeout >> 2) {
 			if err = t.conn.SetReadDeadline(currentTime.Add(t.rTimeout)); err != nil {
 				return 0, jerrors.Trace(err)
@@ -273,7 +273,7 @@ func (t *gettyTCPConn) Write(pkg interface{}) (int, error) {
 		// Optimization: update write deadline only if more than 25%
 		// of the last write deadline exceeded.
 		// See https://github.com/golang/go/issues/15133 for details.
-		currentTime = wheel.Now()
+		currentTime = time.Now()
 		if currentTime.Sub(t.wLastDeadline) > (t.wTimeout >> 2) {
 			if err = t.conn.SetWriteDeadline(currentTime.Add(t.wTimeout)); err != nil {
 				return 0, jerrors.Trace(err)
@@ -390,7 +390,7 @@ func (u *gettyUDPConn) read(p []byte) (int, *net.UDPAddr, error) {
 		// Optimization: update read deadline only if more than 25%
 		// of the last read deadline exceeded.
 		// See https://github.com/golang/go/issues/15133 for details.
-		currentTime = wheel.Now()
+		currentTime = time.Now()
 		if currentTime.Sub(u.rLastDeadline) > (u.rTimeout >> 2) {
 			if err = u.conn.SetReadDeadline(currentTime.Add(u.rTimeout)); err != nil {
 				return 0, nil, jerrors.Trace(err)
@@ -438,7 +438,7 @@ func (u *gettyUDPConn) Write(udpCtx interface{}) (int, error) {
 		// Optimization: update write deadline only if more than 25%
 		// of the last write deadline exceeded.
 		// See https://github.com/golang/go/issues/15133 for details.
-		currentTime = wheel.Now()
+		currentTime = time.Now()
 		if currentTime.Sub(u.wLastDeadline) > (u.wTimeout >> 2) {
 			if err = u.conn.SetWriteDeadline(currentTime.Add(u.wTimeout)); err != nil {
 				return 0, jerrors.Trace(err)
@@ -564,7 +564,7 @@ func (w *gettyWSConn) updateWriteDeadline() error {
 		// Optimization: update write deadline only if more than 25%
 		// of the last write deadline exceeded.
 		// See https://github.com/golang/go/issues/15133 for details.
-		currentTime = wheel.Now()
+		currentTime = time.Now()
 		if currentTime.Sub(w.wLastDeadline) > (w.wTimeout >> 2) {
 			if err = w.conn.SetWriteDeadline(currentTime.Add(w.wTimeout)); err != nil {
 				return jerrors.Trace(err)
