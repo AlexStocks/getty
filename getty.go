@@ -119,9 +119,9 @@ type Connection interface {
 /////////////////////////////////////////
 
 var (
-	ErrSessionClosed  = errors.New("session Already Closed")
-	ErrSessionBlocked = errors.New("session Full Blocked")
-	ErrNullPeerAddr   = errors.New("peer address is nil")
+	ErrSessionClosed  = perrors.New("session Already Closed")
+	ErrSessionBlocked = perrors.New("session Full Blocked")
+	ErrNullPeerAddr   = perrors.New("peer address is nil")
 )
 
 type Session interface {

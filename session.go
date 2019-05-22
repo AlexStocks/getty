@@ -22,7 +22,7 @@ import (
 import (
 	log "github.com/dubbogo/log4go"
 	"github.com/gorilla/websocket"
-	"github.com/pkg/errors"
+	perrors "github.com/pkg/errors"
 )
 
 import (
@@ -337,7 +337,7 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 			s.incWritePkgNum()
 			// gxlog.CError("after incWritePkgNum, ss:%s", s.Stat())
 		}
-		return errors.WithStack(err)
+		return perrors.WithStack(err)
 	}
 	select {
 	case s.wQ <- pkg:
@@ -359,7 +359,7 @@ func (s *session) WriteBytes(pkg []byte) error {
 
 	// s.conn.SetWriteTimeout(time.Now().Add(s.wTimeout))
 	if _, err := s.Connection.Write(pkg); err != nil {
-		return errors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
+		return perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
 	}
 
 	s.incWritePkgNum()
@@ -400,7 +400,7 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 
 	// return s.Connection.Write(arr)
 	if err = s.WriteBytes(arr); err != nil {
-		return errors.WithStack(err)
+		return perrors.WithStack(err)
 	}
 
 	num := len(pkgs) - 1
@@ -603,7 +603,7 @@ func (s *session) handleTCPPackage() error {
 			// s.conn.SetReadTimeout(time.Now().Add(s.rTimeout))
 			bufLen, err = conn.read(buf)
 			if err != nil {
-				if netError, ok = errors.Cause(err).(net.Error); ok && netError.Timeout() {
+				if netError, ok = perrors.Cause(err).(net.Error); ok && netError.Timeout() {
 					break
 				}
 				log.Error("%s, [session.conn.read] = error:%+v", s.sessionToken(), err)
@@ -627,7 +627,7 @@ func (s *session) handleTCPPackage() error {
 			// pkg, err = s.pkgHandler.Read(s, pktBuf)
 			pkg, pkgLen, err = s.reader.Read(s, pktBuf.Bytes())
 			if err == nil && s.maxMsgLen > 0 && pkgLen > int(s.maxMsgLen) {
-				err = errors.Errorf("pkgLen %d > session max message len %d", pkgLen, s.maxMsgLen)
+				err = perrors.Errorf("pkgLen %d > session max message len %d", pkgLen, s.maxMsgLen)
 			}
 			if err != nil {
 				log.Warn("%s, [session.handleTCPPackage] = len{%d}, error:%+v",
@@ -649,7 +649,7 @@ func (s *session) handleTCPPackage() error {
 		}
 	}
 
-	return errors.WithStack(err)
+	return perrors.WithStack(err)
 }
 
 // get package from udp packet
@@ -679,13 +679,13 @@ func (s *session) handleUDPPackage() error {
 
 		bufLen, addr, err = conn.read(buf)
 		log.Debug("conn.read() = bufLen:%d, addr:%#v, err:%+v", bufLen, addr, err)
-		if netError, ok = errors.Cause(err).(net.Error); ok && netError.Timeout() {
+		if netError, ok = perrors.Cause(err).(net.Error); ok && netError.Timeout() {
 			continue
 		}
 		if err != nil {
 			log.Error("%s, [session.handleUDPPackage] = len{%d}, error{%+s}",
 				s.sessionToken(), bufLen, err)
-			err = errors.Wrapf(err, "conn.read()")
+			err = perrors.Wrapf(err, "conn.read()")
 			break
 		}
 
@@ -702,7 +702,7 @@ func (s *session) handleUDPPackage() error {
 		pkg, pkgLen, err = s.reader.Read(s, buf[:bufLen])
 		log.Debug("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%+v", pkg, pkgLen, err)
 		if err == nil && s.maxMsgLen > 0 && bufLen > int(s.maxMsgLen) {
-			err = errors.Errorf("Message Too Long, bufLen %d, session max message len %d", bufLen, s.maxMsgLen)
+			err = perrors.Errorf("Message Too Long, bufLen %d, session max message len %d", bufLen, s.maxMsgLen)
 		}
 		if err != nil {
 			log.Warn("%s, [session.handleUDPPackage] = len{%d}, error:%+v",
@@ -718,7 +718,7 @@ func (s *session) handleUDPPackage() error {
 		s.rQ <- UDPContext{Pkg: pkg, PeerAddr: addr}
 	}
 
-	return errors.WithStack(err)
+	return perrors.WithStack(err)
 }
 
 // get package from websocket stream
@@ -739,20 +739,20 @@ func (s *session) handleWSPackage() error {
 			break
 		}
 		pkg, err = conn.read()
-		if netError, ok = errors.Cause(err).(net.Error); ok && netError.Timeout() {
+		if netError, ok = perrors.Cause(err).(net.Error); ok && netError.Timeout() {
 			continue
 		}
 		if err != nil {
 			log.Warn("%s, [session.handleWSPackage] = error{%+s}",
 				s.sessionToken(), err)
 			// s.errFlag = true
-			return errors.WithStack(err)
+			return perrors.WithStack(err)
 		}
 		s.UpdateActive()
 		if s.reader != nil {
 			unmarshalPkg, length, err = s.reader.Read(s, pkg)
 			if err == nil && s.maxMsgLen > 0 && length > int(s.maxMsgLen) {
-				err = errors.Errorf("Message Too Long, length %d, session max message len %d", length, s.maxMsgLen)
+				err = perrors.Errorf("Message Too Long, length %d, session max message len %d", length, s.maxMsgLen)
 			}
 			if err != nil {
 				log.Warn("%s, [session.handleWSPackage] = len{%d}, error:%+v",

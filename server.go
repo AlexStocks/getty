@@ -26,11 +26,11 @@ import (
 	"github.com/AlexStocks/goext/time"
 	log "github.com/dubbogo/log4go"
 	"github.com/gorilla/websocket"
-	"github.com/pkg/errors"
+	perrors "github.com/pkg/errors"
 )
 
 var (
-	errSelfConnect        = errors.New("connect self!")
+	errSelfConnect        = perrors.New("connect self!")
 	serverFastFailTimeout = gxtime.TimeSecondDuration(1)
 )
 
@@ -157,7 +157,7 @@ func (s *server) listenTCP() error {
 
 	streamListener, err = net.Listen("tcp", s.addr)
 	if err != nil {
-		return errors.Wrapf(err, "net.Listen(tcp, addr:%s))", s.addr)
+		return perrors.Wrapf(err, "net.Listen(tcp, addr:%s))", s.addr)
 	}
 
 	s.streamListener = streamListener
@@ -174,14 +174,14 @@ func (s *server) listenUDP() error {
 
 	localAddr, err = net.ResolveUDPAddr("udp", s.addr)
 	if err != nil {
-		return errors.Wrapf(err, "net.ResolveUDPAddr(udp, addr:%s)", s.addr)
+		return perrors.Wrapf(err, "net.ResolveUDPAddr(udp, addr:%s)", s.addr)
 	}
 	pktListener, err = net.ListenUDP("udp", localAddr)
 	if err != nil {
-		return errors.Wrapf(err, "net.ListenUDP((udp, localAddr:%#v)", localAddr)
+		return perrors.Wrapf(err, "net.ListenUDP((udp, localAddr:%#v)", localAddr)
 	}
 	// if err = setUDPSocketOptions(pktListener); err != nil {
-	//  	return errors.Wrapf(err, "setUDPSocketOptions(pktListener:%#v)", pktListener)
+	//  	return perrors.Wrapf(err, "setUDPSocketOptions(pktListener:%#v)", pktListener)
 	// }
 
 	s.pktListener = pktListener
@@ -193,9 +193,9 @@ func (s *server) listenUDP() error {
 func (s *server) listen() error {
 	switch s.endPointType {
 	case TCP_SERVER, WS_SERVER, WSS_SERVER:
-		return errors.WithStack(s.listenTCP())
+		return perrors.WithStack(s.listenTCP())
 	case UDP_ENDPOINT:
-		return errors.WithStack(s.listenUDP())
+		return perrors.WithStack(s.listenUDP())
 	}
 
 	return nil
@@ -204,7 +204,7 @@ func (s *server) listen() error {
 func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 	conn, err := s.streamListener.Accept()
 	if err != nil {
-		return nil, errors.WithStack(err)
+		return nil, perrors.WithStack(err)
 	}
 	if gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 		log.Warn("conn.localAddr{%s} == conn.RemoteAddr", conn.LocalAddr().String(), conn.RemoteAddr().String())
@@ -215,7 +215,7 @@ func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 	err = newSession(ss)
 	if err != nil {
 		conn.Close()
-		return nil, errors.WithStack(err)
+		return nil, perrors.WithStack(err)
 	}
 
 	return ss, nil

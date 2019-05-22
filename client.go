@@ -25,7 +25,7 @@ import (
 	"github.com/AlexStocks/goext/net"
 	log "github.com/dubbogo/log4go"
 	"github.com/gorilla/websocket"
-	"github.com/pkg/errors"
+	perrors "github.com/pkg/errors"
 )
 
 const (
@@ -185,7 +185,7 @@ func (c *client) dialUDP() Session {
 		}
 		conn.SetReadDeadline(time.Now().Add(1e9))
 		length, err = conn.Read(buf)
-		if netErr, ok := errors.Cause(err).(net.Error); ok && netErr.Timeout() {
+		if netErr, ok := perrors.Cause(err).(net.Error); ok && netErr.Timeout() {
 			err = nil
 		}
 		if err != nil {
