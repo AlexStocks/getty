@@ -11,9 +11,10 @@ package getty
 
 import (
 	"compress/flate"
-	"errors"
 	"net"
 	"time"
+
+	perrors "github.com/pkg/errors"
 )
 
 // NewSessionCallback will be invoked when server accepts a new client connection or client connects to server successfully.

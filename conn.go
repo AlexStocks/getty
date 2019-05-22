@@ -250,7 +250,7 @@ func (t *gettyTCPConn) read(p []byte) (int, error) {
 	}
 
 	length, err = t.reader.Read(p)
-	log.Debug("now:%s, length:%d, err:%s", currentTime, length, err)
+	log.Debug("now:%s, length:%d, err:%v", currentTime, length, err)
 	atomic.AddUint32(&t.readBytes, uint32(length))
 	return length, perrors.WithStack(err)
 	//return length, err
@@ -285,7 +285,7 @@ func (t *gettyTCPConn) Write(pkg interface{}) (int, error) {
 	if length, err = t.writer.Write(p); err == nil {
 		atomic.AddUint32(&t.writeBytes, (uint32)(len(p)))
 	}
-	log.Debug("now:%s, length:%d, err:%s", currentTime, length, err)
+	log.Debug("now:%s, length:%d, err:%v", currentTime, length, err)
 	return length, perrors.WithStack(err)
 	//return length, err
 }
