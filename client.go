@@ -22,10 +22,8 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/goext/net"
-	log "github.com/dubbogo/log4go"
 	"github.com/gorilla/websocket"
-	jerrors "github.com/juju/errors"
+	perrors "github.com/pkg/errors"
 )
 
 const (
@@ -131,7 +129,7 @@ func (c *client) dialTCP() Session {
 			return nil
 		}
 		conn, err = net.DialTimeout("tcp", c.addr, connectTimeout)
-		if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
+		if err == nil && IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 			conn.Close()
 			err = errSelfConnect
 		}
@@ -139,7 +137,7 @@ func (c *client) dialTCP() Session {
 			return newTCPSession(conn, c)
 		}
 
-		log.Info("net.DialTimeout(addr:%s, timeout:%v) = error{%s}", c.addr, jerrors.ErrorStack(err))
+		log.Infof("net.DialTimeout(addr:%s, timeout:%v) = error:%+v", c.addr, connectTimeout, err)
 		// time.Sleep(connInterval)
 		<-wheel.After(connInterval)
 	}
@@ -163,12 +161,12 @@ func (c *client) dialUDP() Session {
 			return nil
 		}
 		conn, err = net.DialUDP("udp", localAddr, peerAddr)
-		if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
+		if err == nil && IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 			conn.Close()
 			err = errSelfConnect
 		}
 		if err != nil {
-			log.Warn("net.DialTimeout(addr:%s, timeout:%v) = error{%s}", c.addr, jerrors.ErrorStack(err))
+			log.Warnf("net.DialTimeout(addr:%s, timeout:%v) = error:%+v", c.addr, err)
 			// time.Sleep(connInterval)
 			<-wheel.After(connInterval)
 			continue
@@ -178,18 +176,18 @@ func (c *client) dialUDP() Session {
 		conn.SetWriteDeadline(time.Now().Add(1e9))
 		if length, err = conn.Write(connectPingPackage[:]); err != nil {
 			conn.Close()
-			log.Warn("conn.Write(%s) = {length:%d, err:%s}", string(connectPingPackage), length, jerrors.ErrorStack(err))
+			log.Warnf("conn.Write(%s) = {length:%d, err:%+v}", string(connectPingPackage), length, err)
 			// time.Sleep(connInterval)
 			<-wheel.After(connInterval)
 			continue
 		}
 		conn.SetReadDeadline(time.Now().Add(1e9))
 		length, err = conn.Read(buf)
-		if netErr, ok := jerrors.Cause(err).(net.Error); ok && netErr.Timeout() {
+		if netErr, ok := perrors.Cause(err).(net.Error); ok && netErr.Timeout() {
 			err = nil
 		}
 		if err != nil {
-			log.Info("conn{%#v}.Read() = {length:%d, err:%s}", conn, length, jerrors.ErrorStack(err))
+			log.Infof("conn{%#v}.Read() = {length:%d, err:%+v}", conn, length, err)
 			conn.Close()
 			// time.Sleep(connInterval)
 			<-wheel.After(connInterval)
@@ -215,8 +213,8 @@ func (c *client) dialWS() Session {
 			return nil
 		}
 		conn, _, err = dialer.Dial(c.addr, nil)
-		log.Info("websocket.dialer.Dial(addr:%s) = error:%s", c.addr, jerrors.ErrorStack(err))
-		if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
+		log.Infof("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, err)
+		if err == nil && IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 			conn.Close()
 			err = errSelfConnect
 		}
@@ -229,7 +227,7 @@ func (c *client) dialWS() Session {
 			return ss
 		}
 
-		log.Info("websocket.dialer.Dial(addr:%s) = error:%s", c.addr, jerrors.ErrorStack(err))
+		log.Infof("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, err)
 		// time.Sleep(connInterval)
 		<-wheel.After(connInterval)
 	}
@@ -256,7 +254,7 @@ func (c *client) dialWSS() Session {
 	if c.cert != "" {
 		certPEMBlock, err := ioutil.ReadFile(c.cert)
 		if err != nil {
-			panic(fmt.Sprintf("ioutil.ReadFile(cert:%s) = error{%s}", c.cert, jerrors.ErrorStack(err)))
+			panic(fmt.Sprintf("ioutil.ReadFile(cert:%s) = error:%+v", c.cert, err))
 		}
 
 		var cert tls.Certificate
@@ -278,7 +276,7 @@ func (c *client) dialWSS() Session {
 	for _, c := range config.Certificates {
 		roots, err = x509.ParseCertificates(c.Certificate[len(c.Certificate)-1])
 		if err != nil {
-			panic(fmt.Sprintf("error parsing server's root cert: %s\n", jerrors.ErrorStack(err)))
+			panic(fmt.Sprintf("error parsing server's root cert: %+v\n", err))
 		}
 		for _, root = range roots {
 			certPool.AddCert(root)
@@ -294,7 +292,7 @@ func (c *client) dialWSS() Session {
 			return nil
 		}
 		conn, _, err = dialer.Dial(c.addr, nil)
-		if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
+		if err == nil && IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 			conn.Close()
 			err = errSelfConnect
 		}
@@ -308,7 +306,7 @@ func (c *client) dialWSS() Session {
 			return ss
 		}
 
-		log.Info("websocket.dialer.Dial(addr:%s) = error{%s}", c.addr, jerrors.ErrorStack(err))
+		log.Infof("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, err)
 		// time.Sleep(connInterval)
 		<-wheel.After(connInterval)
 	}
@@ -399,7 +397,7 @@ func (c *client) reConnect() {
 	// c.Unlock()
 	for {
 		if c.IsClosed() {
-			log.Warn("client{peer:%s} goroutine exit now.", c.addr)
+			log.Warnf("client{peer:%s} goroutine exit now.", c.addr)
 			break
 		}
 
