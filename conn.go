@@ -21,7 +21,6 @@ import (
 )
 
 import (
-	log "github.com/dubbogo/log4go"
 	"github.com/golang/snappy"
 	"github.com/gorilla/websocket"
 	perrors "github.com/pkg/errors"
@@ -250,7 +249,7 @@ func (t *gettyTCPConn) read(p []byte) (int, error) {
 	}
 
 	length, err = t.reader.Read(p)
-	log.Debug("now:%s, length:%d, err:%v", currentTime, length, err)
+	log.Debugf("now:%s, length:%d, err:%v", currentTime, length, err)
 	atomic.AddUint32(&t.readBytes, uint32(length))
 	return length, perrors.WithStack(err)
 	//return length, err
@@ -285,7 +284,7 @@ func (t *gettyTCPConn) Write(pkg interface{}) (int, error) {
 	if length, err = t.writer.Write(p); err == nil {
 		atomic.AddUint32(&t.writeBytes, (uint32)(len(p)))
 	}
-	log.Debug("now:%s, length:%d, err:%v", currentTime, length, err)
+	log.Debugf("now:%s, length:%d, err:%v", currentTime, length, err)
 	return length, perrors.WithStack(err)
 	//return length, err
 }
@@ -299,7 +298,7 @@ func (t *gettyTCPConn) close(waitSec int) {
 	if t.conn != nil {
 		if writer, ok := t.writer.(*snappy.Writer); ok {
 			if err := writer.Close(); err != nil {
-				log.Error("snappy.Writer.Close() = error:%+v", err)
+				log.Errorf("snappy.Writer.Close() = error:%+v", err)
 			}
 		}
 		t.conn.(*net.TCPConn).SetLinger(waitSec)
@@ -400,7 +399,7 @@ func (u *gettyUDPConn) read(p []byte) (int, *net.UDPAddr, error) {
 	}
 
 	length, addr, err = u.conn.ReadFromUDP(p) // connected udp also can get return @addr
-	log.Debug("ReadFromUDP() = {length:%d, peerAddr:%s, error:%s}", length, addr, err)
+	log.Debugf("ReadFromUDP() = {length:%d, peerAddr:%s, error:%s}", length, addr, err)
 	if err == nil {
 		atomic.AddUint32(&u.readBytes, uint32(length))
 	}
@@ -450,7 +449,7 @@ func (u *gettyUDPConn) Write(udpCtx interface{}) (int, error) {
 	if length, _, err = u.conn.WriteMsgUDP(buf, nil, peerAddr); err == nil {
 		atomic.AddUint32(&u.writeBytes, (uint32)(len(buf)))
 	}
-	log.Debug("WriteMsgUDP(peerAddr:%s) = {length:%d, error:%s}", peerAddr, length, err)
+	log.Debugf("WriteMsgUDP(peerAddr:%s) = {length:%d, error:%s}", peerAddr, length, err)
 
 	return length, perrors.WithStack(err)
 	//return length, err
@@ -546,7 +545,7 @@ func (w *gettyWSConn) read() ([]byte, error) {
 		w.incReadPkgNum()
 	} else {
 		if websocket.IsUnexpectedCloseError(e, websocket.CloseGoingAway) {
-			log.Warn("websocket unexpected close error: %v", e)
+			log.Warnf("websocket unexpected close error: %v", e)
 		}
 	}
 

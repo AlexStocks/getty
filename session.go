@@ -20,7 +20,6 @@ import (
 )
 
 import (
-	log "github.com/dubbogo/log4go"
 	"github.com/gorilla/websocket"
 	perrors "github.com/pkg/errors"
 )
@@ -246,7 +245,7 @@ func (s *session) SetRQLen(readQLen int) {
 	s.lock.Lock()
 	s.rQ = make(chan interface{}, readQLen)
 	s.lock.Unlock()
-	log.Debug("%s, [session.SetRQLen] rQ{len:%d, cap:%d}", s.Stat(), len(s.rQ), cap(s.rQ))
+	log.Debugf("%s, [session.SetRQLen] rQ{len:%d, cap:%d}", s.Stat(), len(s.rQ), cap(s.rQ))
 }
 
 // set @session's Write queue size
@@ -258,7 +257,7 @@ func (s *session) SetWQLen(writeQLen int) {
 	s.lock.Lock()
 	s.wQ = make(chan interface{}, writeQLen)
 	s.lock.Unlock()
-	log.Debug("%s, [session.SetWQLen] wQ{len:%d, cap:%d}", s.Stat(), len(s.wQ), cap(s.wQ))
+	log.Debugf("%s, [session.SetWQLen] wQ{len:%d, cap:%d}", s.Stat(), len(s.wQ), cap(s.wQ))
 }
 
 // set maximum wait time when session got error or got exit signal
@@ -322,7 +321,7 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 			const size = 64 << 10
 			rBuf := make([]byte, size)
 			rBuf = rBuf[:runtime.Stack(rBuf, false)]
-			log.Error("[session.WritePkg] panic session %s: err=%s\n%s", s.sessionToken(), r, rBuf)
+			log.Errorf("[session.WritePkg] panic session %s: err=%s\n%s", s.sessionToken(), r, rBuf)
 		}
 	}()
 
@@ -339,7 +338,7 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 		break // for possible gen a new pkg
 
 	case <-wheel.After(timeout):
-		log.Warn("%s, [session.WritePkg] wQ{len:%d, cap:%d}", s.Stat(), len(s.wQ), cap(s.wQ))
+		log.Warnf("%s, [session.WritePkg] wQ{len:%d, cap:%d}", s.Stat(), len(s.wQ), cap(s.wQ))
 		return ErrSessionBlocked
 	}
 
@@ -453,14 +452,14 @@ func (s *session) handleLoop() {
 			const size = 64 << 10
 			rBuf := make([]byte, size)
 			rBuf = rBuf[:runtime.Stack(rBuf, false)]
-			log.Error("[session.handleLoop] panic session %s: err=%s\n%s", s.sessionToken(), r, rBuf)
+			log.Errorf("[session.handleLoop] panic session %s: err=%s\n%s", s.sessionToken(), r, rBuf)
 		}
 
 		grNum = atomic.AddInt32(&(s.grNum), -1)
 		// if !s.errFlag {
 		s.listener.OnClose(s)
 		// }
-		log.Info("%s, [session.handleLoop] goroutine exit now, left gr num %d", s.Stat(), grNum)
+		log.Infof("%s, [session.handleLoop] goroutine exit now, left gr num %d", s.Stat(), grNum)
 		s.gc()
 	}()
 
@@ -475,13 +474,13 @@ LOOP:
 			// this case branch assure the (session)handleLoop gr will exit before (session)handlePackage gr.
 			if atomic.LoadInt32(&(s.grNum)) == 1 { // make sure @(session)handlePackage goroutine has been closed.
 				if len(s.rQ) == 0 && len(s.wQ) == 0 {
-					log.Info("%s, [session.handleLoop] got done signal. Both rQ and wQ are nil.", s.Stat())
+					log.Infof("%s, [session.handleLoop] got done signal. Both rQ and wQ are nil.", s.Stat())
 					break LOOP
 				}
 				counter.Start()
 				// if time.Since(start).Nanoseconds() >= s.wait.Nanoseconds() {
 				if counter.Count() > s.wait.Nanoseconds() {
-					log.Info("%s, [session.handleLoop] got done signal ", s.Stat())
+					log.Infof("%s, [session.handleLoop] got done signal ", s.Stat())
 					break LOOP
 				}
 			}
@@ -489,26 +488,26 @@ LOOP:
 		case inPkg = <-s.rQ:
 			// read the s.rQ and assure (session)handlePackage gr will not block by (session)rQ.
 			if flag {
-				log.Debug("%#v <-s.rQ", inPkg)
+				log.Debugf("%#v <-s.rQ", inPkg)
 				pkg := inPkg
 				// go s.listener.OnMessage(s, pkg)
 				s.listener.OnMessage(s, pkg)
 				s.incReadPkgNum()
 			} else {
-				log.Info("[session.handleLoop] drop readin package{%#v}", inPkg)
+				log.Infof("[session.handleLoop] drop readin package{%#v}", inPkg)
 			}
 
 		case outPkg = <-s.wQ:
 			if flag {
 				if err = s.writer.Write(s, outPkg); err != nil {
-					log.Error("%s, [session.handleLoop] = error:%+v", s.sessionToken(), err)
+					log.Errorf("%s, [session.handleLoop] = error:%+v", s.sessionToken(), err)
 					s.stop()
 					flag = false
 					// break LOOP
 				}
 				s.incWritePkgNum()
 			} else {
-				log.Info("[session.handleLoop] drop writeout package{%#v}", outPkg)
+				log.Infof("[session.handleLoop] drop writeout package{%#v}", outPkg)
 			}
 
 		case <-wheel.After(s.period):
@@ -516,7 +515,7 @@ LOOP:
 				if wsFlag {
 					err := wsConn.writePing()
 					if err != nil {
-						log.Warn("wsConn.writePing() = error{%s}", err)
+						log.Warnf("wsConn.writePing() = error{%s}", err)
 					}
 				}
 				s.listener.OnCron(s)
@@ -537,14 +536,14 @@ func (s *session) handlePackage() {
 			const size = 64 << 10
 			rBuf := make([]byte, size)
 			rBuf = rBuf[:runtime.Stack(rBuf, false)]
-			log.Error("[session.handlePackage] panic session %s: err=%s\n%s", s.sessionToken(), r, rBuf)
+			log.Errorf("[session.handlePackage] panic session %s: err=%s\n%s", s.sessionToken(), r, rBuf)
 		}
 
 		grNum = atomic.AddInt32(&(s.grNum), -1)
-		log.Info("%s, [session.handlePackage] gr will exit now, left gr num %d", s.sessionToken(), grNum)
+		log.Infof("%s, [session.handlePackage] gr will exit now, left gr num %d", s.sessionToken(), grNum)
 		s.stop()
 		if err != nil {
-			log.Error("%s, [session.handlePackage] error:%+v", s.sessionToken(), err)
+			log.Errorf("%s, [session.handlePackage] error:%+v", s.sessionToken(), err)
 			s.listener.OnError(s, err)
 		}
 	}()
@@ -601,7 +600,7 @@ func (s *session) handleTCPPackage() error {
 				if netError, ok = perrors.Cause(err).(net.Error); ok && netError.Timeout() {
 					break
 				}
-				log.Error("%s, [session.conn.read] = error:%+v", s.sessionToken(), err)
+				log.Errorf("%s, [session.conn.read] = error:%+v", s.sessionToken(), err)
 				// for (Codec)OnErr
 				// s.errFlag = true
 				exit = true
@@ -625,7 +624,7 @@ func (s *session) handleTCPPackage() error {
 				err = perrors.Errorf("pkgLen %d > session max message len %d", pkgLen, s.maxMsgLen)
 			}
 			if err != nil {
-				log.Warn("%s, [session.handleTCPPackage] = len{%d}, error:%+v",
+				log.Warnf("%s, [session.handleTCPPackage] = len{%d}, error:%+v",
 					s.sessionToken(), pkgLen, err)
 				// for (Codec)OnErr
 				// s.errFlag = true
@@ -673,39 +672,39 @@ func (s *session) handleUDPPackage() error {
 		}
 
 		bufLen, addr, err = conn.read(buf)
-		log.Debug("conn.read() = bufLen:%d, addr:%#v, err:%+v", bufLen, addr, err)
+		log.Debugf("conn.read() = bufLen:%d, addr:%#v, err:%+v", bufLen, addr, err)
 		if netError, ok = perrors.Cause(err).(net.Error); ok && netError.Timeout() {
 			continue
 		}
 		if err != nil {
-			log.Error("%s, [session.handleUDPPackage] = len{%d}, error{%+s}",
+			log.Errorf("%s, [session.handleUDPPackage] = len{%d}, error{%+s}",
 				s.sessionToken(), bufLen, err)
 			err = perrors.Wrapf(err, "conn.read()")
 			break
 		}
 
 		if bufLen == 0 {
-			log.Error("conn.read() = bufLen:%d, addr:%s, err:%+v", bufLen, addr, err)
+			log.Errorf("conn.read() = bufLen:%d, addr:%s, err:%+v", bufLen, addr, err)
 			continue
 		}
 
 		if bufLen == len(connectPingPackage) && bytes.Equal(connectPingPackage, buf[:bufLen]) {
-			log.Info("got %s connectPingPackage", addr)
+			log.Infof("got %s connectPingPackage", addr)
 			continue
 		}
 
 		pkg, pkgLen, err = s.reader.Read(s, buf[:bufLen])
-		log.Debug("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%+v", pkg, pkgLen, err)
+		log.Debugf("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%+v", pkg, pkgLen, err)
 		if err == nil && s.maxMsgLen > 0 && bufLen > int(s.maxMsgLen) {
 			err = perrors.Errorf("Message Too Long, bufLen %d, session max message len %d", bufLen, s.maxMsgLen)
 		}
 		if err != nil {
-			log.Warn("%s, [session.handleUDPPackage] = len{%d}, error:%+v",
+			log.Warnf("%s, [session.handleUDPPackage] = len{%d}, error:%+v",
 				s.sessionToken(), pkgLen, err)
 			continue
 		}
 		if pkgLen == 0 {
-			log.Error("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%+v", pkg, pkgLen, err)
+			log.Errorf("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%+v", pkg, pkgLen, err)
 			continue
 		}
 
@@ -738,7 +737,7 @@ func (s *session) handleWSPackage() error {
 			continue
 		}
 		if err != nil {
-			log.Warn("%s, [session.handleWSPackage] = error{%+s}",
+			log.Warnf("%s, [session.handleWSPackage] = error{%+s}",
 				s.sessionToken(), err)
 			// s.errFlag = true
 			return perrors.WithStack(err)
@@ -750,7 +749,7 @@ func (s *session) handleWSPackage() error {
 				err = perrors.Errorf("Message Too Long, length %d, session max message len %d", length, s.maxMsgLen)
 			}
 			if err != nil {
-				log.Warn("%s, [session.handleWSPackage] = len{%d}, error:%+v",
+				log.Warnf("%s, [session.handleWSPackage] = len{%d}, error:%+v",
 					s.sessionToken(), length, err)
 				continue
 			}
@@ -802,5 +801,5 @@ func (s *session) gc() {
 // or (session)handleLoop automatically. It's thread safe.
 func (s *session) Close() {
 	s.stop()
-	log.Info("%s closed now. its current gr num is %d", s.sessionToken(), atomic.LoadInt32(&(s.grNum)))
+	log.Infof("%s closed now. its current gr num is %d", s.sessionToken(), atomic.LoadInt32(&(s.grNum)))
 }

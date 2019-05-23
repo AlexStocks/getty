@@ -22,7 +22,6 @@ import (
 )
 
 import (
-	log "github.com/dubbogo/log4go"
 	"github.com/gorilla/websocket"
 	perrors "github.com/pkg/errors"
 )
@@ -138,7 +137,7 @@ func (c *client) dialTCP() Session {
 			return newTCPSession(conn, c)
 		}
 
-		log.Info("net.DialTimeout(addr:%s, timeout:%v) = error:%+v", c.addr, err)
+		log.Infof("net.DialTimeout(addr:%s, timeout:%v) = error:%+v", c.addr, connectTimeout, err)
 		// time.Sleep(connInterval)
 		<-wheel.After(connInterval)
 	}
@@ -167,7 +166,7 @@ func (c *client) dialUDP() Session {
 			err = errSelfConnect
 		}
 		if err != nil {
-			log.Warn("net.DialTimeout(addr:%s, timeout:%v) = error:%+v", c.addr, err)
+			log.Warnf("net.DialTimeout(addr:%s, timeout:%v) = error:%+v", c.addr, err)
 			// time.Sleep(connInterval)
 			<-wheel.After(connInterval)
 			continue
@@ -177,7 +176,7 @@ func (c *client) dialUDP() Session {
 		conn.SetWriteDeadline(time.Now().Add(1e9))
 		if length, err = conn.Write(connectPingPackage[:]); err != nil {
 			conn.Close()
-			log.Warn("conn.Write(%s) = {length:%d, err:%+v}", string(connectPingPackage), length, err)
+			log.Warnf("conn.Write(%s) = {length:%d, err:%+v}", string(connectPingPackage), length, err)
 			// time.Sleep(connInterval)
 			<-wheel.After(connInterval)
 			continue
@@ -188,7 +187,7 @@ func (c *client) dialUDP() Session {
 			err = nil
 		}
 		if err != nil {
-			log.Info("conn{%#v}.Read() = {length:%d, err:%+v}", conn, length, err)
+			log.Infof("conn{%#v}.Read() = {length:%d, err:%+v}", conn, length, err)
 			conn.Close()
 			// time.Sleep(connInterval)
 			<-wheel.After(connInterval)
@@ -214,7 +213,7 @@ func (c *client) dialWS() Session {
 			return nil
 		}
 		conn, _, err = dialer.Dial(c.addr, nil)
-		log.Info("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, err)
+		log.Infof("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, err)
 		if err == nil && IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 			conn.Close()
 			err = errSelfConnect
@@ -228,7 +227,7 @@ func (c *client) dialWS() Session {
 			return ss
 		}
 
-		log.Info("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, err)
+		log.Infof("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, err)
 		// time.Sleep(connInterval)
 		<-wheel.After(connInterval)
 	}
@@ -307,7 +306,7 @@ func (c *client) dialWSS() Session {
 			return ss
 		}
 
-		log.Info("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, err)
+		log.Infof("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, err)
 		// time.Sleep(connInterval)
 		<-wheel.After(connInterval)
 	}
@@ -398,7 +397,7 @@ func (c *client) reConnect() {
 	// c.Unlock()
 	for {
 		if c.IsClosed() {
-			log.Warn("client{peer:%s} goroutine exit now.", c.addr)
+			log.Warnf("client{peer:%s} goroutine exit now.", c.addr)
 			break
 		}
 
