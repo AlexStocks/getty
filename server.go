@@ -22,8 +22,6 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/goext/net"
-	"github.com/AlexStocks/goext/time"
 	log "github.com/dubbogo/log4go"
 	"github.com/gorilla/websocket"
 	perrors "github.com/pkg/errors"
@@ -31,7 +29,7 @@ import (
 
 var (
 	errSelfConnect        = perrors.New("connect self!")
-	serverFastFailTimeout = gxtime.TimeSecondDuration(1)
+	serverFastFailTimeout = time.Second*1
 )
 
 type server struct {
@@ -206,7 +204,7 @@ func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 	if err != nil {
 		return nil, perrors.WithStack(err)
 	}
-	if gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
+	if IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 		log.Warn("conn.localAddr{%s} == conn.RemoteAddr", conn.LocalAddr().String(), conn.RemoteAddr().String())
 		return nil, errSelfConnect
 	}

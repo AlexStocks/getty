@@ -25,11 +25,6 @@ import (
 	perrors "github.com/pkg/errors"
 )
 
-import (
-	"github.com/AlexStocks/goext/context"
-	"github.com/AlexStocks/goext/time"
-)
-
 const (
 	maxReadBufLen         = 4 * 1024
 	netIOTimeout          = 1e9      // 1s
@@ -48,10 +43,10 @@ const (
 /////////////////////////////////////////
 
 var (
-	wheel = gxtime.NewWheel(gxtime.TimeMillisecondDuration(100), 1200) // wheel longest span is 2 minute
+	wheel = NewWheel(time.Millisecond*100, 1200) // wheel longest span is 2 minute
 )
 
-func GetTimeWheel() *gxtime.Wheel {
+func GetTimeWheel() *Wheel {
 	return wheel
 }
 
@@ -76,7 +71,7 @@ type session struct {
 	wQ     chan interface{}
 
 	// attribute
-	attrs *gxcontext.ValuesContext
+	attrs *ValuesContext
 	// goroutines sync
 	grNum int32
 	lock  sync.RWMutex
@@ -91,7 +86,7 @@ func newSession(endPoint EndPoint, conn Connection) *session {
 		done:       make(chan struct{}),
 		period:     period,
 		wait:       pendingDuration,
-		attrs:      gxcontext.NewValuesContext(nil),
+		attrs:      NewValuesContext(nil),
 	}
 
 	ss.Connection.setSession(ss)
@@ -132,7 +127,7 @@ func (s *session) Reset() {
 	// s.errFlag = false
 	s.period = period
 	s.wait = pendingDuration
-	s.attrs = gxcontext.NewValuesContext(nil)
+	s.attrs = NewValuesContext(nil)
 	s.grNum = 0
 
 	s.SetWriteTimeout(netIOTimeout)
@@ -446,7 +441,7 @@ func (s *session) handleLoop() {
 		wsFlag bool
 		wsConn *gettyWSConn
 		// start  time.Time
-		counter gxtime.CountWatch
+		counter CountWatch
 		inPkg   interface{}
 		outPkg  interface{}
 	)
