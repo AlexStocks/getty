@@ -775,13 +775,13 @@ func (s *session) stop() {
 
 	default:
 		s.once.Do(func() {
-			close(s.done)
 			// let read/Write timeout asap
 			now := time.Now()
 			if conn := s.Conn(); conn != nil {
 				conn.SetReadDeadline(now.Add(s.readTimeout()))
 				conn.SetWriteDeadline(now.Add(s.writeTimeout()))
 			}
+			close(s.done)
 			c := s.GetAttribute(sessionClientKey)
 			if clt, ok := c.(*client); ok {
 				clt.reConnect()
