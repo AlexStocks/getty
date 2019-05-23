@@ -275,7 +275,7 @@ func (s *session) SetWaitTime(waitTime time.Duration) {
 func (s *session) GetAttribute(key interface{}) interface{} {
 	s.lock.RLock()
 	if s.attrs == nil {
-		s.lock.Unlock()
+		s.lock.RUnlock()
 		return nil
 	}
 	ret, flag := s.attrs.Get(key)
