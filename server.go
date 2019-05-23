@@ -116,7 +116,7 @@ func (s *server) stop() {
 				if err = s.server.Shutdown(ctx); err != nil {
 					// if the log output is "shutdown ctx: context deadline exceeded"， it means that
 					// there are still some active connections.
-					log.Errorf("server shutdown ctx:%s error:%s", ctx, err)
+					log.Errorf("server shutdown ctx:%s error:%v", ctx, err)
 				}
 			}
 			s.server = nil

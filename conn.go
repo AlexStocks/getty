@@ -399,7 +399,7 @@ func (u *gettyUDPConn) read(p []byte) (int, *net.UDPAddr, error) {
 	}
 
 	length, addr, err = u.conn.ReadFromUDP(p) // connected udp also can get return @addr
-	log.Debugf("ReadFromUDP() = {length:%d, peerAddr:%s, error:%s}", length, addr, err)
+	log.Debugf("ReadFromUDP() = {length:%d, peerAddr:%s, error:%v}", length, addr, err)
 	if err == nil {
 		atomic.AddUint32(&u.readBytes, uint32(length))
 	}
@@ -449,7 +449,7 @@ func (u *gettyUDPConn) Write(udpCtx interface{}) (int, error) {
 	if length, _, err = u.conn.WriteMsgUDP(buf, nil, peerAddr); err == nil {
 		atomic.AddUint32(&u.writeBytes, (uint32)(len(buf)))
 	}
-	log.Debugf("WriteMsgUDP(peerAddr:%s) = {length:%d, error:%s}", peerAddr, length, err)
+	log.Debugf("WriteMsgUDP(peerAddr:%s) = {length:%d, error:%v}", peerAddr, length, err)
 
 	return length, perrors.WithStack(err)
 	//return length, err
