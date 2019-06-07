@@ -14,11 +14,16 @@
 ## develop history ##
 ---
 
+- 2019/06/07
+    > Improvement
+    * use time.After instead of wheel.After
+    * add remark for tcp reading
+
 - 2018/10/16
     > Feature
     * add rpc/micro CallOneway/AsyncCall
     * version: v1.0.3
-    
+
 - 2018/08/19
     > Feature
     * use multiple service config in service configuration
@@ -32,7 +37,7 @@
 - 2018/08/13
     > Feature
     * Add Micro
-    
+
 - 2018/08/07
     > Improvement
     * RPC package format:  {2 Bytes Header len + Header + 2 Body len + Body} ---> {Header + Body}

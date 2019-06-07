@@ -41,14 +41,6 @@ const (
 // session
 /////////////////////////////////////////
 
-var (
-	wheel = NewWheel(time.Millisecond*100, 1200) // wheel longest span is 2 minute
-)
-
-func GetTimeWheel() *Wheel {
-	return wheel
-}
-
 // getty base session
 type session struct {
 	name      string
@@ -337,7 +329,7 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 	case s.wQ <- pkg:
 		break // for possible gen a new pkg
 
-	case <-wheel.After(timeout):
+	case <-time.After(timeout):
 		log.Warnf("%s, [session.WritePkg] wQ{len:%d, cap:%d}", s.Stat(), len(s.wQ), cap(s.wQ))
 		return ErrSessionBlocked
 	}
@@ -510,7 +502,7 @@ LOOP:
 				log.Infof("[session.handleLoop] drop writeout package{%#v}", outPkg)
 			}
 
-		case <-wheel.After(s.period):
+		case <-time.After(s.period):
 			if flag {
 				if wsFlag {
 					err := wsConn.writePing()
