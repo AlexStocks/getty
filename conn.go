@@ -236,6 +236,7 @@ func (t *gettyTCPConn) read(p []byte) (int, error) {
 		length      int
 	)
 
+	// set read timeout deadline
 	if t.compress == CompressNone && t.rTimeout > 0 {
 		// Optimization: update read deadline only if more than 25%
 		// of the last read deadline exceeded.
@@ -243,6 +244,7 @@ func (t *gettyTCPConn) read(p []byte) (int, error) {
 		currentTime = time.Now()
 		if currentTime.Sub(t.rLastDeadline) > (t.rTimeout >> 2) {
 			if err = t.conn.SetReadDeadline(currentTime.Add(t.rTimeout)); err != nil {
+				// just a timeout error
 				return 0, jerrors.Trace(err)
 			}
 			t.rLastDeadline = currentTime
