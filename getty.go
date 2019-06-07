@@ -24,9 +24,17 @@ type NewSessionCallback func(Session) error
 
 // Reader is used to unmarshal a complete pkg from buffer
 type Reader interface {
-	// Parse tcp/udp/websocket pkg from buffer and if possible return a complete pkg
-	// If length of buf is not long enough, u should return {nil,0, nil}
-	// The second return value is the length of the pkg.
+	// Parse tcp/udp/websocket pkg from buffer and if possible return a complete pkg.
+	// When receiving a tcp network streaming segment, there are 4 cases as following:
+	// case 1: a error found in the streaming segment;
+	// case 2: can not unmarshal a pkg from the streaming segment;
+	// case 3: just unmarshal a pkg from the streaming segment;
+	// case 4: unmarshal more than one pkg from the streaming segment;
+	//
+	// The return value is (nil, 0, error) as case 1.
+	// The return value is (nil, 0, nil) as case 2.
+	// The return value is (pkg, pkgLen, nil) as case 3.
+	// The handleTcpPackage may invoke func Read many times as case 4.
 	Read(Session, []byte) (interface{}, int, error)
 }
 

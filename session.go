@@ -623,6 +623,7 @@ func (s *session) handleTCPPackage() error {
 			if err == nil && s.maxMsgLen > 0 && pkgLen > int(s.maxMsgLen) {
 				err = perrors.Errorf("pkgLen %d > session max message len %d", pkgLen, s.maxMsgLen)
 			}
+			// handle case 1
 			if err != nil {
 				log.Warnf("%s, [session.handleTCPPackage] = len{%d}, error:%+v",
 					s.sessionToken(), pkgLen, err)
@@ -631,12 +632,15 @@ func (s *session) handleTCPPackage() error {
 				exit = true
 				break
 			}
+			// handle case 2
 			if pkg == nil {
 				break
 			}
+			// handle case 3
 			s.UpdateActive()
 			s.rQ <- pkg
 			pktBuf.Next(pkgLen)
+			// continue to handle case 4
 		}
 		if exit {
 			break
