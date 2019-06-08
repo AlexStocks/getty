@@ -79,10 +79,11 @@ func (p *taskPool) run(id int) {
 		select {
 		case <-p.done:
 			if 0 < len(p.Q) {
-				log.Warn("[getty][task_pool] task %d exit now while its task length is %d greater than 0",
+				log.Warn("[getty][task_pool] task worker %d exit now while its task buffer length %d is greater than 0",
 					id, len(p.Q))
+			} else {
+				log.Info("[getty][task_pool] task worker %d exit now", id)
 			}
-			log.Info("[getty][task_pool] task %d exit now", id)
 			return
 
 		case t, ok = <-p.Q:
