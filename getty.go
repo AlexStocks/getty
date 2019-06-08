@@ -153,8 +153,6 @@ type Session interface {
 	SetCronPeriod(int)
 	SetRQLen(int)
 	SetWQLen(int)
-	SetTaskPoolSize(int)
-	SetTaskQueueLength(int)
 	SetWaitTime(time.Duration)
 
 	GetAttribute(interface{}) interface{}

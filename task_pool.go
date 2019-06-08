@@ -35,9 +35,9 @@ type task struct {
 
 // task pool: manage task ts
 type taskPool struct {
-	idx    int32
-	qLen   int32 // task t queue length
-	size   int32 // pool size
+	idx    uint32
+	qLen   int32 // task queue length
+	size   int32 // task queue pool size
 	qArray []chan task
 	wg     sync.WaitGroup
 
@@ -100,7 +100,7 @@ func (p *taskPool) run(id int) {
 // add task
 func (p *taskPool) AddTask(t task) {
 	//id := randID() % uint64(p.size)
-	id := atomic.AddInt32(&p.idx, 1) % p.size
+	id := atomic.AddUint32(&p.idx, 1) % uint32(p.size)
 
 	select {
 	case <-p.done:
