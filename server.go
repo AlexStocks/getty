@@ -22,8 +22,8 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/goext/net"
-	"github.com/AlexStocks/goext/time"
+	gxnet "github.com/AlexStocks/goext/net"
+	gxtime "github.com/AlexStocks/goext/time"
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
 	jerrors "github.com/juju/errors"
@@ -43,6 +43,9 @@ type server struct {
 	lock           sync.Mutex // for server
 	endPointType   EndPointType
 	server         *http.Server // for ws or wss server
+
+	// task queue pool
+	tQPool *taskPool
 
 	sync.Once
 	done chan struct{}
@@ -65,6 +68,14 @@ func newServer(t EndPointType, opts ...ServerOption) *server {
 
 	if s.addr == "" {
 		panic(fmt.Sprintf("@addr:%s", s.addr))
+	}
+
+	if s.tQPoolSize > 0 {
+		qLen := s.tQLen
+		if qLen == 0 {
+			qLen = defaultTaskQLen
+		}
+		s.tQPool = newTaskPool(s.tQPoolSize, qLen)
 	}
 
 	return s
@@ -132,6 +143,10 @@ func (s *server) stop() {
 			if s.pktListener != nil {
 				s.pktListener.Close()
 				s.pktListener = nil
+			}
+			if s.tQPool != nil {
+				s.tQPool.close()
+				s.tQPool = nil
 			}
 		})
 	}
@@ -256,7 +271,7 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 				continue
 			}
 			delay = 0
-			// client.RunEventLoop()
+			client.(*session).SetTaskPool(s.tQPool)
 			client.(*session).run()
 		}
 	}()
@@ -271,6 +286,7 @@ func (s *server) runUDPEventLoop(newSession NewSessionCallback) {
 	if err := newSession(ss); err != nil {
 		panic(err.Error())
 	}
+	ss.(*session).SetTaskPool(s.tQPool)
 	ss.(*session).run()
 }
 
@@ -327,7 +343,7 @@ func (s *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 	if ss.(*session).maxMsgLen > 0 {
 		conn.SetReadLimit(int64(ss.(*session).maxMsgLen))
 	}
-	// ss.RunEventLoop()
+	ss.(*session).SetTaskPool(s.server.tQPool)
 	ss.(*session).run()
 }
 

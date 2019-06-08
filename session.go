@@ -31,11 +31,12 @@ import (
 )
 
 const (
-	maxReadBufLen         = 4 * 1024
-	netIOTimeout          = 1e9      // 1s
-	period                = 60 * 1e9 // 1 minute
-	pendingDuration       = 3e9
-	defaultTaskQLen       = 128
+	maxReadBufLen   = 4 * 1024
+	netIOTimeout    = 1e9      // 1s
+	period          = 60 * 1e9 // 1 minute
+	pendingDuration = 3e9
+	defaultQLen     = 1024
+
 	defaultSessionName    = "session"
 	defaultTCPSessionName = "tcp-session"
 	defaultUDPSessionName = "udp-session"
@@ -63,7 +64,6 @@ type session struct {
 
 	// net read Write
 	Connection
-
 	listener EventListener
 
 	// codec
@@ -77,9 +77,7 @@ type session struct {
 	// handle logic
 	maxMsgLen int32
 	// task queue
-	tQLen      int32
-	tQPoolSize int32
-	tQPool     *taskPool
+	tQPool *taskPool
 
 	// heartbeat
 	period time.Duration
@@ -105,7 +103,6 @@ func newSession(endPoint EndPoint, conn Connection) *session {
 		Connection: conn,
 
 		maxMsgLen: maxReadBufLen,
-		tQLen:     defaultTaskQLen,
 
 		period: period,
 
@@ -317,22 +314,12 @@ func (s *session) SetWaitTime(waitTime time.Duration) {
 	s.wait = waitTime
 }
 
-// set task pool size
-func (s *session) SetTaskPoolSize(poolSize int) {
-	if poolSize < 1 {
-		panic("@poolSize < 1")
-	}
+// set task pool
+func (s *session) SetTaskPool(p *taskPool) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
 
-	atomic.StoreInt32(&s.tQPoolSize, int32(poolSize))
-}
-
-// set task queue length
-func (s *session) SetTaskQueueLength(taskQueueLen int) {
-	if taskQueueLen < 1 {
-		panic("@taskQueueLen < 1")
-	}
-
-	atomic.StoreInt32(&s.tQLen, int32(taskQueueLen))
+	s.tQPool = p
 }
 
 // set attribute of key @session:key
@@ -472,21 +459,6 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 
 // func (s *session) RunEventLoop() {
 func (s *session) run() {
-	if s.wQ == nil {
-		errStr := fmt.Sprintf("session{name:%s, wQ:%#v}",
-			s.name, s.wQ)
-		log.Error(errStr)
-		panic(errStr)
-	}
-
-	tQPoolSize := atomic.LoadInt32(&s.tQPoolSize)
-	if s.rQ == nil && tQPoolSize == 0 {
-		errStr := fmt.Sprintf("session{name:%s, rQ:%#v, tQPool:%#v}",
-			s.name, s.rQ, s.tQPool)
-		log.Error(errStr)
-		panic(errStr)
-	}
-
 	if s.Connection == nil || s.listener == nil || s.writer == nil {
 		errStr := fmt.Sprintf("session{name:%s, conn:%#v, listener:%#v, writer:%#v}",
 			s.name, s.Connection, s.listener, s.writer)
@@ -494,16 +466,19 @@ func (s *session) run() {
 		panic(errStr)
 	}
 
+	if s.wQ == nil {
+		s.wQ = make(chan interface{}, defaultQLen)
+	}
+
+	if s.rQ == nil && s.tQPool == nil {
+		s.rQ = make(chan interface{}, defaultQLen)
+	}
+
 	// call session opened
 	s.UpdateActive()
 	if err := s.listener.OnOpen(s); err != nil {
 		s.Close()
 		return
-	}
-
-	// start task pool
-	if tQPoolSize != 0 {
-		s.tQPool = newTaskPool(s.tQPoolSize, atomic.LoadInt32(&s.tQLen))
 	}
 
 	// start read/write gr
@@ -872,11 +847,11 @@ func (s *session) gc() {
 	s.lock.Lock()
 	if s.attrs != nil {
 		s.attrs = nil
-		close(s.wQ)
-		s.wQ = nil
-		if s.tQPool != nil {
-			s.tQPool.close()
-		} else {
+		if s.wQ != nil {
+			close(s.wQ)
+			s.wQ = nil
+		}
+		if s.rQ != nil {
 			close(s.rQ)
 			s.rQ = nil
 		}
