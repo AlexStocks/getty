@@ -5,10 +5,6 @@ import (
 	"sync"
 )
 
-import (
-	log "github.com/AlexStocks/log4go"
-)
-
 //func init() {
 //	rand.Seed(time.Now().UnixNano())
 //}
