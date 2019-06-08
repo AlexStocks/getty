@@ -69,11 +69,11 @@ func (p *taskPool) start() {
 		p.qArray[i] = make(chan task, p.qLen)
 		p.wg.Add(1)
 		taskID := i
-		p.run(int(taskID))
+		go p.run(int(taskID))
 	}
 }
 
-// task
+// worker
 func (p *taskPool) run(id int) {
 	defer p.wg.Done()
 
@@ -85,8 +85,11 @@ func (p *taskPool) run(id int) {
 	for {
 		select {
 		case <-p.done:
-			log.Warn("[getty][task_pool] task %d exit now while its task length is %d",
-				id, len(p.qArray[id]))
+			if 0 < len(p.qArray[id]) {
+				log.Warn("[getty][task_pool] task %d exit now while its task length is %d greater than 0",
+					id, len(p.qArray[id]))
+			}
+			log.Info("[getty][task_pool] task %d exit now", id)
 			return
 
 		case t, ok = <-p.qArray[id]:

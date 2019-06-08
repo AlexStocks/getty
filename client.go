@@ -19,7 +19,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+)
 
+import (
 	"github.com/AlexStocks/goext/net"
 
 	gxnet "github.com/AlexStocks/goext/net"
