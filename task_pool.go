@@ -3,7 +3,6 @@ package getty
 import (
 	"fmt"
 	"sync"
-	"sync/atomic"
 )
 
 import (
@@ -35,11 +34,10 @@ type task struct {
 
 // task pool: manage task ts
 type taskPool struct {
-	idx    uint32
-	qLen   int32 // task queue length
-	size   int32 // task queue pool size
-	qArray []chan task
-	wg     sync.WaitGroup
+	qLen int32 // task queue length
+	size int32 // task queue pool size
+	Q    chan task
+	wg   sync.WaitGroup
 
 	once sync.Once
 	done chan struct{}
@@ -48,10 +46,10 @@ type taskPool struct {
 // build a task pool
 func newTaskPool(poolSize int32, taskQLen int32) *taskPool {
 	return &taskPool{
-		size:   poolSize,
-		qLen:   taskQLen,
-		qArray: make([]chan task, poolSize),
-		done:   make(chan struct{}),
+		size: poolSize,
+		qLen: taskQLen,
+		Q:    make(chan task, taskQLen),
+		done: make(chan struct{}),
 	}
 }
 
@@ -66,7 +64,6 @@ func (p *taskPool) start() {
 	}
 
 	for i := int32(0); i < p.size; i++ {
-		p.qArray[i] = make(chan task, p.qLen)
 		p.wg.Add(1)
 		taskID := i
 		go p.run(int(taskID))
@@ -85,14 +82,14 @@ func (p *taskPool) run(id int) {
 	for {
 		select {
 		case <-p.done:
-			if 0 < len(p.qArray[id]) {
+			if 0 < len(p.Q) {
 				log.Warn("[getty][task_pool] task %d exit now while its task length is %d greater than 0",
-					id, len(p.qArray[id]))
+					id, len(p.Q))
 			}
 			log.Info("[getty][task_pool] task %d exit now", id)
 			return
 
-		case t, ok = <-p.qArray[id]:
+		case t, ok = <-p.Q:
 			if ok {
 				t.session.listener.OnMessage(t.session, t.pkg)
 			}
@@ -102,13 +99,10 @@ func (p *taskPool) run(id int) {
 
 // add task
 func (p *taskPool) AddTask(t task) {
-	//id := randID() % uint64(p.size)
-	id := atomic.AddUint32(&p.idx, 1) % uint32(p.size)
-
 	select {
 	case <-p.done:
 		return
-	case p.qArray[id] <- t:
+	case p.Q <- t:
 	}
 }
 
@@ -138,7 +132,5 @@ func (p *taskPool) isClosed() bool {
 func (p *taskPool) close() {
 	p.stop()
 	p.wg.Wait()
-	for i := range p.qArray {
-		close(p.qArray[i])
-	}
+	close(p.Q)
 }
