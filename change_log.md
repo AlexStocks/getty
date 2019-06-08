@@ -14,6 +14,10 @@
 ## develop history ##
 ---
 
+- 2019/06/08
+    > Improvement
+    * add task worker pool
+    
 - 2019/06/07
     > Improvement
     * use time.After instead of wheel.After
