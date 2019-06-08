@@ -5,23 +5,6 @@ import (
 	"sync"
 )
 
-//func init() {
-//	rand.Seed(time.Now().UnixNano())
-//}
-//
-//var (
-//	// The golang rand generators are *not* intrinsically thread-safe.
-//	randIDLock sync.Mutex
-//	randIDGen  = rand.New(rand.NewSource(time.Now().UnixNano()))
-//)
-//
-//func randID() uint64 {
-//	randIDLock.Lock()
-//	defer randIDLock.Unlock()
-//
-//	return uint64(randIDGen.Int63())
-//}
-
 // task t
 type task struct {
 	session *session
