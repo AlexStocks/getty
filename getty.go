@@ -153,6 +153,7 @@ type Session interface {
 	SetTaskPoolSize(int)
 	SetTaskQueueLength(int)
 	SetWaitTime(time.Duration)
+
 	GetAttribute(interface{}) interface{}
 	SetAttribute(interface{}, interface{})
 	RemoveAttribute(interface{})

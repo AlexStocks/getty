@@ -64,19 +64,15 @@ type session struct {
 	// net read Write
 	Connection
 
+	listener EventListener
+
+	// codec
 	reader Reader // @reader should be nil when @conn is a gettyWSConn object.
 	writer Writer
 
-	listener EventListener
-	once     sync.Once
-	done     chan struct{}
-	// errFlag  bool
-
 	// read & write
-	period time.Duration
-	wait   time.Duration
-	rQ     chan interface{}
-	wQ     chan interface{}
+	rQ chan interface{}
+	wQ chan interface{}
 
 	// handle logic
 	maxMsgLen int32
@@ -84,6 +80,14 @@ type session struct {
 	tQLen      int32
 	tQPoolSize int32
 	tQPool     *taskPool
+
+	// heartbeat
+	period time.Duration
+
+	// done
+	wait time.Duration
+	once sync.Once
+	done chan struct{}
 
 	// attribute
 	attrs *gxcontext.ValuesContext
@@ -95,14 +99,19 @@ type session struct {
 
 func newSession(endPoint EndPoint, conn Connection) *session {
 	ss := &session{
-		name:       defaultSessionName,
-		endPoint:   endPoint,
-		maxMsgLen:  maxReadBufLen,
+		name:     defaultSessionName,
+		endPoint: endPoint,
+
 		Connection: conn,
-		done:       make(chan struct{}),
-		period:     period,
-		wait:       pendingDuration,
-		attrs:      gxcontext.NewValuesContext(nil),
+
+		maxMsgLen: maxReadBufLen,
+		tQLen:     defaultTaskQLen,
+
+		period: period,
+
+		done:  make(chan struct{}),
+		wait:  pendingDuration,
+		attrs: gxcontext.NewValuesContext(nil),
 	}
 
 	ss.Connection.setSession(ss)
@@ -140,7 +149,6 @@ func (s *session) Reset() {
 	s.name = defaultSessionName
 	s.once = sync.Once{}
 	s.done = make(chan struct{})
-	// s.errFlag = false
 	s.period = period
 	s.wait = pendingDuration
 	s.attrs = gxcontext.NewValuesContext(nil)
@@ -215,29 +223,51 @@ func (s *session) IsClosed() bool {
 }
 
 // set maximum pacakge length of every pacakge in (EventListener)OnMessage(@pkgs)
-func (s *session) SetMaxMsgLen(length int) { s.maxMsgLen = int32(length) }
+func (s *session) SetMaxMsgLen(length int) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	s.maxMsgLen = int32(length)
+}
 
 // set session name
-func (s *session) SetName(name string) { s.name = name }
+func (s *session) SetName(name string) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	s.name = name
+}
 
 // set EventListener
 func (s *session) SetEventListener(listener EventListener) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
 	s.listener = listener
 }
 
 // set package handler
 func (s *session) SetPkgHandler(handler ReadWriter) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
 	s.reader = handler
 	s.writer = handler
 }
 
 // set Reader
 func (s *session) SetReader(reader Reader) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
 	s.reader = reader
 }
 
 // set Writer
 func (s *session) SetWriter(writer Writer) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
 	s.writer = writer
 }
 
@@ -248,8 +278,8 @@ func (s *session) SetCronPeriod(period int) {
 	}
 
 	s.lock.Lock()
+	defer s.lock.Unlock()
 	s.period = time.Duration(period) * time.Millisecond
-	s.lock.Unlock()
 }
 
 // set @session's read queue size
@@ -259,8 +289,8 @@ func (s *session) SetRQLen(readQLen int) {
 	}
 
 	s.lock.Lock()
+	defer s.lock.Unlock()
 	s.rQ = make(chan interface{}, readQLen)
-	s.lock.Unlock()
 	log.Debug("%s, [session.SetRQLen] rQ{len:%d, cap:%d}", s.Stat(), len(s.rQ), cap(s.rQ))
 }
 
@@ -271,8 +301,8 @@ func (s *session) SetWQLen(writeQLen int) {
 	}
 
 	s.lock.Lock()
+	defer s.lock.Unlock()
 	s.wQ = make(chan interface{}, writeQLen)
-	s.lock.Unlock()
 	log.Debug("%s, [session.SetWQLen] wQ{len:%d, cap:%d}", s.Stat(), len(s.wQ), cap(s.wQ))
 }
 
@@ -283,8 +313,8 @@ func (s *session) SetWaitTime(waitTime time.Duration) {
 	}
 
 	s.lock.Lock()
+	defer s.lock.Unlock()
 	s.wait = waitTime
-	s.lock.Unlock()
 }
 
 // set task pool size
@@ -293,13 +323,7 @@ func (s *session) SetTaskPoolSize(poolSize int) {
 		panic("@poolSize < 1")
 	}
 
-	// prevent contention with SetTaskQueueLength
-	s.lock.Lock()
 	atomic.StoreInt32(&s.tQPoolSize, int32(poolSize))
-	if atomic.LoadInt32(&s.tQLen) == 0 {
-		atomic.StoreInt32(&s.tQLen, defaultTaskQLen)
-	}
-	s.lock.Unlock()
 }
 
 // set task queue length
@@ -308,10 +332,7 @@ func (s *session) SetTaskQueueLength(taskQueueLen int) {
 		panic("@taskQueueLen < 1")
 	}
 
-	// prevent contention with SetTaskPoolSize
-	s.lock.Lock()
 	atomic.StoreInt32(&s.tQLen, int32(taskQueueLen))
-	s.lock.Unlock()
 }
 
 // set attribute of key @session:key
@@ -482,7 +503,6 @@ func (s *session) run() {
 
 	// start task pool
 	if tQPoolSize != 0 {
-		atomic.AddInt32(&(s.grNum), tQPoolSize)
 		s.tQPool = newTaskPool(s.tQPoolSize, atomic.LoadInt32(&s.tQLen))
 	}
 
@@ -515,9 +535,7 @@ func (s *session) handleLoop() {
 		}
 
 		grNum = atomic.AddInt32(&(s.grNum), -1)
-		// if !s.errFlag {
 		s.listener.OnClose(s)
-		// }
 		log.Info("%s, [session.handleLoop] goroutine exit now, left gr num %d", s.Stat(), grNum)
 		s.gc()
 	}()
@@ -668,8 +686,6 @@ func (s *session) handleTCPPackage() error {
 					break
 				}
 				log.Error("%s, [session.conn.read] = error{%s}", s.sessionToken(), jerrors.ErrorStack(err))
-				// for (Codec)OnErr
-				// s.errFlag = true
 				exit = true
 			}
 			break
@@ -693,8 +709,6 @@ func (s *session) handleTCPPackage() error {
 			if err != nil {
 				log.Warn("%s, [session.handleTCPPackage] = len{%d}, error{%s}",
 					s.sessionToken(), pkgLen, jerrors.ErrorStack(err))
-				// for (Codec)OnErr
-				// s.errFlag = true
 				exit = true
 				break
 			}
@@ -809,7 +823,6 @@ func (s *session) handleWSPackage() error {
 		if err != nil {
 			log.Warn("%s, [session.handleWSPackage] = error{%s}",
 				s.sessionToken(), jerrors.ErrorStack(err))
-			// s.errFlag = true
 			return jerrors.Trace(err)
 		}
 		s.UpdateActive()
