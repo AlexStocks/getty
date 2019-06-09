@@ -14,18 +14,13 @@ package getty
 // Server Options
 /////////////////////////////////////////
 
-const (
-	defaultTaskQLen = 128
-)
-
 type ServerOption func(*ServerOptions)
 
 type ServerOptions struct {
 	addr string
 
 	// task pool
-	tQLen      int32
-	tQPoolSize int32
+	taskPoolOptions
 
 	// websocket
 	path       string
@@ -44,14 +39,21 @@ func WithLocalAddress(addr string) ServerOption {
 // @size is the task queue pool size
 func WithServerTaskPoolSize(size int32) ServerOption {
 	return func(o *ServerOptions) {
-		o.tQPoolSize = size
+		o.taskPoolOptions.tQPoolSize = size
 	}
 }
 
 // @length is the task queue length
 func WithServerTaskQueueLength(length int32) ServerOption {
 	return func(o *ServerOptions) {
-		o.tQLen = length
+		o.taskPoolOptions.tQLen = length
+	}
+}
+
+// @number is the task queue number
+func WithServerTaskQueueNumber(number int32) ServerOption {
+	return func(o *ServerOptions) {
+		o.taskPoolOptions.tQNumber = number
 	}
 }
 
@@ -95,8 +97,7 @@ type ClientOptions struct {
 	reconnectInterval int // reConnect Interval
 
 	// task pool
-	tQLen      int32
-	tQPoolSize int32
+	taskPoolOptions
 
 	// the cert file of wss server which may contain server domain, server ip, the starting effective date, effective
 	// duration, the hash alg, the len of the private key.
@@ -128,14 +129,21 @@ func WithConnectionNumber(num int) ClientOption {
 // @size is the task queue pool size
 func WithClientTaskPoolSize(size int32) ClientOption {
 	return func(o *ClientOptions) {
-		o.tQPoolSize = size
+		o.taskPoolOptions.tQPoolSize = size
 	}
 }
 
 // @length is the task queue length
 func WithClientTaskQueueLength(length int32) ClientOption {
 	return func(o *ClientOptions) {
-		o.tQLen = length
+		o.taskPoolOptions.tQLen = length
+	}
+}
+
+// @number is the task queue number
+func WithClientTaskQueueNumber(number int32) ClientOption {
+	return func(o *ClientOptions) {
+		o.taskPoolOptions.tQNumber = number
 	}
 }
 

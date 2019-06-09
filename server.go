@@ -68,11 +68,7 @@ func newServer(t EndPointType, opts ...ServerOption) *server {
 	}
 
 	if s.tQPoolSize > 0 {
-		qLen := s.tQLen
-		if qLen == 0 {
-			qLen = defaultTaskQLen
-		}
-		s.tQPool = newTaskPool(s.tQPoolSize, qLen)
+		s.tQPool = newTaskPool(s.taskPoolOptions)
 	}
 
 	return s

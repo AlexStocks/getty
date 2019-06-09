@@ -80,11 +80,7 @@ func newClient(t EndPointType, opts ...ClientOption) *client {
 	c.ssMap = make(map[Session]struct{}, c.number)
 
 	if c.tQPoolSize > 0 {
-		qLen := c.tQLen
-		if qLen == 0 {
-			qLen = defaultTaskQLen
-		}
-		c.tQPool = newTaskPool(c.tQPoolSize, qLen)
+		c.tQPool = newTaskPool(c.taskPoolOptions)
 	}
 
 	return c

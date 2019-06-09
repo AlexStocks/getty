@@ -8,6 +8,7 @@ import (
 
 const (
 	defaultTaskQNumber = 10
+	defaultTaskQLen    = 128
 )
 
 // task t
@@ -16,11 +17,35 @@ type task struct {
 	pkg     interface{}
 }
 
+type taskPoolOptions struct {
+	tQLen      int32 // task queue length
+	tQNumber   int32 // task queue number
+	tQPoolSize int32 // task pool size
+}
+
+func (o *taskPoolOptions) Validate() {
+	if o.tQPoolSize == 0 {
+		panic(fmt.Sprintf("[getty][task_pool] illegal pool size %d", o.tQPoolSize))
+	}
+
+	if o.tQLen == 0 {
+		o.tQLen = defaultTaskQLen
+	}
+
+	if o.tQNumber < 1 {
+		o.tQNumber = defaultTaskQNumber
+	}
+
+	if o.tQNumber > o.tQPoolSize {
+		o.tQNumber = o.tQPoolSize
+	}
+}
+
 // task pool: manage task ts
 type taskPool struct {
-	idx    uint32
-	qLen   int32 // task queue length
-	size   int32 // task queue pool size
+	taskPoolOptions
+
+	idx    uint32 // round robin index
 	qArray []chan task
 	wg     sync.WaitGroup
 
@@ -29,16 +54,17 @@ type taskPool struct {
 }
 
 // build a task pool
-func newTaskPool(poolSize int32, taskQLen int32) *taskPool {
+func newTaskPool(opts taskPoolOptions) *taskPool {
+	opts.Validate()
+
 	p := &taskPool{
-		size:   poolSize,
-		qLen:   taskQLen,
-		qArray: make([]chan task, defaultTaskQNumber),
-		done:   make(chan struct{}),
+		taskPoolOptions: opts,
+		qArray:          make([]chan task, opts.tQNumber),
+		done:            make(chan struct{}),
 	}
 
-	for i := 0; i < defaultTaskQNumber; i++ {
-		p.qArray[i] = make(chan task, taskQLen)
+	for i := int32(0); i < p.tQNumber; i++ {
+		p.qArray[i] = make(chan task, p.tQLen)
 	}
 
 	return p
@@ -46,18 +72,10 @@ func newTaskPool(poolSize int32, taskQLen int32) *taskPool {
 
 // start task pool
 func (p *taskPool) start() {
-	if p.size == 0 {
-		panic(fmt.Sprintf("[getty][task_pool] illegal pool size %d", p.size))
-	}
-
-	if p.qLen == 0 {
-		panic(fmt.Sprintf("[getty][task_pool] illegal t queue length %d", p.qLen))
-	}
-
-	for i := int32(0); i < p.size; i++ {
+	for i := int32(0); i < p.tQPoolSize; i++ {
 		p.wg.Add(1)
 		workerID := i
-		q := p.qArray[workerID%defaultTaskQNumber]
+		q := p.qArray[workerID%p.tQNumber]
 		go p.run(int(workerID), q)
 	}
 }
