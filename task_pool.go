@@ -1,7 +1,6 @@
 package getty
 
 import (
-	"fmt"
 	"sync"
 	"sync/atomic"
 )
@@ -34,12 +33,17 @@ type TaskPool struct {
 }
 
 // build a task pool
-func newTaskPool(opts TaskPoolOptions) *TaskPool {
-	opts.validate()
+func NewTaskPool(opts ...TaskPoolOption) *TaskPool {
+	var tOpts TaskPoolOptions
+	for _, opt := range opts {
+		opt(&tOpts)
+	}
+
+	tOpts.validate()
 
 	p := &TaskPool{
-		TaskPoolOptions: opts,
-		qArray:          make([]chan task, opts.tQNumber),
+		TaskPoolOptions: tOpts,
+		qArray:          make([]chan task, tOpts.tQNumber),
 		done:            make(chan struct{}),
 	}
 
@@ -100,7 +104,7 @@ func (p *TaskPool) AddTask(t task) {
 }
 
 // stop all tasks
-func (p *taskPool) stop() {
+func (p *TaskPool) stop() {
 	select {
 	case <-p.done:
 		return
@@ -112,7 +116,7 @@ func (p *taskPool) stop() {
 }
 
 // check whether the session has been closed.
-func (p *taskPool) isClosed() bool {
+func (p *TaskPool) IsClosed() bool {
 	select {
 	case <-p.done:
 		return true
@@ -122,7 +126,7 @@ func (p *taskPool) isClosed() bool {
 	}
 }
 
-func (p *taskPool) close() {
+func (p *TaskPool) Close() {
 	p.stop()
 	p.wg.Wait()
 	for i := range p.qArray {
