@@ -315,7 +315,7 @@ func (s *session) SetWaitTime(waitTime time.Duration) {
 }
 
 // set task pool
-func (s *session) SetTaskPool(p *taskPool) {
+func (s *session) SetTaskPool(p *TaskPool) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 

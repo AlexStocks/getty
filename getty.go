@@ -151,6 +151,7 @@ type Session interface {
 	SetRQLen(int)
 	SetWQLen(int)
 	SetWaitTime(time.Duration)
+	SetTaskPool(*TaskPool)
 
 	GetAttribute(interface{}) interface{}
 	SetAttribute(interface{}, interface{})

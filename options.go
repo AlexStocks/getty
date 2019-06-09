@@ -18,10 +18,6 @@ import (
 // Server Options
 /////////////////////////////////////////
 
-const (
-	defaultTaskQLen = 128
-)
-
 type ServerOption func(*ServerOptions)
 
 type ServerOptions struct {
