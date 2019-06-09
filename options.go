@@ -10,6 +10,10 @@
 
 package getty
 
+import (
+	"fmt"
+)
+
 /////////////////////////////////////////
 // Server Options
 /////////////////////////////////////////
@@ -18,9 +22,6 @@ type ServerOption func(*ServerOptions)
 
 type ServerOptions struct {
 	addr string
-
-	// task pool
-	taskPoolOptions
 
 	// websocket
 	path       string
@@ -33,27 +34,6 @@ type ServerOptions struct {
 func WithLocalAddress(addr string) ServerOption {
 	return func(o *ServerOptions) {
 		o.addr = addr
-	}
-}
-
-// @size is the task queue pool size
-func WithServerTaskPoolSize(size int32) ServerOption {
-	return func(o *ServerOptions) {
-		o.taskPoolOptions.tQPoolSize = size
-	}
-}
-
-// @length is the task queue length
-func WithServerTaskQueueLength(length int32) ServerOption {
-	return func(o *ServerOptions) {
-		o.taskPoolOptions.tQLen = length
-	}
-}
-
-// @number is the task queue number
-func WithServerTaskQueueNumber(number int32) ServerOption {
-	return func(o *ServerOptions) {
-		o.taskPoolOptions.tQNumber = number
 	}
 }
 
@@ -96,9 +76,6 @@ type ClientOptions struct {
 	number            int
 	reconnectInterval int // reConnect Interval
 
-	// task pool
-	taskPoolOptions
-
 	// the cert file of wss server which may contain server domain, server ip, the starting effective date, effective
 	// duration, the hash alg, the len of the private key.
 	// wss client will use it.
@@ -126,30 +103,60 @@ func WithConnectionNumber(num int) ClientOption {
 	}
 }
 
-// @size is the task queue pool size
-func WithClientTaskPoolSize(size int32) ClientOption {
-	return func(o *ClientOptions) {
-		o.taskPoolOptions.tQPoolSize = size
-	}
-}
-
-// @length is the task queue length
-func WithClientTaskQueueLength(length int32) ClientOption {
-	return func(o *ClientOptions) {
-		o.taskPoolOptions.tQLen = length
-	}
-}
-
-// @number is the task queue number
-func WithClientTaskQueueNumber(number int32) ClientOption {
-	return func(o *ClientOptions) {
-		o.taskPoolOptions.tQNumber = number
-	}
-}
-
 // @cert is client certificate file. it can be empty.
 func WithRootCertificateFile(cert string) ClientOption {
 	return func(o *ClientOptions) {
 		o.cert = cert
+	}
+}
+
+/////////////////////////////////////////
+// Task Pool Options
+/////////////////////////////////////////
+
+type TaskPoolOptions struct {
+	tQLen      int // task queue length
+	tQNumber   int // task queue number
+	tQPoolSize int // task pool size
+}
+
+func (o *TaskPoolOptions) validate() {
+	if o.tQPoolSize == 0 {
+		panic(fmt.Sprintf("[getty][task_pool] illegal pool size %d", o.tQPoolSize))
+	}
+
+	if o.tQLen == 0 {
+		o.tQLen = defaultTaskQLen
+	}
+
+	if o.tQNumber < 1 {
+		o.tQNumber = defaultTaskQNumber
+	}
+
+	if o.tQNumber > o.tQPoolSize {
+		o.tQNumber = o.tQPoolSize
+	}
+}
+
+type TaskPoolOption func(*TaskPoolOptions)
+
+// @size is the task queue pool size
+func WithTaskPoolTaskPoolSize(size int) TaskPoolOption {
+	return func(o *TaskPoolOptions) {
+		o.tQPoolSize = size
+	}
+}
+
+// @length is the task queue length
+func WithTaskPoolTaskQueueLength(length int) TaskPoolOption {
+	return func(o *TaskPoolOptions) {
+		o.tQLen = length
+	}
+}
+
+// @number is the task queue number
+func WithTaskPoolTaskQueueNumber(number int) TaskPoolOption {
+	return func(o *TaskPoolOptions) {
+		o.tQNumber = number
 	}
 }

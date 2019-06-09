@@ -41,9 +41,6 @@ type server struct {
 	endPointType   EndPointType
 	server         *http.Server // for ws or wss server
 
-	// task queue pool
-	tQPool *taskPool
-
 	sync.Once
 	done chan struct{}
 	wg   sync.WaitGroup
@@ -65,10 +62,6 @@ func newServer(t EndPointType, opts ...ServerOption) *server {
 
 	if s.addr == "" {
 		panic(fmt.Sprintf("@addr:%s", s.addr))
-	}
-
-	if s.tQPoolSize > 0 {
-		s.tQPool = newTaskPool(s.taskPoolOptions)
 	}
 
 	return s
@@ -136,10 +129,6 @@ func (s *server) stop() {
 			if s.pktListener != nil {
 				s.pktListener.Close()
 				s.pktListener = nil
-			}
-			if s.tQPool != nil {
-				s.tQPool.close()
-				s.tQPool = nil
 			}
 		})
 	}
@@ -263,7 +252,6 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 				continue
 			}
 			delay = 0
-			client.(*session).SetTaskPool(s.tQPool)
 			client.(*session).run()
 		}
 	}()
@@ -278,7 +266,6 @@ func (s *server) runUDPEventLoop(newSession NewSessionCallback) {
 	if err := newSession(ss); err != nil {
 		panic(err.Error())
 	}
-	ss.(*session).SetTaskPool(s.tQPool)
 	ss.(*session).run()
 }
 
@@ -335,7 +322,6 @@ func (s *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 	if ss.(*session).maxMsgLen > 0 {
 		conn.SetReadLimit(int64(ss.(*session).maxMsgLen))
 	}
-	ss.(*session).SetTaskPool(s.server.tQPool)
 	ss.(*session).run()
 }
 

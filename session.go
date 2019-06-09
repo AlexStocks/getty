@@ -63,7 +63,7 @@ type session struct {
 	// handle logic
 	maxMsgLen int32
 	// task queue
-	tQPool *taskPool
+	tPool *TaskPool
 
 	// heartbeat
 	period time.Duration
@@ -89,7 +89,6 @@ func newSession(endPoint EndPoint, conn Connection) *session {
 		Connection: conn,
 
 		maxMsgLen: maxReadBufLen,
-		tQLen:     defaultTaskQLen,
 
 		period: period,
 
@@ -302,11 +301,11 @@ func (s *session) SetWaitTime(waitTime time.Duration) {
 }
 
 // set task pool
-func (s *session) SetTaskPool(p *taskPool) {
+func (s *session) SetTaskPool(p *TaskPool) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	s.tQPool = p
+	s.tPool = p
 }
 
 // set attribute of key @session:key
@@ -457,7 +456,7 @@ func (s *session) run() {
 		s.wQ = make(chan interface{}, defaultQLen)
 	}
 
-	if s.rQ == nil && s.tQPool == nil {
+	if s.rQ == nil && s.tPool == nil {
 		s.rQ = make(chan interface{}, defaultQLen)
 	}
 
@@ -564,8 +563,8 @@ LOOP:
 }
 
 func (s *session) addTask(pkg interface{}) {
-	if s.tQPool != nil {
-		s.tQPool.AddTask(task{session: s, pkg: pkg})
+	if s.tPool != nil {
+		s.tPool.AddTask(task{session: s, pkg: pkg})
 	} else {
 		s.rQ <- pkg
 	}

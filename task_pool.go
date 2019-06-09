@@ -1,7 +1,6 @@
 package getty
 
 import (
-	"fmt"
 	"sync"
 	"sync/atomic"
 )
@@ -17,33 +16,9 @@ type task struct {
 	pkg     interface{}
 }
 
-type taskPoolOptions struct {
-	tQLen      int32 // task queue length
-	tQNumber   int32 // task queue number
-	tQPoolSize int32 // task pool size
-}
-
-func (o *taskPoolOptions) Validate() {
-	if o.tQPoolSize == 0 {
-		panic(fmt.Sprintf("[getty][task_pool] illegal pool size %d", o.tQPoolSize))
-	}
-
-	if o.tQLen == 0 {
-		o.tQLen = defaultTaskQLen
-	}
-
-	if o.tQNumber < 1 {
-		o.tQNumber = defaultTaskQNumber
-	}
-
-	if o.tQNumber > o.tQPoolSize {
-		o.tQNumber = o.tQPoolSize
-	}
-}
-
 // task pool: manage task ts
-type taskPool struct {
-	taskPoolOptions
+type TaskPool struct {
+	TaskPoolOptions
 
 	idx    uint32 // round robin index
 	qArray []chan task
@@ -54,16 +29,16 @@ type taskPool struct {
 }
 
 // build a task pool
-func newTaskPool(opts taskPoolOptions) *taskPool {
-	opts.Validate()
+func newTaskPool(opts TaskPoolOptions) *TaskPool {
+	opts.validate()
 
-	p := &taskPool{
-		taskPoolOptions: opts,
+	p := &TaskPool{
+		TaskPoolOptions: opts,
 		qArray:          make([]chan task, opts.tQNumber),
 		done:            make(chan struct{}),
 	}
 
-	for i := int32(0); i < p.tQNumber; i++ {
+	for i := 0; i < p.tQNumber; i++ {
 		p.qArray[i] = make(chan task, p.tQLen)
 	}
 
@@ -71,8 +46,8 @@ func newTaskPool(opts taskPoolOptions) *taskPool {
 }
 
 // start task pool
-func (p *taskPool) start() {
-	for i := int32(0); i < p.tQPoolSize; i++ {
+func (p *TaskPool) start() {
+	for i := 0; i < p.tQPoolSize; i++ {
 		p.wg.Add(1)
 		workerID := i
 		q := p.qArray[workerID%p.tQNumber]
@@ -81,7 +56,7 @@ func (p *taskPool) start() {
 }
 
 // worker
-func (p *taskPool) run(id int, q chan task) {
+func (p *TaskPool) run(id int, q chan task) {
 	defer p.wg.Done()
 
 	var (
@@ -109,7 +84,7 @@ func (p *taskPool) run(id int, q chan task) {
 }
 
 // add task
-func (p *taskPool) AddTask(t task) {
+func (p *TaskPool) AddTask(t task) {
 	id := atomic.AddUint32(&p.idx, 1) % defaultTaskQNumber
 
 	select {
@@ -120,7 +95,7 @@ func (p *taskPool) AddTask(t task) {
 }
 
 // stop all tasks
-func (p *taskPool) stop() {
+func (p *TaskPool) stop() {
 	select {
 	case <-p.done:
 		return
@@ -132,7 +107,7 @@ func (p *taskPool) stop() {
 }
 
 // check whether the session has been closed.
-func (p *taskPool) isClosed() bool {
+func (p *TaskPool) isClosed() bool {
 	select {
 	case <-p.done:
 		return true
@@ -142,7 +117,7 @@ func (p *taskPool) isClosed() bool {
 	}
 }
 
-func (p *taskPool) close() {
+func (p *TaskPool) close() {
 	p.stop()
 	p.wg.Wait()
 	for i := range p.qArray {
