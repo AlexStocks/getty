@@ -10,22 +10,10 @@ import (
 	log "github.com/AlexStocks/log4go"
 )
 
-//func init() {
-//	rand.Seed(time.Now().UnixNano())
-//}
-//
-//var (
-//	// The golang rand generators are *not* intrinsically thread-safe.
-//	randIDLock sync.Mutex
-//	randIDGen  = rand.New(rand.NewSource(time.Now().UnixNano()))
-//)
-//
-//func randID() uint64 {
-//	randIDLock.Lock()
-//	defer randIDLock.Unlock()
-//
-//	return uint64(randIDGen.Int63())
-//}
+const (
+	defaultTaskQNumber = 10
+	defaultTaskQLen    = 128
+)
 
 // task t
 type task struct {
@@ -34,10 +22,10 @@ type task struct {
 }
 
 // task pool: manage task ts
-type taskPool struct {
-	idx    uint32
-	qLen   int32 // task queue length
-	size   int32 // task queue pool size
+type TaskPool struct {
+	TaskPoolOptions
+
+	idx    uint32 // round robin index
 	qArray []chan task
 	wg     sync.WaitGroup
 
@@ -46,35 +34,34 @@ type taskPool struct {
 }
 
 // build a task pool
-func newTaskPool(poolSize int32, taskQLen int32) *taskPool {
-	return &taskPool{
-		size:   poolSize,
-		qLen:   taskQLen,
-		qArray: make([]chan task, poolSize),
-		done:   make(chan struct{}),
+func newTaskPool(opts TaskPoolOptions) *TaskPool {
+	opts.validate()
+
+	p := &TaskPool{
+		TaskPoolOptions: opts,
+		qArray:          make([]chan task, opts.tQNumber),
+		done:            make(chan struct{}),
 	}
+
+	for i := 0; i < p.tQNumber; i++ {
+		p.qArray[i] = make(chan task, p.tQLen)
+	}
+
+	return p
 }
 
 // start task pool
-func (p *taskPool) start() {
-	if p.size == 0 {
-		panic(fmt.Sprintf("[getty][task_pool] illegal pool size %d", p.size))
-	}
-
-	if p.qLen == 0 {
-		panic(fmt.Sprintf("[getty][task_pool] illegal t queue length %d", p.qLen))
-	}
-
-	for i := int32(0); i < p.size; i++ {
-		p.qArray[i] = make(chan task, p.qLen)
+func (p *TaskPool) start() {
+	for i := 0; i < p.tQPoolSize; i++ {
 		p.wg.Add(1)
-		taskID := i
-		go p.run(int(taskID))
+		workerID := i
+		q := p.qArray[workerID%p.tQNumber]
+		go p.run(int(workerID), q)
 	}
 }
 
 // worker
-func (p *taskPool) run(id int) {
+func (p *TaskPool) run(id int, q chan task) {
 	defer p.wg.Done()
 
 	var (
@@ -85,14 +72,15 @@ func (p *taskPool) run(id int) {
 	for {
 		select {
 		case <-p.done:
-			if 0 < len(p.qArray[id]) {
-				log.Warn("[getty][task_pool] task %d exit now while its task length is %d greater than 0",
-					id, len(p.qArray[id]))
+			if 0 < len(q) {
+				log.Warn("[getty][task_pool] task worker %d exit now while its task buffer length %d is greater than 0",
+					id, len(q))
+			} else {
+				log.Info("[getty][task_pool] task worker %d exit now", id)
 			}
-			log.Info("[getty][task_pool] task %d exit now", id)
 			return
 
-		case t, ok = <-p.qArray[id]:
+		case t, ok = <-q:
 			if ok {
 				t.session.listener.OnMessage(t.session, t.pkg)
 			}
@@ -101,9 +89,8 @@ func (p *taskPool) run(id int) {
 }
 
 // add task
-func (p *taskPool) AddTask(t task) {
-	//id := randID() % uint64(p.size)
-	id := atomic.AddUint32(&p.idx, 1) % uint32(p.size)
+func (p *TaskPool) AddTask(t task) {
+	id := atomic.AddUint32(&p.idx, 1) % uint32(p.tQNumber)
 
 	select {
 	case <-p.done:

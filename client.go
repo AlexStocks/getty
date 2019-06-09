@@ -56,9 +56,6 @@ type client struct {
 	newSession NewSessionCallback
 	ssMap      map[Session]struct{}
 
-	// task queue pool
-	tQPool *taskPool
-
 	sync.Once
 	done chan struct{}
 	wg   sync.WaitGroup
@@ -83,14 +80,6 @@ func newClient(t EndPointType, opts ...ClientOption) *client {
 	}
 
 	c.ssMap = make(map[Session]struct{}, c.number)
-
-	if c.tQPoolSize > 0 {
-		qLen := c.tQLen
-		if qLen == 0 {
-			qLen = defaultTaskQLen
-		}
-		c.tQPool = newTaskPool(c.tQPoolSize, qLen)
-	}
 
 	return c
 }
@@ -372,7 +361,6 @@ func (c *client) connect() {
 		}
 		err = c.newSession(ss)
 		if err == nil {
-			ss.(*session).SetTaskPool(c.tQPool)
 			ss.(*session).run()
 			c.Lock()
 			if c.ssMap == nil {
@@ -444,10 +432,6 @@ func (c *client) stop() {
 			}
 			c.ssMap = nil
 
-			if c.tQPool != nil {
-				c.tQPool.close()
-				c.tQPool = nil
-			}
 			c.Unlock()
 		})
 	}
