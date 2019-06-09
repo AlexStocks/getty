@@ -647,8 +647,6 @@ func (s *session) handleTCPPackage() error {
 					break
 				}
 				log.Errorf("%s, [session.conn.read] = error:%+v", s.sessionToken(), err)
-				// for (Codec)OnErr
-				// s.errFlag = true
 				exit = true
 			}
 			break
@@ -787,7 +785,6 @@ func (s *session) handleWSPackage() error {
 		if err != nil {
 			log.Warnf("%s, [session.handleWSPackage] = error{%+s}",
 				s.sessionToken(), err)
-			// s.errFlag = true
 			return perrors.WithStack(err)
 		}
 		s.UpdateActive()
