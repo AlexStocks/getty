@@ -85,7 +85,7 @@ func (p *TaskPool) run(id int, q chan task) {
 
 // add task
 func (p *TaskPool) AddTask(t task) {
-	id := atomic.AddUint32(&p.idx, 1) % defaultTaskQNumber
+	id := atomic.AddUint32(&p.idx, 1) % uint32(p.tQNumber)
 
 	select {
 	case <-p.done:
