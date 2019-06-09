@@ -23,8 +23,11 @@ import (
 
 import (
 	"github.com/AlexStocks/goext/net"
+
+	gxnet "github.com/AlexStocks/goext/net"
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
+
 	jerrors "github.com/juju/errors"
 )
 
@@ -358,7 +361,6 @@ func (c *client) connect() {
 		}
 		err = c.newSession(ss)
 		if err == nil {
-			// ss.RunEventLoop()
 			ss.(*session).run()
 			c.Lock()
 			if c.ssMap == nil {
@@ -429,6 +431,7 @@ func (c *client) stop() {
 				s.Close()
 			}
 			c.ssMap = nil
+
 			c.Unlock()
 		})
 	}

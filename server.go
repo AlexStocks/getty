@@ -22,8 +22,8 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/goext/net"
-	"github.com/AlexStocks/goext/time"
+	gxnet "github.com/AlexStocks/goext/net"
+	gxtime "github.com/AlexStocks/goext/time"
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
 	jerrors "github.com/juju/errors"
@@ -256,7 +256,6 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 				continue
 			}
 			delay = 0
-			// client.RunEventLoop()
 			client.(*session).run()
 		}
 	}()
@@ -327,7 +326,6 @@ func (s *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 	if ss.(*session).maxMsgLen > 0 {
 		conn.SetReadLimit(int64(ss.(*session).maxMsgLen))
 	}
-	// ss.RunEventLoop()
 	ss.(*session).run()
 }
 
