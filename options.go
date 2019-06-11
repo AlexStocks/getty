@@ -121,11 +121,11 @@ type TaskPoolOptions struct {
 }
 
 func (o *TaskPoolOptions) validate() {
-	if o.tQPoolSize == 0 {
+	if o.tQPoolSize < 1 {
 		panic(fmt.Sprintf("[getty][task_pool] illegal pool size %d", o.tQPoolSize))
 	}
 
-	if o.tQLen == 0 {
+	if o.tQLen < 1 {
 		o.tQLen = defaultTaskQLen
 	}
 
