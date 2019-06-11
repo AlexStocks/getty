@@ -13,7 +13,9 @@ import (
 	"compress/flate"
 	"net"
 	"time"
+)
 
+import (
 	perrors "github.com/pkg/errors"
 )
 
@@ -152,6 +154,7 @@ type Session interface {
 	SetRQLen(int)
 	SetWQLen(int)
 	SetWaitTime(time.Duration)
+	SetTaskPool(*TaskPool)
 
 	GetAttribute(interface{}) interface{}
 	SetAttribute(interface{}, interface{})

@@ -252,7 +252,6 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 				continue
 			}
 			delay = 0
-			// client.RunEventLoop()
 			client.(*session).run()
 		}
 	}()
@@ -323,7 +322,6 @@ func (s *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 	if ss.(*session).maxMsgLen > 0 {
 		conn.SetReadLimit(int64(ss.(*session).maxMsgLen))
 	}
-	// ss.RunEventLoop()
 	ss.(*session).run()
 }
 

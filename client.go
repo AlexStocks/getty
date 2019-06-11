@@ -350,7 +350,6 @@ func (c *client) connect() {
 		}
 		err = c.newSession(ss)
 		if err == nil {
-			// ss.RunEventLoop()
 			ss.(*session).run()
 			c.Lock()
 			if c.ssMap == nil {
@@ -421,6 +420,7 @@ func (c *client) stop() {
 				s.Close()
 			}
 			c.ssMap = nil
+
 			c.Unlock()
 		})
 	}

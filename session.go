@@ -29,6 +29,7 @@ const (
 	netIOTimeout          = 1e9      // 1s
 	period                = 60 * 1e9 // 1 minute
 	pendingDuration       = 3e9
+	defaultQLen           = 1024
 	defaultSessionName    = "session"
 	defaultTCPSessionName = "tcp-session"
 	defaultUDPSessionName = "udp-session"
@@ -43,26 +44,38 @@ const (
 
 // getty base session
 type session struct {
-	name      string
-	endPoint  EndPoint
-	maxMsgLen int32
+	name     string
+	endPoint EndPoint
+
 	// net read Write
 	Connection
-	// pkgHandler ReadWriter
-	reader   Reader // @reader should be nil when @conn is a gettyWSConn object.
-	writer   Writer
-	listener EventListener
-	once     sync.Once
-	done     chan struct{}
-	// errFlag  bool
 
+	listener EventListener
+
+	// codec
+	reader Reader // @reader should be nil when @conn is a gettyWSConn object.
+	writer Writer
+
+	// read & write
+	rQ chan interface{}
+	wQ chan interface{}
+
+	// handle logic
+	maxMsgLen int32
+	// task queue
+	tPool *TaskPool
+
+	// heartbeat
 	period time.Duration
-	wait   time.Duration
-	rQ     chan interface{}
-	wQ     chan interface{}
+
+	// done
+	wait time.Duration
+	once sync.Once
+	done chan struct{}
 
 	// attribute
 	attrs *ValuesContext
+
 	// goroutines sync
 	grNum int32
 	lock  sync.RWMutex
@@ -70,14 +83,18 @@ type session struct {
 
 func newSession(endPoint EndPoint, conn Connection) *session {
 	ss := &session{
-		name:       defaultSessionName,
-		endPoint:   endPoint,
-		maxMsgLen:  maxReadBufLen,
+		name:     defaultSessionName,
+		endPoint: endPoint,
+
 		Connection: conn,
-		done:       make(chan struct{}),
-		period:     period,
-		wait:       pendingDuration,
-		attrs:      NewValuesContext(nil),
+
+		maxMsgLen: maxReadBufLen,
+
+		period: period,
+
+		done:  make(chan struct{}),
+		wait:  pendingDuration,
+		attrs: NewValuesContext(nil),
 	}
 
 	ss.Connection.setSession(ss)
@@ -115,7 +132,6 @@ func (s *session) Reset() {
 	s.name = defaultSessionName
 	s.once = sync.Once{}
 	s.done = make(chan struct{})
-	// s.errFlag = false
 	s.period = period
 	s.wait = pendingDuration
 	s.attrs = NewValuesContext(nil)
@@ -190,30 +206,51 @@ func (s *session) IsClosed() bool {
 }
 
 // set maximum pacakge length of every pacakge in (EventListener)OnMessage(@pkgs)
-func (s *session) SetMaxMsgLen(length int) { s.maxMsgLen = int32(length) }
+func (s *session) SetMaxMsgLen(length int) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	s.maxMsgLen = int32(length)
+}
 
 // set session name
-func (s *session) SetName(name string) { s.name = name }
+func (s *session) SetName(name string) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	s.name = name
+}
 
 // set EventListener
 func (s *session) SetEventListener(listener EventListener) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
 	s.listener = listener
 }
 
 // set package handler
 func (s *session) SetPkgHandler(handler ReadWriter) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
 	s.reader = handler
 	s.writer = handler
-	// s.pkgHandler = handler
 }
 
 // set Reader
 func (s *session) SetReader(reader Reader) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
 	s.reader = reader
 }
 
 // set Writer
 func (s *session) SetWriter(writer Writer) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
 	s.writer = writer
 }
 
@@ -224,8 +261,8 @@ func (s *session) SetCronPeriod(period int) {
 	}
 
 	s.lock.Lock()
+	defer s.lock.Unlock()
 	s.period = time.Duration(period) * time.Millisecond
-	s.lock.Unlock()
 }
 
 // set @session's read queue size
@@ -235,9 +272,9 @@ func (s *session) SetRQLen(readQLen int) {
 	}
 
 	s.lock.Lock()
+	defer s.lock.Unlock()
 	s.rQ = make(chan interface{}, readQLen)
-	s.lock.Unlock()
-	log.Debugf("%s, [session.SetRQLen] rQ{len:%d, cap:%d}", s.Stat(), len(s.rQ), cap(s.rQ))
+	log.Debug("%s, [session.SetRQLen] rQ{len:%d, cap:%d}", s.Stat(), len(s.rQ), cap(s.rQ))
 }
 
 // set @session's Write queue size
@@ -247,9 +284,9 @@ func (s *session) SetWQLen(writeQLen int) {
 	}
 
 	s.lock.Lock()
+	defer s.lock.Unlock()
 	s.wQ = make(chan interface{}, writeQLen)
-	s.lock.Unlock()
-	log.Debugf("%s, [session.SetWQLen] wQ{len:%d, cap:%d}", s.Stat(), len(s.wQ), cap(s.wQ))
+	log.Debug("%s, [session.SetWQLen] wQ{len:%d, cap:%d}", s.Stat(), len(s.wQ), cap(s.wQ))
 }
 
 // set maximum wait time when session got error or got exit signal
@@ -259,8 +296,16 @@ func (s *session) SetWaitTime(waitTime time.Duration) {
 	}
 
 	s.lock.Lock()
+	defer s.lock.Unlock()
 	s.wait = waitTime
-	s.lock.Unlock()
+}
+
+// set task pool
+func (s *session) SetTaskPool(p *TaskPool) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	s.tPool = p
 }
 
 // set attribute of key @session:key
@@ -400,17 +445,19 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 
 // func (s *session) RunEventLoop() {
 func (s *session) run() {
-	if s.rQ == nil || s.wQ == nil {
-		errStr := fmt.Sprintf("session{name:%s, rQ:%#v, wQ:%#v}",
-			s.name, s.rQ, s.wQ)
-		log.Error(errStr)
-		panic(errStr)
-	}
 	if s.Connection == nil || s.listener == nil || s.writer == nil {
 		errStr := fmt.Sprintf("session{name:%s, conn:%#v, listener:%#v, writer:%#v}",
 			s.name, s.Connection, s.listener, s.writer)
 		log.Error(errStr)
 		panic(errStr)
+	}
+
+	if s.wQ == nil {
+		s.wQ = make(chan interface{}, defaultQLen)
+	}
+
+	if s.rQ == nil && s.tPool == nil {
+		s.rQ = make(chan interface{}, defaultQLen)
 	}
 
 	// call session opened
@@ -420,6 +467,7 @@ func (s *session) run() {
 		return
 	}
 
+	// start read/write gr
 	atomic.AddInt32(&(s.grNum), 2)
 	go s.handleLoop()
 	go s.handlePackage()
@@ -448,10 +496,8 @@ func (s *session) handleLoop() {
 		}
 
 		grNum = atomic.AddInt32(&(s.grNum), -1)
-		// if !s.errFlag {
 		s.listener.OnClose(s)
-		// }
-		log.Infof("%s, [session.handleLoop] goroutine exit now, left gr num %d", s.Stat(), grNum)
+		log.Info("%s, [session.handleLoop] goroutine exit now, left gr num %d", s.Stat(), grNum)
 		s.gc()
 	}()
 
@@ -513,6 +559,14 @@ LOOP:
 				s.listener.OnCron(s)
 			}
 		}
+	}
+}
+
+func (s *session) addTask(pkg interface{}) {
+	if s.tPool != nil {
+		s.tPool.AddTask(task{session: s, pkg: pkg})
+	} else {
+		s.rQ <- pkg
 	}
 }
 
@@ -593,8 +647,6 @@ func (s *session) handleTCPPackage() error {
 					break
 				}
 				log.Errorf("%s, [session.conn.read] = error:%+v", s.sessionToken(), err)
-				// for (Codec)OnErr
-				// s.errFlag = true
 				exit = true
 			}
 			break
@@ -619,8 +671,6 @@ func (s *session) handleTCPPackage() error {
 			if err != nil {
 				log.Warnf("%s, [session.handleTCPPackage] = len{%d}, error:%+v",
 					s.sessionToken(), pkgLen, err)
-				// for (Codec)OnErr
-				// s.errFlag = true
 				exit = true
 				break
 			}
@@ -630,7 +680,7 @@ func (s *session) handleTCPPackage() error {
 			}
 			// handle case 3
 			s.UpdateActive()
-			s.rQ <- pkg
+			s.addTask(pkg)
 			pktBuf.Next(pkgLen)
 			// continue to handle case 4
 		}
@@ -705,7 +755,7 @@ func (s *session) handleUDPPackage() error {
 		}
 
 		s.UpdateActive()
-		s.rQ <- UDPContext{Pkg: pkg, PeerAddr: addr}
+		s.addTask(UDPContext{Pkg: pkg, PeerAddr: addr})
 	}
 
 	return perrors.WithStack(err)
@@ -735,7 +785,6 @@ func (s *session) handleWSPackage() error {
 		if err != nil {
 			log.Warnf("%s, [session.handleWSPackage] = error{%+s}",
 				s.sessionToken(), err)
-			// s.errFlag = true
 			return perrors.WithStack(err)
 		}
 		s.UpdateActive()
@@ -749,9 +798,10 @@ func (s *session) handleWSPackage() error {
 					s.sessionToken(), length, err)
 				continue
 			}
-			s.rQ <- unmarshalPkg
+
+			s.addTask(unmarshalPkg)
 		} else {
-			s.rQ <- pkg
+			s.addTask(pkg)
 		}
 	}
 
@@ -784,10 +834,14 @@ func (s *session) gc() {
 	s.lock.Lock()
 	if s.attrs != nil {
 		s.attrs = nil
-		close(s.wQ)
-		s.wQ = nil
-		close(s.rQ)
-		s.rQ = nil
+		if s.wQ != nil {
+			close(s.wQ)
+			s.wQ = nil
+		}
+		if s.rQ != nil {
+			close(s.rQ)
+			s.rQ = nil
+		}
 		s.Connection.close((int)((int64)(s.wait)))
 	}
 	s.lock.Unlock()
@@ -797,5 +851,6 @@ func (s *session) gc() {
 // or (session)handleLoop automatically. It's thread safe.
 func (s *session) Close() {
 	s.stop()
-	log.Infof("%s closed now. its current gr num is %d", s.sessionToken(), atomic.LoadInt32(&(s.grNum)))
+	log.Info("%s closed now. its current gr num is %d",
+		s.sessionToken(), atomic.LoadInt32(&(s.grNum)))
 }
