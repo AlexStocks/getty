@@ -8,7 +8,7 @@ import (
 
 import (
 	"github.com/AlexStocks/getty"
-	"github.com/AlexStocks/goext/net"
+	gxnet "github.com/AlexStocks/goext/net"
 	log "github.com/AlexStocks/log4go"
 	jerrors "github.com/juju/errors"
 )
@@ -17,6 +17,8 @@ type Server struct {
 	conf          ServerConfig
 	serviceMap    map[string]*service
 	tcpServerList []getty.Server
+	rpcHandler    *RpcServerHandler
+	pkgHandler    *RpcServerPackageHandler
 }
 
 func NewServer(conf *ServerConfig) (*Server, error) {
@@ -28,6 +30,8 @@ func NewServer(conf *ServerConfig) (*Server, error) {
 		serviceMap: make(map[string]*service),
 		conf:       *conf,
 	}
+	s.rpcHandler = NewRpcServerHandler(s.conf.SessionNumber, s.conf.sessionTimeout)
+	s.pkgHandler = NewRpcServerPackageHandler(s)
 
 	return s, nil
 }
@@ -96,8 +100,8 @@ func (s *Server) newSession(session getty.Session) error {
 
 	session.SetName(s.conf.GettySessionParam.SessionName)
 	session.SetMaxMsgLen(s.conf.GettySessionParam.MaxMsgLen)
-	session.SetPkgHandler(NewRpcServerPackageHandler(s))
-	session.SetEventListener(NewRpcServerHandler(s.conf.SessionNumber, s.conf.sessionTimeout))
+	session.SetPkgHandler(s.pkgHandler)
+	session.SetEventListener(s.rpcHandler)
 	session.SetRQLen(s.conf.GettySessionParam.PkgRQSize)
 	session.SetWQLen(s.conf.GettySessionParam.PkgWQSize)
 	session.SetReadTimeout(s.conf.GettySessionParam.tcpReadTimeout)
