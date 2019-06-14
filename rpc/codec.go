@@ -11,8 +11,8 @@ import (
 
 import (
 	log "github.com/AlexStocks/log4go"
-	proto "github.com/gogo/protobuf/proto"
-	"github.com/json-iterator/go"
+	"github.com/gogo/protobuf/proto"
+	jsoniter "github.com/json-iterator/go"
 	jerrors "github.com/juju/errors"
 )
 
@@ -174,9 +174,8 @@ func (c PBCodec) Decode(buf []byte, msg interface{}) error {
 ////////////////////////////////////////////
 
 const (
-	gettyPackageMagic     = 0x20160905
-	maxPackageLen         = 4 * 1024 * 1024
-	gettyPackageHeaderLen = (int)((uint)(unsafe.Sizeof(GettyPackageHeader{})))
+	gettyPackageMagic = 0x20160905
+	maxPackageLen     = 4 * 1024 * 1024
 )
 
 var (
@@ -184,6 +183,10 @@ var (
 	ErrTooLargePackage = jerrors.New("package length is exceed the getty package's legal maximum length.")
 	ErrInvalidPackage  = jerrors.New("invalid rpc package")
 	ErrIllegalMagic    = jerrors.New("package magic is not right.")
+)
+
+var (
+	gettyPackageHeaderLen = (int)((uint)(unsafe.Sizeof(GettyPackageHeader{})))
 )
 
 type RPCPackage interface {

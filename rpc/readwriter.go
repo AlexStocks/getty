@@ -103,12 +103,11 @@ func (p *RpcServerPackageHandler) Write(ss getty.Session, pkg interface{}) error
 // RpcClientPackageHandler
 ////////////////////////////////////////////
 
-type RpcClientPackageHandler struct {
-}
+var (
+	rpcClientPackageHandler = &RpcClientPackageHandler{}
+)
 
-func NewRpcClientPackageHandler() *RpcClientPackageHandler {
-	return &RpcClientPackageHandler{}
-}
+type RpcClientPackageHandler struct{}
 
 func (p *RpcClientPackageHandler) Read(ss getty.Session, data []byte) (interface{}, int, error) {
 	pkg := &GettyPackage{
