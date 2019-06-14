@@ -26,7 +26,8 @@ type Reader interface {
 	// Parse tcp/udp/websocket pkg from buffer and if possible return a complete pkg.
 	// When receiving a tcp network streaming segment, there are 4 cases as following:
 	// case 1: a error found in the streaming segment;
-	// case 2: can not unmarshal a pkg from the streaming segment;
+	// case 2: can not unmarshal a pkg from the streaming segment just
+	//         because the segment length is less than a logic package length;
 	// case 3: just unmarshal a pkg from the streaming segment;
 	// case 4: unmarshal more than one pkg from the streaming segment;
 	//
