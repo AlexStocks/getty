@@ -14,6 +14,7 @@ import (
 	"strconv"
 )
 
+type EndPointID = int32
 type EndPointType int32
 
 const (
