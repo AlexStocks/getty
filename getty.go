@@ -171,6 +171,8 @@ type Session interface {
 /////////////////////////////////////////
 
 type EndPoint interface {
+	// get EndPoint ID
+	ID() EndPointID
 	// get endpoint type
 	EndPointType() EndPointType
 	// run event loop and serves client request.
