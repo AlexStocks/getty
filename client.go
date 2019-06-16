@@ -31,7 +31,7 @@ import (
 )
 
 const (
-	reconnectInterval = 3e8 // 500ms
+	reconnectInterval = 3e8 // 300ms
 	connectInterval   = 5e8 // 500ms
 	connectTimeout    = 3e9
 	maxTimes          = 10
@@ -406,10 +406,10 @@ func (c *client) RunEventLoop(newSession NewSessionCallback) {
 
 // a for-loop connect to make sure the connection pool is valid
 func (c *client) reConnect() {
-	var num, max, times int
+	var num, max, times, interval int
 
 	max = c.number
-	interval := c.reconnectInterval
+	interval = c.reconnectInterval
 	if interval == 0 {
 		interval = reconnectInterval
 	}

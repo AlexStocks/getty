@@ -33,7 +33,7 @@ import (
 var (
 	errSelfConnect        = jerrors.New("connect self!")
 	serverFastFailTimeout = gxtime.TimeSecondDuration(1)
-	serverID              = int32(0)
+	serverID              = EndPointID(0)
 )
 
 type server struct {
