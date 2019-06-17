@@ -92,14 +92,18 @@ func WithServerAddress(addr string) ClientOption {
 // @reconnectInterval is server address.
 func WithReconnectInterval(reconnectInterval int) ClientOption {
 	return func(o *ClientOptions) {
-		o.reconnectInterval = reconnectInterval
+		if 0 < reconnectInterval {
+			o.reconnectInterval = reconnectInterval
+		}
 	}
 }
 
 // @num is connection number.
 func WithConnectionNumber(num int) ClientOption {
 	return func(o *ClientOptions) {
-		o.number = num
+		if 0 < num {
+			o.number = num
+		}
 	}
 }
 
