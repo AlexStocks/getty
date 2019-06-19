@@ -398,9 +398,10 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 
 // for codecs
 func (s *session) WriteBytes(pkg []byte) error {
-	if s.IsClosed() {
-		return ErrSessionClosed
-	}
+	// by:jococi 2019年6月19日17:03:36
+	//if s.IsClosed() {
+	//	return ErrSessionClosed
+	//}
 
 	// s.conn.SetWriteTimeout(time.Now().Add(s.wTimeout))
 	if _, err := s.Connection.Write(pkg); err != nil {
