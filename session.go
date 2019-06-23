@@ -72,7 +72,7 @@ type session struct {
 
 	// read & write
 	rQ chan interface{}
-	wQ chan interface{}
+	wQ chan ProtoPackage
 
 	// handle logic
 	maxMsgLen int32
@@ -299,7 +299,7 @@ func (s *session) SetWQLen(writeQLen int) {
 
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	s.wQ = make(chan interface{}, writeQLen)
+	s.wQ = make(chan ProtoPackage, writeQLen)
 	log.Debug("%s, [session.SetWQLen] wQ{len:%d, cap:%d}", s.Stat(), len(s.wQ), cap(s.wQ))
 }
 
@@ -362,7 +362,7 @@ func (s *session) sessionToken() string {
 		s.name, s.EndPoint().EndPointType(), s.ID(), s.LocalAddr(), s.RemoteAddr())
 }
 
-func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
+func (s *session) WritePkg(pkg ProtoPackage, timeout time.Duration) error {
 	if s.IsClosed() {
 		return ErrSessionClosed
 	}
@@ -468,7 +468,7 @@ func (s *session) run() {
 	}
 
 	if s.wQ == nil {
-		s.wQ = make(chan interface{}, defaultQLen)
+		s.wQ = make(chan ProtoPackage, defaultQLen)
 	}
 
 	if s.rQ == nil && s.tPool == nil {
@@ -497,7 +497,7 @@ func (s *session) handleLoop() {
 		// start  time.Time
 		counter gxtime.CountWatch
 		inPkg   interface{}
-		outPkg  interface{}
+		outPkg  ProtoPackage
 	)
 
 	defer func() {

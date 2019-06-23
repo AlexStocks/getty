@@ -35,13 +35,13 @@ type Reader interface {
 	// The return value is (nil, 0, nil) as case 2.
 	// The return value is (pkg, pkgLen, nil) as case 3.
 	// The handleTcpPackage may invoke func Read many times as case 4.
-	Read(Session, []byte) (interface{}, int, error)
+	Read(Session, []byte) (ProtoPackage, int, error)
 }
 
 // Writer is used to marshal pkg and write to session
 type Writer interface {
 	// if @Session is udpGettySession, the second parameter is UDPContext.
-	Write(Session, interface{}) error
+	Write(Session, ProtoPackage) error
 }
 
 // tcp package handler interface
@@ -160,7 +160,7 @@ type Session interface {
 
 	// the Writer will invoke this function. Pls attention that if timeout is less than 0, WritePkg will send @pkg asap.
 	// for udp session, the first parameter should be UDPContext.
-	WritePkg(pkg interface{}, timeout time.Duration) error
+	WritePkg(pkg ProtoPackage, timeout time.Duration) error
 	WriteBytes([]byte) error
 	WriteBytesArray(...[]byte) error
 	Close()
