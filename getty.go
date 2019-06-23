@@ -145,7 +145,7 @@ type Session interface {
 	SetMaxMsgLen(int)
 	SetName(string)
 	SetEventListener(EventListener)
-	SetPkgHandler(ReadWriter)
+	SetPkgHandler(ProtoPackage)
 	SetReader(Reader)
 	SetWriter(Writer)
 	SetCronPeriod(int)

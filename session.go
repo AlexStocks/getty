@@ -244,12 +244,12 @@ func (s *session) SetEventListener(listener EventListener) {
 }
 
 // set package handler
-func (s *session) SetPkgHandler(handler ReadWriter) {
+func (s *session) SetPkgHandler(handler ProtoPackage) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	s.reader = handler
-	s.writer = handler
+	s.reader = NewEchoPackageHandler(handler)
+	s.writer = NewEchoPackageHandler(handler)
 }
 
 // set Reader
