@@ -641,7 +641,7 @@ func (s *session) handleTCPPackage() error {
 		for {
 			// for clause for the network timeout condition check
 			// s.conn.SetReadTimeout(time.Now().Add(s.rTimeout))
-			bufLen, err = conn.read(buf)
+			bufLen, err = conn.read(buf[:maxReadBufLen])
 			if err != nil {
 				if netError, ok = perrors.Cause(err).(net.Error); ok && netError.Timeout() {
 					break
@@ -664,6 +664,7 @@ func (s *session) handleTCPPackage() error {
 			}
 			// pkg, err = s.pkgHandler.Read(s, pktBuf)
 			pkg, pkgLen, err = s.reader.Read(s, pktBuf.Bytes())
+			// for case 3/case 4
 			if err == nil && s.maxMsgLen > 0 && pkgLen > int(s.maxMsgLen) {
 				err = perrors.Errorf("pkgLen %d > session max message len %d", pkgLen, s.maxMsgLen)
 			}
@@ -674,15 +675,15 @@ func (s *session) handleTCPPackage() error {
 				exit = true
 				break
 			}
-			// handle case 2
+			// handle case 2/case 3
 			if pkg == nil {
 				break
 			}
-			// handle case 3
+			// handle case 4
 			s.UpdateActive()
 			s.addTask(pkg)
 			pktBuf.Next(pkgLen)
-			// continue to handle case 4
+			// continue to handle case 5
 		}
 		if exit {
 			break
@@ -695,29 +696,30 @@ func (s *session) handleTCPPackage() error {
 // get package from udp packet
 func (s *session) handleUDPPackage() error {
 	var (
-		ok       bool
-		err      error
-		netError net.Error
-		conn     *gettyUDPConn
-		bufLen   int
-		buf      []byte
-		addr     *net.UDPAddr
-		pkgLen   int
-		pkg      interface{}
+		ok        bool
+		err       error
+		netError  net.Error
+		conn      *gettyUDPConn
+		bufLen    int
+		maxBufLen int
+		buf       []byte
+		addr      *net.UDPAddr
+		pkgLen    int
+		pkg       interface{}
 	)
 
 	conn = s.Connection.(*gettyUDPConn)
-	bufLen = int(s.maxMsgLen + maxReadBufLen)
+	maxBufLen = int(s.maxMsgLen + maxReadBufLen)
 	if int(s.maxMsgLen<<1) < bufLen {
-		bufLen = int(s.maxMsgLen << 1)
+		maxBufLen = int(s.maxMsgLen << 1)
 	}
-	buf = make([]byte, bufLen)
+	buf = make([]byte, maxBufLen)
 	for {
 		if s.IsClosed() {
 			break
 		}
 
-		bufLen, addr, err = conn.read(buf)
+		bufLen, addr, err = conn.read(buf[:maxBufLen])
 		log.Debugf("conn.read() = bufLen:%d, addr:%#v, err:%+v", bufLen, addr, err)
 		if netError, ok = perrors.Cause(err).(net.Error); ok && netError.Timeout() {
 			continue
