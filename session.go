@@ -677,6 +677,7 @@ func (s *session) handleTCPPackage() error {
 				break
 			}
 			pkg, pkgLen, err = s.reader.Read(s, pktBuf.Bytes())
+			// for case 3/case 4
 			if err == nil && s.maxMsgLen > 0 && pkgLen > int(s.maxMsgLen) {
 				err = jerrors.Errorf("pkgLen %d > session max message len %d", pkgLen, s.maxMsgLen)
 			}
@@ -687,15 +688,15 @@ func (s *session) handleTCPPackage() error {
 				exit = true
 				break
 			}
-			// handle case 2
+			// handle case 2/case 3
 			if pkg == nil {
 				break
 			}
-			// handle case 3
+			// handle case 4
 			s.UpdateActive()
 			s.addTask(pkg)
 			pktBuf.Next(pkgLen)
-			// continue to handle case 4
+			// continue to handle case 5
 		}
 		if exit {
 			break
