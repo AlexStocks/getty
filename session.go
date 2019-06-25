@@ -71,7 +71,6 @@ type session struct {
 	writer Writer
 
 	// read & write
-	rQ chan interface{}
 	wQ chan interface{}
 
 	// handle logic
@@ -280,16 +279,7 @@ func (s *session) SetCronPeriod(period int) {
 }
 
 // set @session's read queue size
-func (s *session) SetRQLen(readQLen int) {
-	if readQLen < 1 {
-		panic("@readQLen < 1")
-	}
-
-	s.lock.Lock()
-	defer s.lock.Unlock()
-	s.rQ = make(chan interface{}, readQLen)
-	log.Debug("%s, [session.SetRQLen] rQ{len:%d, cap:%d}", s.Stat(), len(s.rQ), cap(s.rQ))
-}
+func (s *session) SetRQLen(readQLen int) {}
 
 // set @session's Write queue size
 func (s *session) SetWQLen(writeQLen int) {
@@ -470,10 +460,6 @@ func (s *session) run() {
 		s.wQ = make(chan interface{}, defaultQLen)
 	}
 
-	if s.rQ == nil && s.tPool == nil {
-		s.rQ = make(chan interface{}, defaultQLen)
-	}
-
 	// call session opened
 	s.UpdateActive()
 	if err := s.listener.OnOpen(s); err != nil {
@@ -495,7 +481,6 @@ func (s *session) handleLoop() {
 		wsConn *gettyWSConn
 		// start  time.Time
 		counter gxtime.CountWatch
-		inPkg   interface{}
 		outPkg  interface{}
 	)
 
@@ -525,8 +510,8 @@ LOOP:
 		case <-s.done:
 			// this case branch assure the (session)handleLoop gr will exit before (session)handlePackage gr.
 			if atomic.LoadInt32(&(s.grNum)) == 1 { // make sure @(session)handlePackage goroutine has been closed.
-				if len(s.rQ) == 0 && len(s.wQ) == 0 {
-					log.Info("%s, [session.handleLoop] got done signal. Both rQ and wQ are nil.", s.Stat())
+				if len(s.wQ) == 0 {
+					log.Info("%s, [session.handleLoop] got done signal. session.wQ are nil.", s.Stat())
 					break LOOP
 				}
 				counter.Start()
@@ -535,18 +520,6 @@ LOOP:
 					log.Info("%s, [session.handleLoop] got done signal ", s.Stat())
 					break LOOP
 				}
-			}
-
-		case inPkg = <-s.rQ:
-			// read the s.rQ and assure (session)handlePackage gr will not block by (session)rQ.
-			if flag {
-				log.Debug("%#v <-s.rQ", inPkg)
-				pkg := inPkg
-				// go s.listener.OnMessage(s, pkg)
-				s.listener.OnMessage(s, pkg)
-				s.incReadPkgNum()
-			} else {
-				log.Info("[session.handleLoop] drop readin package{%#v}", inPkg)
 			}
 
 		case outPkg = <-s.wQ:
@@ -577,11 +550,17 @@ LOOP:
 }
 
 func (s *session) addTask(pkg interface{}) {
-	if s.tPool != nil {
-		s.tPool.AddTask(task{session: s, pkg: pkg})
-	} else {
-		s.rQ <- pkg
+	f := func() {
+		s.listener.OnMessage(s, pkg)
+		s.incReadPkgNum()
 	}
+
+	if s.tPool != nil {
+		s.tPool.AddTask(f)
+		return
+	}
+
+	f()
 }
 
 func (s *session) handlePackage() {
@@ -851,10 +830,6 @@ func (s *session) gc() {
 		if s.wQ != nil {
 			close(s.wQ)
 			s.wQ = nil
-		}
-		if s.rQ != nil {
-			close(s.rQ)
-			s.rQ = nil
 		}
 		s.Connection.close((int)((int64)(s.wait)))
 	}
