@@ -243,7 +243,7 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 				return
 			}
 			if delay != 0 {
-				time.Sleep(delay)
+				<-wheel.After(delay)
 			}
 			client, err = s.accept(newSession)
 			if err != nil {

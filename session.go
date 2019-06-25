@@ -20,6 +20,7 @@ import (
 )
 
 import (
+	gstime "github.com/dubbogo/gostd/time"
 	"github.com/gorilla/websocket"
 	perrors "github.com/pkg/errors"
 )
@@ -41,6 +42,14 @@ const (
 /////////////////////////////////////////
 // session
 /////////////////////////////////////////
+
+var (
+	wheel = gstime.NewWheel(gstime.TimeMillisecondDuration(100), 1200) // wheel longest span is 2 minute
+)
+
+func GetTimeWheel() *gstime.Wheel {
+	return wheel
+}
 
 // getty base session
 type session struct {
@@ -374,7 +383,7 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 	case s.wQ <- pkg:
 		break // for possible gen a new pkg
 
-	case <-time.After(timeout):
+	case <-wheel.After(timeout):
 		log.Warnf("%s, [session.WritePkg] wQ{len:%d, cap:%d}", s.Stat(), len(s.wQ), cap(s.wQ))
 		return ErrSessionBlocked
 	}
@@ -480,7 +489,7 @@ func (s *session) handleLoop() {
 		wsFlag bool
 		wsConn *gettyWSConn
 		// start  time.Time
-		counter CountWatch
+		counter gstime.CountWatch
 		inPkg   interface{}
 		outPkg  interface{}
 	)
@@ -548,7 +557,7 @@ LOOP:
 				log.Infof("[session.handleLoop] drop writeout package{%#v}", outPkg)
 			}
 
-		case <-time.After(s.period):
+		case <-wheel.After(s.period):
 			if flag {
 				if wsFlag {
 					err := wsConn.writePing()
