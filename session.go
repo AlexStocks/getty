@@ -641,7 +641,7 @@ func (s *session) handleTCPPackage() error {
 		for {
 			// for clause for the network timeout condition check
 			// s.conn.SetReadTimeout(time.Now().Add(s.rTimeout))
-			bufLen, err = conn.read(buf[:maxReadBufLen])
+			bufLen, err = conn.read(buf)
 			if err != nil {
 				if netError, ok = perrors.Cause(err).(net.Error); ok && netError.Timeout() {
 					break
@@ -719,7 +719,7 @@ func (s *session) handleUDPPackage() error {
 			break
 		}
 
-		bufLen, addr, err = conn.read(buf[:maxBufLen])
+		bufLen, addr, err = conn.read(buf)
 		log.Debugf("conn.read() = bufLen:%d, addr:%#v, err:%+v", bufLen, addr, err)
 		if netError, ok = perrors.Cause(err).(net.Error); ok && netError.Timeout() {
 			continue
