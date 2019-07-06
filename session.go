@@ -20,7 +20,7 @@ import (
 )
 
 import (
-	gstime "github.com/dubbogo/gostd/time"
+	gstime "github.com/dubbogo/gost/time"
 	"github.com/gorilla/websocket"
 	perrors "github.com/pkg/errors"
 )
