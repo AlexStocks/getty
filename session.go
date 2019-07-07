@@ -552,7 +552,6 @@ LOOP:
 					flag = false
 					// break LOOP
 				}
-				s.incWritePkgNum()
 			} else {
 				log.Infof("[session.handleLoop] drop writeout package{%#v}", outPkg)
 			}
