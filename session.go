@@ -402,7 +402,7 @@ func (s *session) WriteBytes(pkg []byte) error {
 	return nil
 }
 
-// Write multiple packages at once
+// Write multiple packages at once. so we invoke write sys.call just one time.
 func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 	if s.IsClosed() {
 		return ErrSessionClosed
@@ -530,7 +530,7 @@ LOOP:
 					flag = false
 					// break LOOP
 				}
-				s.incWritePkgNum()
+				//s.incWritePkgNum()
 			} else {
 				log.Info("[session.handleLoop] drop writeout package{%#v}", outPkg)
 			}

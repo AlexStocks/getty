@@ -150,6 +150,7 @@ type Session interface {
 	SetReader(Reader)
 	SetWriter(Writer)
 	SetCronPeriod(int)
+	// DEPRECATED
 	SetRQLen(int)
 	SetWQLen(int)
 	SetWaitTime(time.Duration)
