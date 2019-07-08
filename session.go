@@ -472,6 +472,7 @@ func (s *session) run() {
 	// call session opened
 	s.UpdateActive()
 	if err := s.listener.OnOpen(s); err != nil {
+		log.Errorf("[OnOpen] error: %v", err)
 		s.Close()
 		return
 	}
