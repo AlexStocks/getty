@@ -356,7 +356,10 @@ func (p *gettyRPCClientPool) release(conn *gettyRPCClient, err error) {
 	}
 
 	connArray.Put(conn)
-	p.connMap.Store(key, connArray)
+	connArray, loaded := p.connMap.LoadOrStore(key, connArray)
+	if loaded {
+		connArray.Put(conn)
+	}
 }
 
 func (p *gettyRPCClientPool) remove(conn *gettyRPCClient) {
