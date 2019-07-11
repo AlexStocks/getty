@@ -220,8 +220,7 @@ type gettyRPCClientPool struct {
 	size      int   // []*gettyRPCClient数组的size
 	ttl       int64 // 每个gettyRPCClient的有效期时间. pool对象会在getConn时执行ttl检查
 
-	sync.Mutex
-	connMap map[string][]*gettyRPCClient // 从[]*gettyRPCClient 可见key是连接地址，而value是对应这个地址的连接数组
+	connMap RPCClientMap // 从[]*gettyRPCClient 可见key是连接地址，而value是对应这个地址的连接数组
 }
 
 func newGettyRPCClientConnPool(rpcClient *Client, size int, ttl time.Duration) *gettyRPCClientPool {
@@ -229,20 +228,16 @@ func newGettyRPCClientConnPool(rpcClient *Client, size int, ttl time.Duration) *
 		rpcClient: rpcClient,
 		size:      size,
 		ttl:       int64(ttl.Seconds()),
-		connMap:   make(map[string][]*gettyRPCClient),
 	}
 }
 
 func (p *gettyRPCClientPool) close() {
-	p.Lock()
-	connMap := p.connMap
-	p.connMap = nil
-	p.Unlock()
-	for _, connArray := range connMap {
+	p.connMap.Range(func(key string, connArray []*gettyRPCClient) bool {
 		for _, conn := range connArray {
 			conn.close()
 		}
-	}
+		return true
+	})
 }
 
 func (p *gettyRPCClientPool) getConn(protocol, addr string) (*gettyRPCClient, error) {
@@ -253,20 +248,16 @@ func (p *gettyRPCClientPool) getConn(protocol, addr string) (*gettyRPCClient, er
 	builder.WriteString(protocol)
 
 	key := builder.String()
-
-	p.Lock()
-	defer p.Unlock()
-	if p.connMap == nil {
+	connArray, ok := p.connMap.Load(key)
+	if !ok {
 		return nil, errClientPoolClosed
 	}
-
-	connArray := p.connMap[key]
 	now := time.Now().Unix()
 
 	for len(connArray) > 0 {
 		conn := connArray[len(connArray)-1]
 		connArray = connArray[:len(connArray)-1]
-		p.connMap[key] = connArray
+		p.connMap.Store(key, connArray)
 
 		if d := now - conn.created; d > p.ttl {
 			conn.close() // -> pool.remove(c)
@@ -296,19 +287,16 @@ func (p *gettyRPCClientPool) release(conn *gettyRPCClient, err error) {
 	builder.WriteString(conn.protocol)
 
 	key := builder.String()
-
-	p.Lock()
-	defer p.Unlock()
-	if p.connMap == nil {
+	connArray, ok := p.connMap.Load(key)
+	if !ok {
 		return
 	}
-
-	connArray := p.connMap[key]
 	if len(connArray) >= p.size {
 		conn.close()
 		return
 	}
-	p.connMap[key] = append(connArray, conn)
+	connArray = append(connArray, conn)
+	p.connMap.Store(key, connArray)
 }
 
 func (p *gettyRPCClientPool) remove(conn *gettyRPCClient) {
@@ -323,18 +311,15 @@ func (p *gettyRPCClientPool) remove(conn *gettyRPCClient) {
 	builder.WriteString(conn.protocol)
 
 	key := builder.String()
-
-	p.Lock()
-	defer p.Unlock()
-	if p.connMap == nil {
+	connArray, ok := p.connMap.Load(key)
+	if !ok {
 		return
 	}
-
-	connArray := p.connMap[key]
 	if len(connArray) > 0 {
 		for idx, c := range connArray {
 			if conn == c {
-				p.connMap[key] = append(connArray[:idx], connArray[idx+1:]...)
+				connArray = append(connArray[:idx], connArray[idx+1:]...)
+				p.connMap.Store(key, connArray)
 				break
 			}
 		}
