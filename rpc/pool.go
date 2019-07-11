@@ -215,6 +215,76 @@ func (c *gettyRPCClient) close() error {
 	return err
 }
 
+type rpcClientArray struct {
+	lock  sync.Mutex
+	array []*gettyRPCClient
+}
+
+func newRpcClientArray() *rpcClientArray {
+	return &rpcClientArray{
+		array: make([]*gettyRPCClient, 0, 8),
+	}
+}
+
+func (a *rpcClientArray) Size() int {
+	return len(a.array)
+}
+
+func (a *rpcClientArray) Put(clt *gettyRPCClient) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	a.array = append(a.array, clt)
+}
+
+func (a *rpcClientArray) Get(key string, pool *gettyRPCClientPool) *gettyRPCClient {
+	now := time.Now().Unix()
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	for len(a.array) > 0 {
+		conn := a.array[len(a.array)-1]
+		a.array = a.array[:len(a.array)-1]
+		pool.connMap.Store(key, a)
+
+		if d := now - conn.created; d > pool.ttl {
+			conn.close() // -> pool.remove(c)
+			continue
+		}
+
+		return conn
+	}
+
+	return nil
+}
+
+func (a *rpcClientArray) Remove(key string, conn *gettyRPCClient, p *gettyRPCClientPool) {
+	if a.Size() <= 0 {
+		return
+	}
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	for idx, c := range a.array {
+		if conn == c {
+			a.array = append(a.array[:idx], a.array[idx+1:]...)
+			p.connMap.Store(key, a)
+			break
+		}
+	}
+}
+
+func (a *rpcClientArray) Close() {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+
+	for i := range a.array {
+		a.array[i].close()
+	}
+
+	a.array = a.array[:0]
+}
+
 type gettyRPCClientPool struct {
 	rpcClient *Client
 	size      int   // []*gettyRPCClient数组的size
@@ -232,10 +302,8 @@ func newGettyRPCClientConnPool(rpcClient *Client, size int, ttl time.Duration) *
 }
 
 func (p *gettyRPCClientPool) close() {
-	p.connMap.Range(func(key string, connArray []*gettyRPCClient) bool {
-		for _, conn := range connArray {
-			conn.close()
-		}
+	p.connMap.Range(func(key string, connArray *rpcClientArray) bool {
+		connArray.Close()
 		return true
 	})
 }
@@ -252,19 +320,10 @@ func (p *gettyRPCClientPool) getConn(protocol, addr string) (*gettyRPCClient, er
 	if !ok {
 		return nil, errClientPoolClosed
 	}
-	now := time.Now().Unix()
 
-	for len(connArray) > 0 {
-		conn := connArray[len(connArray)-1]
-		connArray = connArray[:len(connArray)-1]
-		p.connMap.Store(key, connArray)
-
-		if d := now - conn.created; d > p.ttl {
-			conn.close() // -> pool.remove(c)
-			continue
-		}
-
-		return conn, nil
+	clt := connArray.Get(key, p)
+	if clt != nil {
+		return clt, nil
 	}
 
 	// create new conn
@@ -289,13 +348,14 @@ func (p *gettyRPCClientPool) release(conn *gettyRPCClient, err error) {
 	key := builder.String()
 	connArray, ok := p.connMap.Load(key)
 	if !ok {
-		return
+		connArray = newRpcClientArray()
 	}
-	if len(connArray) >= p.size {
+	if connArray.Size() >= p.size {
 		conn.close()
 		return
 	}
-	connArray = append(connArray, conn)
+
+	connArray.Put(conn)
 	p.connMap.Store(key, connArray)
 }
 
@@ -315,13 +375,5 @@ func (p *gettyRPCClientPool) remove(conn *gettyRPCClient) {
 	if !ok {
 		return
 	}
-	if len(connArray) > 0 {
-		for idx, c := range connArray {
-			if conn == c {
-				connArray = append(connArray[:idx], connArray[idx+1:]...)
-				p.connMap.Store(key, connArray)
-				break
-			}
-		}
-	}
+	connArray.Remove(key, conn, p)
 }

@@ -70,7 +70,7 @@ type readOnlyRPCClientMap struct {
 
 // expunged is an arbitrary pointer that marks entries which have been deleted
 // from the dirty map.
-var expungedRPCClientMap = unsafe.Pointer(new([]*gettyRPCClient))
+var expungedRPCClientMap = unsafe.Pointer(new(*rpcClientArray))
 
 // An entry is a slot in the map corresponding to a particular key.
 type entryRPCClientMap struct {
@@ -95,14 +95,14 @@ type entryRPCClientMap struct {
 	p unsafe.Pointer // *interface{}
 }
 
-func newEntryRPCClientMap(i []*gettyRPCClient) *entryRPCClientMap {
+func newEntryRPCClientMap(i *rpcClientArray) *entryRPCClientMap {
 	return &entryRPCClientMap{p: unsafe.Pointer(&i)}
 }
 
 // Load returns the value stored in the map for a key, or nil if no
 // value is present.
 // The ok result indicates whether value was found in the map.
-func (m *RPCClientMap) Load(key string) (value []*gettyRPCClient, ok bool) {
+func (m *RPCClientMap) Load(key string) (value *rpcClientArray, ok bool) {
 	read, _ := m.read.Load().(readOnlyRPCClientMap)
 	e, ok := read.m[key]
 	if !ok && read.amended {
@@ -127,16 +127,16 @@ func (m *RPCClientMap) Load(key string) (value []*gettyRPCClient, ok bool) {
 	return e.load()
 }
 
-func (e *entryRPCClientMap) load() (value []*gettyRPCClient, ok bool) {
+func (e *entryRPCClientMap) load() (value *rpcClientArray, ok bool) {
 	p := atomic.LoadPointer(&e.p)
 	if p == nil || p == expungedRPCClientMap {
 		return value, false
 	}
-	return *(*[]*gettyRPCClient)(p), true
+	return *(**rpcClientArray)(p), true
 }
 
 // Store sets the value for a key.
-func (m *RPCClientMap) Store(key string, value []*gettyRPCClient) {
+func (m *RPCClientMap) Store(key string, value *rpcClientArray) {
 	read, _ := m.read.Load().(readOnlyRPCClientMap)
 	if e, ok := read.m[key]; ok && e.tryStore(&value) {
 		return
@@ -169,7 +169,7 @@ func (m *RPCClientMap) Store(key string, value []*gettyRPCClient) {
 //
 // If the entry is expunged, tryStore returns false and leaves the entry
 // unchanged.
-func (e *entryRPCClientMap) tryStore(i *[]*gettyRPCClient) bool {
+func (e *entryRPCClientMap) tryStore(i **rpcClientArray) bool {
 	for {
 		p := atomic.LoadPointer(&e.p)
 		if p == expungedRPCClientMap {
@@ -192,14 +192,14 @@ func (e *entryRPCClientMap) unexpungeLocked() (wasExpunged bool) {
 // storeLocked unconditionally stores a value to the entry.
 //
 // The entry must be known not to be expunged.
-func (e *entryRPCClientMap) storeLocked(i *[]*gettyRPCClient) {
+func (e *entryRPCClientMap) storeLocked(i **rpcClientArray) {
 	atomic.StorePointer(&e.p, unsafe.Pointer(i))
 }
 
 // LoadOrStore returns the existing value for the key if present.
 // Otherwise, it stores and returns the given value.
 // The loaded result is true if the value was loaded, false if stored.
-func (m *RPCClientMap) LoadOrStore(key string, value []*gettyRPCClient) (actual []*gettyRPCClient, loaded bool) {
+func (m *RPCClientMap) LoadOrStore(key string, value *rpcClientArray) (actual *rpcClientArray, loaded bool) {
 	// Avoid locking if it's a clean hit.
 	read, _ := m.read.Load().(readOnlyRPCClientMap)
 	if e, ok := read.m[key]; ok {
@@ -239,13 +239,13 @@ func (m *RPCClientMap) LoadOrStore(key string, value []*gettyRPCClient) (actual 
 //
 // If the entry is expunged, tryLoadOrStore leaves the entry unchanged and
 // returns with ok==false.
-func (e *entryRPCClientMap) tryLoadOrStore(i []*gettyRPCClient) (actual []*gettyRPCClient, loaded, ok bool) {
+func (e *entryRPCClientMap) tryLoadOrStore(i *rpcClientArray) (actual *rpcClientArray, loaded, ok bool) {
 	p := atomic.LoadPointer(&e.p)
 	if p == expungedRPCClientMap {
 		return actual, false, false
 	}
 	if p != nil {
-		return *(*[]*gettyRPCClient)(p), true, true
+		return *(**rpcClientArray)(p), true, true
 	}
 
 	// Copy the interface after the first load to make this method more amenable
@@ -261,7 +261,7 @@ func (e *entryRPCClientMap) tryLoadOrStore(i []*gettyRPCClient) (actual []*getty
 			return actual, false, false
 		}
 		if p != nil {
-			return *(*[]*gettyRPCClient)(p), true, true
+			return *(**rpcClientArray)(p), true, true
 		}
 	}
 }
@@ -306,7 +306,7 @@ func (e *entryRPCClientMap) delete() (hadValue bool) {
 //
 // Range may be O(N) with the number of elements in the map even if f returns
 // false after a constant number of calls.
-func (m *RPCClientMap) Range(f func(key string, value []*gettyRPCClient) bool) {
+func (m *RPCClientMap) Range(f func(key string, value *rpcClientArray) bool) {
 	// We need to be able to iterate over all of the keys that were already
 	// present at the start of the call to Range.
 	// If read.amended is false, then read.m satisfies that property without
