@@ -85,6 +85,11 @@ func SetLogger(logger Logger) {
 	log = logger
 }
 
+// GetLogger get getty logger
+func GetLogger() Logger {
+	return log
+}
+
 // SetLoggerLevel
 func SetLoggerLevel(level LoggerLevel) error {
 	var err error
