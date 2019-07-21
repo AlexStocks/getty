@@ -16,7 +16,7 @@ import (
 )
 
 import (
-	gssync "github.com/dubbogo/gost/sync"
+	gxsync "github.com/dubbogo/gost/sync"
 	perrors "github.com/pkg/errors"
 )
 
@@ -157,7 +157,7 @@ type Session interface {
 	SetRQLen(int)
 	SetWQLen(int)
 	SetWaitTime(time.Duration)
-	SetTaskPool(*gssync.TaskPool)
+	SetTaskPool(*gxsync.TaskPool)
 
 	GetAttribute(interface{}) interface{}
 	SetAttribute(interface{}, interface{})
