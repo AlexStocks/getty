@@ -153,6 +153,10 @@ type Session interface {
 	SetReader(Reader)
 	SetWriter(Writer)
 	SetCronPeriod(int)
+
+	// Deprecated: don's use read queue.
+	SetRQLen(int)
+
 	SetWQLen(int)
 	SetWaitTime(time.Duration)
 	SetTaskPool(*TaskPool)
