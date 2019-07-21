@@ -20,6 +20,7 @@ import (
 )
 
 import (
+	gssync "github.com/dubbogo/gost/sync"
 	gstime "github.com/dubbogo/gost/time"
 	"github.com/gorilla/websocket"
 	perrors "github.com/pkg/errors"
@@ -72,7 +73,7 @@ type session struct {
 	// handle logic
 	maxMsgLen int32
 	// task queue
-	tPool *TaskPool
+	tPool *gssync.TaskPool
 
 	// heartbeat
 	period time.Duration
@@ -310,7 +311,7 @@ func (s *session) SetWaitTime(waitTime time.Duration) {
 }
 
 // set task pool
-func (s *session) SetTaskPool(p *TaskPool) {
+func (s *session) SetTaskPool(p *gssync.TaskPool) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -573,7 +574,9 @@ LOOP:
 
 func (s *session) addTask(pkg interface{}) {
 	if s.tPool != nil {
-		s.tPool.AddTask(task{session: s, pkg: pkg})
+		s.tPool.AddTask(func() {
+			s.listener.OnMessage(s, pkg)
+		})
 	} else {
 		s.rQ <- pkg
 	}
