@@ -576,6 +576,7 @@ func (s *session) addTask(pkg interface{}) {
 	if s.tPool != nil {
 		s.tPool.AddTask(func() {
 			s.listener.OnMessage(s, pkg)
+			s.incReadPkgNum()
 		})
 	} else {
 		s.rQ <- pkg
