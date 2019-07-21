@@ -153,7 +153,6 @@ type Session interface {
 	SetReader(Reader)
 	SetWriter(Writer)
 	SetCronPeriod(int)
-	SetRQLen(int)
 	SetWQLen(int)
 	SetWaitTime(time.Duration)
 	SetTaskPool(*TaskPool)
