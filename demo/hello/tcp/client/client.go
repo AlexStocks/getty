@@ -9,7 +9,13 @@ package main
 
 import (
 	"flag"
+)
+
+import (
 	"github.com/dubbogo/getty"
+)
+
+import (
 	"github.com/dubbogo/getty/demo/hello"
 	"github.com/dubbogo/getty/demo/hello/tcp"
 	"github.com/dubbogo/getty/demo/util"

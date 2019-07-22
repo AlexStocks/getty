@@ -9,7 +9,9 @@
 
 package util
 
-import "syscall"
+import (
+	"syscall"
+)
 
 func SetLimit() {
 	var rLimit syscall.Rlimit

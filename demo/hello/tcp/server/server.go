@@ -9,7 +9,14 @@ package main
 
 import (
 	"flag"
+)
+
+import (
 	"github.com/dubbogo/getty"
+	gxsync "github.com/dubbogo/gost/sync"
+)
+
+import (
 	"github.com/dubbogo/getty/demo/hello/tcp"
 	"github.com/dubbogo/getty/demo/util"
 )
@@ -22,7 +29,7 @@ var (
 )
 
 var (
-	taskPoll *getty.TaskPool
+	taskPoll *gxsync.TaskPool
 )
 
 func main() {
@@ -33,10 +40,10 @@ func main() {
 	options := []getty.ServerOption{getty.WithLocalAddress(":8090")}
 
 	if *taskPollMode {
-		taskPoll = getty.NewTaskPool(
-			getty.WithTaskPoolTaskQueueLength(*taskPollQueueLength),
-			getty.WithTaskPoolTaskQueueNumber(*taskPollQueueNumber),
-			getty.WithTaskPoolTaskPoolSize(*taskPollSize),
+		taskPoll = gxsync.NewTaskPool(
+			gxsync.WithTaskPoolTaskQueueLength(*taskPollQueueLength),
+			gxsync.WithTaskPoolTaskQueueNumber(*taskPollQueueNumber),
+			gxsync.WithTaskPoolTaskPoolSize(*taskPollSize),
 		)
 	}
 

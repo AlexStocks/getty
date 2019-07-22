@@ -9,11 +9,10 @@ package hello
 
 import (
 	"github.com/dubbogo/getty"
-	"time"
 )
 
 const (
-	CronPeriod      = 20 * time.Second
+	CronPeriod      = 20e9
 	WritePkgTimeout = 1e8
 )
 

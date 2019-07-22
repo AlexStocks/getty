@@ -8,9 +8,11 @@
 package hello
 
 import (
-	"github.com/dubbogo/getty"
-
 	"time"
+)
+
+import (
+	"github.com/dubbogo/getty"
 )
 
 type MessageHandler struct {
@@ -45,7 +47,7 @@ func (h *MessageHandler) OnMessage(session getty.Session, pkg interface{}) {
 
 func (h *MessageHandler) OnCron(session getty.Session) {
 	active := session.GetActive()
-	if CronPeriod.Nanoseconds() < time.Since(active).Nanoseconds() {
+	if CronPeriod < time.Since(active).Nanoseconds() {
 		log.Infof("OnCorn session{%s} timeout{%s}", session.Stat(), time.Since(active).String())
 		session.Close()
 	}

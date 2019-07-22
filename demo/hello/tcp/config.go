@@ -9,11 +9,16 @@ package tcp
 
 import (
 	"fmt"
-	"github.com/dubbogo/getty"
-	"github.com/dubbogo/getty/demo/hello"
-
 	"net"
 	"time"
+)
+
+import (
+	"github.com/dubbogo/getty"
+)
+
+import (
+	"github.com/dubbogo/getty/demo/hello"
 )
 
 var (
@@ -58,7 +63,7 @@ func InitialSession(session getty.Session) (err error) {
 	session.SetWQLen(512)
 	session.SetReadTimeout(time.Second)
 	session.SetWriteTimeout(5 * time.Second)
-	session.SetCronPeriod(int(hello.CronPeriod.Nanoseconds() / 1e6))
+	session.SetCronPeriod(int(hello.CronPeriod / 1e6))
 	session.SetWaitTime(time.Second)
 
 	session.SetPkgHandler(pkgHandler)
