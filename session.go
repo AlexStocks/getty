@@ -20,7 +20,8 @@ import (
 )
 
 import (
-	gstime "github.com/dubbogo/gost/time"
+	gxsync "github.com/dubbogo/gost/sync"
+	gxtime "github.com/dubbogo/gost/time"
 	"github.com/gorilla/websocket"
 	perrors "github.com/pkg/errors"
 )
@@ -44,10 +45,10 @@ const (
 /////////////////////////////////////////
 
 var (
-	wheel = gstime.NewWheel(gstime.TimeMillisecondDuration(100), 1200) // wheel longest span is 2 minute
+	wheel = gxtime.NewWheel(gxtime.TimeMillisecondDuration(100), 1200) // wheel longest span is 2 minute
 )
 
-func GetTimeWheel() *gstime.Wheel {
+func GetTimeWheel() *gxtime.Wheel {
 	return wheel
 }
 
@@ -72,7 +73,7 @@ type session struct {
 	// handle logic
 	maxMsgLen int32
 	// task queue
-	tPool *TaskPool
+	tPool *gxsync.TaskPool
 
 	// heartbeat
 	period time.Duration
@@ -310,7 +311,7 @@ func (s *session) SetWaitTime(waitTime time.Duration) {
 }
 
 // set task pool
-func (s *session) SetTaskPool(p *TaskPool) {
+func (s *session) SetTaskPool(p *gxsync.TaskPool) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -490,7 +491,7 @@ func (s *session) handleLoop() {
 		wsFlag bool
 		wsConn *gettyWSConn
 		// start  time.Time
-		counter gstime.CountWatch
+		counter gxtime.CountWatch
 		inPkg   interface{}
 		outPkg  interface{}
 	)
@@ -573,7 +574,10 @@ LOOP:
 
 func (s *session) addTask(pkg interface{}) {
 	if s.tPool != nil {
-		s.tPool.AddTask(task{session: s, pkg: pkg})
+		s.tPool.AddTask(func() {
+			s.listener.OnMessage(s, pkg)
+			s.incReadPkgNum()
+		})
 	} else {
 		s.rQ <- pkg
 	}

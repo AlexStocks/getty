@@ -1,7 +1,7 @@
 module github.com/dubbogo/getty
 
 require (
-	github.com/dubbogo/gost v1.0.1-0.20190706005735-65c3ecbba418
+	github.com/dubbogo/gost v1.1.1
 	github.com/golang/snappy v0.0.1
 	github.com/gorilla/websocket v1.4.0
 	github.com/pkg/errors v0.8.1
