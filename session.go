@@ -508,7 +508,7 @@ LOOP:
 			// this case branch assure the (session)handleLoop gr will exit before (session)handlePackage gr.
 			if atomic.LoadInt32(&(s.grNum)) == 1 { // make sure @(session)handlePackage goroutine has been closed.
 				if len(s.wQ) == 0 {
-					log.Infof("%s, [session.handleLoop] got done signal. Both wQ are nil.", s.Stat())
+					log.Infof("%s, [session.handleLoop] got done signal. Both wQ is nil.", s.Stat())
 					break LOOP
 				}
 				counter.Start()
