@@ -508,7 +508,7 @@ LOOP:
 			// this case branch assure the (session)handleLoop gr will exit before (session)handlePackage gr.
 			if atomic.LoadInt32(&(s.grNum)) == 1 { // make sure @(session)handlePackage goroutine has been closed.
 				if len(s.wQ) == 0 {
-					log.Infof("%s, [session.handleLoop] got done signal. Both rQ and wQ are nil.", s.Stat())
+					log.Infof("%s, [session.handleLoop] got done signal. Both wQ are nil.", s.Stat())
 					break LOOP
 				}
 				counter.Start()
@@ -551,10 +551,7 @@ func (s *session) addTask(pkg interface{}) {
 		s.incReadPkgNum()
 	}
 	if s.tPool != nil {
-		s.tPool.AddTask(func() {
-			s.listener.OnMessage(s, pkg)
-			s.incReadPkgNum()
-		})
+		s.tPool.AddTask(f)
 		return
 	}
 	f()
