@@ -22,14 +22,15 @@ import (
 )
 
 var (
-	taskPollMode        = flag.Bool("taskPool", false, "task pool mode")
-	taskPollQueueLength = flag.Int("task_queue_length", 100, "task queue length")
-	taskPollQueueNumber = flag.Int("task_queue_number", 4, "task queue number")
-	taskPollSize        = flag.Int("task_pool_size", 2000, "task poll size")
+	taskPoolMode        = flag.Bool("taskPool", false, "task pool mode")
+	taskPoolQueueLength = flag.Int("task_queue_length", 100, "task queue length")
+	taskPoolQueueNumber = flag.Int("task_queue_number", 4, "task queue number")
+	taskPoolSize        = flag.Int("task_pool_size", 2000, "task poll size")
+	pprofPort           = flag.Int("pprof_port", 65432, "pprof http port")
 )
 
 var (
-	taskPoll *gxsync.TaskPool
+	taskPool *gxsync.TaskPool
 )
 
 func main() {
@@ -37,13 +38,15 @@ func main() {
 
 	util.SetLimit()
 
+    util.Profiling(*pprofPort)
+
 	options := []getty.ServerOption{getty.WithLocalAddress(":8090")}
 
-	if *taskPollMode {
-		taskPoll = gxsync.NewTaskPool(
-			gxsync.WithTaskPoolTaskQueueLength(*taskPollQueueLength),
-			gxsync.WithTaskPoolTaskQueueNumber(*taskPollQueueNumber),
-			gxsync.WithTaskPoolTaskPoolSize(*taskPollSize),
+	if *taskPoolMode {
+		taskPool = gxsync.NewTaskPool(
+			gxsync.WithTaskPoolTaskQueueLength(*taskPoolQueueLength),
+			gxsync.WithTaskPoolTaskQueueNumber(*taskPoolQueueNumber),
+			gxsync.WithTaskPoolTaskPoolSize(*taskPoolSize),
 		)
 	}
 
@@ -59,6 +62,6 @@ func NewHelloServerSession(session getty.Session) (err error) {
 	if err != nil {
 		return
 	}
-	session.SetTaskPool(taskPoll)
+	session.SetTaskPool(taskPool)
 	return
 }
