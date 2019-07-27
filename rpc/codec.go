@@ -10,10 +10,14 @@ import (
 )
 
 import (
-	log "github.com/AlexStocks/log4go"
+	gxbytes "github.com/dubbogo/gost/bytes"
 	"github.com/gogo/protobuf/proto"
 	jsoniter "github.com/json-iterator/go"
 	jerrors "github.com/juju/errors"
+)
+
+import (
+	log "github.com/AlexStocks/log4go"
 )
 
 ////////////////////////////////////////////
@@ -234,6 +238,8 @@ func (p *GettyPackage) Marshal() (*bytes.Buffer, error) {
 	)
 
 	buf = bytes.NewBuffer(make([]byte, gettyPackageHeaderLen, gettyPackageHeaderLen<<2))
+	//buf = gxbytes.GetBytesBuffer()
+	//defer gxbytes.PutBytesBuffer(buf)
 
 	// body
 	if p.B != nil {
@@ -356,7 +362,17 @@ func (req *GettyRPCRequest) Unmarshal(ct CodecType, buf *bytes.Buffer) error {
 		return jerrors.Trace(err)
 	}
 
-	header := make([]byte, headerLen)
+	var (
+		headerp, bodyp *[]byte
+	)
+	// header := make([]byte, headerLen)
+	headerp = gxbytes.GetBytes(int(headerLen))
+	defer func() {
+		gxbytes.PutBytes(headerp)
+		gxbytes.PutBytes(bodyp)
+	}()
+	header := *headerp
+
 	err = binary.Read(buf, binary.LittleEndian, header)
 	if err != nil {
 		return jerrors.Trace(err)
@@ -368,7 +384,10 @@ func (req *GettyRPCRequest) Unmarshal(ct CodecType, buf *bytes.Buffer) error {
 		return jerrors.Trace(err)
 	}
 
-	body := make([]byte, bodyLen)
+	//body := make([]byte, bodyLen)
+	bodyp = gxbytes.GetBytes(int(bodyLen))
+	body := *bodyp
+
 	err = binary.Read(buf, binary.LittleEndian, body)
 	if err != nil {
 		return jerrors.Trace(err)
@@ -467,7 +486,17 @@ func (resp *GettyRPCResponse) Unmarshal(sz CodecType, buf *bytes.Buffer) error {
 		return jerrors.Trace(err)
 	}
 
-	header := make([]byte, headerLen)
+	var (
+		headerp, bodyp *[]byte
+	)
+	// header := make([]byte, headerLen)
+	headerp = gxbytes.GetBytes(int(headerLen))
+	defer func() {
+		gxbytes.PutBytes(headerp)
+		gxbytes.PutBytes(bodyp)
+	}()
+	header := *headerp
+
 	err = binary.Read(buf, binary.LittleEndian, header)
 	if err != nil {
 		return jerrors.Trace(err)
@@ -478,7 +507,11 @@ func (resp *GettyRPCResponse) Unmarshal(sz CodecType, buf *bytes.Buffer) error {
 	if err != nil {
 		return jerrors.Trace(err)
 	}
-	body := make([]byte, bodyLen)
+
+	//body := make([]byte, bodyLen)
+	bodyp = gxbytes.GetBytes(int(bodyLen))
+	body := *bodyp
+
 	err = binary.Read(buf, binary.LittleEndian, body)
 	if err != nil {
 		return jerrors.Trace(err)
