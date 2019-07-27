@@ -418,7 +418,7 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 		arrp   *[]byte
 		arr    []byte
 	)
-	length = 64
+	length = 0
 	for i := 0; i < len(pkgs); i++ {
 		length += len(pkgs[i])
 	}
