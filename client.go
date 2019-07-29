@@ -23,7 +23,7 @@ import (
 )
 
 import (
-	"github.com/divebomb/gost/bytes"
+	"github.com/dubbogo/gost/bytes"
 	"github.com/gorilla/websocket"
 	perrors "github.com/pkg/errors"
 )
