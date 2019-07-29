@@ -23,6 +23,7 @@ import (
 )
 
 import (
+	"github.com/dubbogo/gost/bytes"
 	"github.com/gorilla/websocket"
 	perrors "github.com/pkg/errors"
 )
@@ -163,10 +164,14 @@ func (c *client) dialUDP() Session {
 		localAddr *net.UDPAddr
 		peerAddr  *net.UDPAddr
 		length    int
+		bufp      *[]byte
 		buf       []byte
 	)
 
-	buf = make([]byte, 128)
+	// buf = make([]byte, 128)
+	bufp = gxbytes.GetBytes(128)
+	defer gxbytes.PutBytes(bufp)
+	buf = *bufp
 	localAddr = &net.UDPAddr{IP: net.IPv4zero, Port: 0}
 	peerAddr, _ = net.ResolveUDPAddr("udp", c.addr)
 	for {

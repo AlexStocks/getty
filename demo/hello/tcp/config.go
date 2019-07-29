@@ -26,11 +26,16 @@ var (
 	eventListener = &hello.MessageHandler{}
 )
 
-func NewHelloClientSession(session getty.Session) (err error) {
+func NewHelloClientSession(session getty.Session, taskPool *gxsync.TaskPool) (err error) {
 	eventListener.SessionOnOpen = func(session getty.Session) {
 		hello.Sessions = append(hello.Sessions, session)
 	}
-	return InitialSession(session)
+    err = InitialSession(session)
+    if err != nil {
+        return
+    }
+    session.SetTaskPool(taskPool)
+    return
 }
 
 func InitialSession(session getty.Session) (err error) {

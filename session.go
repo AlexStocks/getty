@@ -20,6 +20,7 @@ import (
 )
 
 import (
+	gxbytes "github.com/dubbogo/gost/bytes"
 	gxsync "github.com/dubbogo/gost/sync"
 	gxtime "github.com/dubbogo/gost/time"
 	"github.com/gorilla/websocket"
@@ -413,16 +414,20 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 	var (
 		l      int
 		err    error
-		length uint32
+		length int
+		arrp   *[]byte
 		arr    []byte
 	)
 	length = 0
 	for i := 0; i < len(pkgs); i++ {
-		length += uint32(len(pkgs[i]))
+		length += len(pkgs[i])
 	}
 
 	// merge the pkgs
-	arr = make([]byte, length)
+	// arr = make([]byte, length)
+	arrp = gxbytes.GetBytes(length)
+	defer gxbytes.PutBytes(arrp)
+	arr = *arrp
 	l = 0
 	for i := 0; i < len(pkgs); i++ {
 		copy(arr[l:], pkgs[i])
@@ -608,13 +613,24 @@ func (s *session) handleTCPPackage() error {
 		exit     bool
 		bufLen   int
 		pkgLen   int
+		bufp     *[]byte
 		buf      []byte
 		pktBuf   *bytes.Buffer
 		pkg      interface{}
 	)
 
-	buf = make([]byte, maxReadBufLen)
-	pktBuf = new(bytes.Buffer)
+	// buf = make([]byte, maxReadBufLen)
+	bufp = gxbytes.GetBytes(maxReadBufLen)
+	buf = *bufp
+
+	// pktBuf = new(bytes.Buffer)
+	pktBuf = gxbytes.GetBytesBuffer()
+
+	defer func() {
+		gxbytes.PutBytes(bufp)
+		gxbytes.PutBytesBuffer(pktBuf)
+	}()
+
 	conn = s.Connection.(*gettyTCPConn)
 	for {
 		if s.IsClosed() {
@@ -689,6 +705,7 @@ func (s *session) handleUDPPackage() error {
 		conn      *gettyUDPConn
 		bufLen    int
 		maxBufLen int
+		bufp      *[]byte
 		buf       []byte
 		addr      *net.UDPAddr
 		pkgLen    int
@@ -700,7 +717,9 @@ func (s *session) handleUDPPackage() error {
 	if int(s.maxMsgLen<<1) < bufLen {
 		maxBufLen = int(s.maxMsgLen << 1)
 	}
-	buf = make([]byte, maxBufLen)
+	bufp = gxbytes.GetBytes(maxBufLen) //make([]byte, maxBufLen)
+	defer gxbytes.PutBytes(bufp)
+	buf = *bufp
 	for {
 		if s.IsClosed() {
 			break
