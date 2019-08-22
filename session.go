@@ -219,7 +219,7 @@ func (s *session) IsClosed() bool {
 	}
 }
 
-// set maximum pacakge length of every pacakge in (EventListener)OnMessage(@pkgs)
+// set maximum package length of every package in (EventListener)OnMessage(@pkgs)
 func (s *session) SetMaxMsgLen(length int) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
