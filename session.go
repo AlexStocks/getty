@@ -98,6 +98,7 @@ type session struct {
 
 	//delay pkg size
 	bAppNoDelay bool
+	maxDelayLen     int8
 	delay     int8
 	dBuff     []byte
 }
@@ -117,7 +118,7 @@ func newSession(endPoint EndPoint, conn Connection) *session {
 		wait: pendingDuration,
 
 		bAppNoDelay: defaultDelayBool,
-		delay:     defaultDelayLen,
+		maxDelayLen:     defaultDelayLen,
 		dBuff:     []byte{},
 		attrs:     gxcontext.NewValuesContext(nil),
 	}
@@ -247,7 +248,7 @@ func (s *session) SetAppDelay(bDelay bool) {
 func (s *session) SetAppDelayLen(length int) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	s.delay = int8(length)
+	s.maxDelayLen = int8(length)
 }
 
 // set session name
@@ -567,7 +568,7 @@ LOOP:
 							for {
 								select {
 								case outPkg = <-s.wQ:
-									if s.delay < 10 {
+									if s.delay < s.maxDelayLen {
 										s.dBuff = append(s.dBuff, b...)
 										s.delay++
 									} else {
