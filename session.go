@@ -32,11 +32,13 @@ import (
 )
 
 const (
-	maxReadBufLen   = 4 * 1024
-	netIOTimeout    = 1e9      // 1s
-	period          = 60 * 1e9 // 1 minute
-	pendingDuration = 3e9
-	defaultQLen     = 1024
+	maxReadBufLen    = 4 * 1024
+	netIOTimeout     = 1e9      // 1s
+	period           = 60 * 1e9 // 1 minute
+	pendingDuration  = 3e9
+	defaultQLen      = 1024
+	defaultDelayBool = true
+	defaultDelayLen  = 10
 
 	defaultSessionName    = "session"
 	defaultTCPSessionName = "tcp-session"
@@ -93,6 +95,11 @@ type session struct {
 	// goroutines sync
 	grNum int32
 	lock  sync.RWMutex
+
+	//delay pkg size
+	bAppNoDelay bool
+	delay     int8
+	dBuff     []byte
 }
 
 func newSession(endPoint EndPoint, conn Connection) *session {
@@ -106,9 +113,13 @@ func newSession(endPoint EndPoint, conn Connection) *session {
 
 		period: period,
 
-		done:  make(chan struct{}),
-		wait:  pendingDuration,
-		attrs: gxcontext.NewValuesContext(nil),
+		done: make(chan struct{}),
+		wait: pendingDuration,
+
+		bAppNoDelay: defaultDelayBool,
+		delay:     defaultDelayLen,
+		dBuff:     []byte{},
+		attrs:     gxcontext.NewValuesContext(nil),
 	}
 
 	ss.Connection.setSession(ss)
@@ -225,6 +236,18 @@ func (s *session) SetMaxMsgLen(length int) {
 	defer s.lock.Unlock()
 
 	s.maxMsgLen = int32(length)
+}
+func (s *session) SetAppDelay(bDelay bool) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	s.bAppDelay = bDelay
+}
+
+func (s *session) SetAppDelayLen(length int) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.delay = int8(length)
 }
 
 // set session name
@@ -394,7 +417,7 @@ func (s *session) WriteBytes(pkg []byte) error {
 	}
 
 	// s.conn.SetWriteTimeout(time.Now().Add(s.wTimeout))
-	if _, err := s.Connection.Write(pkg); err != nil {
+	if _, err := s.Write(pkg); err != nil {
 		return jerrors.Annotatef(err, "s.Connection.Write(pkg len:%d)", len(pkg))
 	}
 
@@ -530,11 +553,72 @@ LOOP:
 
 		case outPkg = <-s.wQ:
 			if flag {
-				if err = s.writer.Write(s, outPkg); err != nil {
+				var b []byte
+				if b, err = s.writer.Write(s, outPkg); err != nil {
 					log.Error("%s, [session.handleLoop] = error{%s}", s.sessionToken(), jerrors.ErrorStack(err))
 					s.stop()
 					flag = false
 					// break LOOP
+				} else {
+					if !s.bAppNoDelay {
+						s.dBuff = append(s.dBuff, b...)
+						s.delay++
+						f := func() {
+							for {
+								select {
+								case outPkg = <-s.wQ:
+									if s.delay < 10 {
+										s.dBuff = append(s.dBuff, b...)
+										s.delay++
+									} else {
+										if _, ok := s.Connection.(*gettyUDPConn); ok {
+											_, err = s.Write(UDPContext{Pkg: s.dBuff, PeerAddr: outPkg.(UDPContext).PeerAddr})
+										} else {
+											_, err = s.Write(s.dBuff)
+										}
+										if err != nil {
+											log.Error("%s, [session.handleLoop] = error{%s}", s.sessionToken(), jerrors.ErrorStack(err))
+											s.stop()
+											flag = false
+											s.delay = 0
+											return
+										}
+										s.delay = 0
+										s.dBuff = []byte{}
+
+									}
+								default:
+									return
+								}
+							}
+						}
+						f()
+						if s.delay > 0 {
+							if _, ok := s.Connection.(*gettyUDPConn); ok {
+								_, err = s.Write(UDPContext{Pkg: s.dBuff, PeerAddr: outPkg.(UDPContext).PeerAddr})
+							} else {
+								_, err = s.Write(s.dBuff)
+							}
+							if err != nil {
+								log.Error("%s, [session.handleLoop] = error{%s}", s.sessionToken(), jerrors.ErrorStack(err))
+								s.stop()
+								flag = false
+							}
+							s.delay = 0
+							s.dBuff = []byte{}
+						}
+					}else{
+						if _, ok := s.Connection.(*gettyUDPConn); ok {
+							_, err = s.Write(UDPContext{Pkg: b, PeerAddr: outPkg.(UDPContext).PeerAddr})
+						} else {
+							_, err = s.Write(b)
+						}
+						if err != nil {
+							log.Error("%s, [session.handleLoop] = error{%s}", s.sessionToken(), jerrors.ErrorStack(err))
+							s.stop()
+							flag = false
+						}
+					}
 				}
 				//s.incWritePkgNum()
 			} else {

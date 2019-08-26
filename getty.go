@@ -42,7 +42,7 @@ type Reader interface {
 // Writer is used to marshal pkg and write to session
 type Writer interface {
 	// if @Session is udpGettySession, the second parameter is UDPContext.
-	Write(Session, interface{}) error
+	Write(Session, interface{}) ([]byte, error)
 }
 
 // tcp package handler interface
