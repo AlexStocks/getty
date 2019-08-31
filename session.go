@@ -569,8 +569,6 @@ func (s *session) handlePackage() {
 	)
 
 	defer func() {
-		var grNum int32
-
 		if r := recover(); r != nil {
 			const size = 64 << 10
 			rBuf := make([]byte, size)
@@ -579,7 +577,7 @@ func (s *session) handlePackage() {
 		}
 
 		close(s.handlePackageDone)
-		log.Infof("%s, [session.handlePackage] gr will exit now, left gr num %d", s.sessionToken(), grNum)
+		log.Infof("%s, [session.handlePackage] gr will exit now", s.sessionToken())
 		s.stop()
 		if err != nil {
 			log.Errorf("%s, [session.handlePackage] error:%+v", s.sessionToken(), err)
@@ -856,6 +854,6 @@ func (s *session) gc() {
 // or (session)handleLoop automatically. It's thread safe.
 func (s *session) Close() {
 	s.stop()
-	log.Info("%s closed now. its current gr num is %d",
+	log.Info("%s closed now.",
 		s.sessionToken())
 }
