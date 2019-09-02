@@ -87,7 +87,6 @@ type session struct {
 	attrs *ValuesContext
 
 	// goroutines done signal
-	handleLoopDone    chan struct{}
 	handlePackageDone chan struct{}
 	lock              sync.RWMutex
 }
@@ -106,7 +105,6 @@ func newSession(endPoint EndPoint, conn Connection) *session {
 		done:              make(chan struct{}),
 		wait:              pendingDuration,
 		attrs:             NewValuesContext(nil),
-		handleLoopDone:    make(chan struct{}),
 		handlePackageDone: make(chan struct{}),
 	}
 
@@ -148,7 +146,6 @@ func (s *session) Reset() {
 	s.period = period
 	s.wait = pendingDuration
 	s.attrs = NewValuesContext(nil)
-	s.handleLoopDone = make(chan struct{})
 	s.handlePackageDone = make(chan struct{})
 
 	s.SetWriteTimeout(netIOTimeout)
@@ -490,8 +487,6 @@ func (s *session) handleLoop() {
 	)
 
 	defer func() {
-		var grNum int32
-
 		if r := recover(); r != nil {
 			const size = 64 << 10
 			rBuf := make([]byte, size)
@@ -499,9 +494,8 @@ func (s *session) handleLoop() {
 			log.Errorf("[session.handleLoop] panic session %s: err=%s\n%s", s.sessionToken(), r, rBuf)
 		}
 
-		close(s.handleLoopDone)
 		s.listener.OnClose(s)
-		log.Info("%s, [session.handleLoop] goroutine exit now, left gr num %d", s.Stat(), grNum)
+		log.Info("%s, [session.handleLoop] goroutine exit now", s.Stat())
 		s.gc()
 	}()
 
