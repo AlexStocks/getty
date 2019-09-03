@@ -86,9 +86,9 @@ type session struct {
 	// attribute
 	attrs *ValuesContext
 
-	// goroutines done signal
-	handlePackageDone chan struct{}
-	lock              sync.RWMutex
+	// read goroutines done signal
+	rDone chan struct{}
+	lock  sync.RWMutex
 }
 
 func newSession(endPoint EndPoint, conn Connection) *session {
@@ -102,10 +102,10 @@ func newSession(endPoint EndPoint, conn Connection) *session {
 
 		period: period,
 
-		done:              make(chan struct{}),
-		wait:              pendingDuration,
-		attrs:             NewValuesContext(nil),
-		handlePackageDone: make(chan struct{}),
+		done:  make(chan struct{}),
+		wait:  pendingDuration,
+		attrs: NewValuesContext(nil),
+		rDone: make(chan struct{}),
 	}
 
 	ss.Connection.setSession(ss)
@@ -146,7 +146,7 @@ func (s *session) Reset() {
 	s.period = period
 	s.wait = pendingDuration
 	s.attrs = NewValuesContext(nil)
-	s.handlePackageDone = make(chan struct{})
+	s.rDone = make(chan struct{})
 
 	s.SetWriteTimeout(netIOTimeout)
 	s.SetReadTimeout(netIOTimeout)
@@ -508,7 +508,7 @@ LOOP:
 		select {
 		case <-s.done:
 			// this case branch assure the (session)handleLoop gr will exit before (session)handlePackage gr.
-			<-s.handlePackageDone
+			<-s.rDone
 			if len(s.wQ) == 0 {
 				log.Infof("%s, [session.handleLoop] got done signal. wQ is nil.", s.Stat())
 				break LOOP
@@ -570,7 +570,7 @@ func (s *session) handlePackage() {
 			log.Errorf("[session.handlePackage] panic session %s: err=%s\n%s", s.sessionToken(), r, rBuf)
 		}
 
-		close(s.handlePackageDone)
+		close(s.rDone)
 		log.Infof("%s, [session.handlePackage] gr will exit now", s.sessionToken())
 		s.stop()
 		if err != nil {
