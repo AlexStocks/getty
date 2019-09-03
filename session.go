@@ -86,6 +86,8 @@ type session struct {
 	// attribute
 	attrs *ValuesContext
 
+	// goroutines sync
+	grNum int32
 	// read goroutines done signal
 	rDone chan struct{}
 	lock  sync.RWMutex
@@ -106,6 +108,7 @@ func newSession(endPoint EndPoint, conn Connection) *session {
 		wait:  pendingDuration,
 		attrs: NewValuesContext(nil),
 		rDone: make(chan struct{}),
+		grNum: 0,
 	}
 
 	ss.Connection.setSession(ss)
@@ -471,6 +474,7 @@ func (s *session) run() {
 	}
 
 	// start read/write gr
+	atomic.AddInt32(&(s.grNum), 2)
 	go s.handleLoop()
 	go s.handlePackage()
 }
@@ -494,8 +498,9 @@ func (s *session) handleLoop() {
 			log.Errorf("[session.handleLoop] panic session %s: err=%s\n%s", s.sessionToken(), r, rBuf)
 		}
 
+		grNum := atomic.AddInt32(&(s.grNum), -1)
 		s.listener.OnClose(s)
-		log.Info("%s, [session.handleLoop] goroutine exit now", s.Stat())
+		log.Info("%s, [session.handleLoop] goroutine exit now, left gr num %d", s.Stat(), grNum)
 		s.gc()
 	}()
 
@@ -571,7 +576,8 @@ func (s *session) handlePackage() {
 		}
 
 		close(s.rDone)
-		log.Infof("%s, [session.handlePackage] gr will exit now", s.sessionToken())
+		grNum := atomic.AddInt32(&(s.grNum), -1)
+		log.Infof("%s, [session.handlePackage] gr will exit now, left gr num %d", s.sessionToken(), grNum)
 		s.stop()
 		if err != nil {
 			log.Errorf("%s, [session.handlePackage] error:%+v", s.sessionToken(), err)
@@ -848,6 +854,6 @@ func (s *session) gc() {
 // or (session)handleLoop automatically. It's thread safe.
 func (s *session) Close() {
 	s.stop()
-	log.Info("%s closed now.",
-		s.sessionToken())
+	log.Info("%s closed now. its current gr num is %d",
+		s.sessionToken(), atomic.LoadInt32(&(s.grNum)))
 }
