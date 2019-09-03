@@ -150,6 +150,7 @@ func (s *session) Reset() {
 	s.wait = pendingDuration
 	s.attrs = NewValuesContext(nil)
 	s.rDone = make(chan struct{})
+	s.grNum = 0
 
 	s.SetWriteTimeout(netIOTimeout)
 	s.SetReadTimeout(netIOTimeout)
