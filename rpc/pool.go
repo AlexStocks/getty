@@ -6,6 +6,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -19,7 +20,7 @@ type gettyRPCClient struct {
 	once     sync.Once
 	protocol string
 	addr     string
-	created  int64 // 为0，则说明没有被创建或者被销毁了
+	active  int64 // 为0，则说明没有被创建或者被销毁了
 
 	pool *gettyRPCClientPool
 
@@ -32,7 +33,7 @@ var (
 	errClientPoolClosed = jerrors.New("client pool closed")
 )
 
-func newGettyRPCClientConn(pool *gettyRPCClientPool, protocol, addr string) (*gettyRPCClient, error) {
+func newGettyRPCClient(pool *gettyRPCClientPool, protocol, addr string) (*gettyRPCClient, error) {
 	c := &gettyRPCClient{
 		protocol: protocol,
 		addr:     addr,
@@ -56,9 +57,17 @@ func newGettyRPCClientConn(pool *gettyRPCClientPool, protocol, addr string) (*ge
 		time.Sleep(1e6)
 	}
 	log.Info("client init ok")
-	c.created = time.Now().Unix()
+	c.updateActive(time.Now().Unix())
 
 	return c, nil
+}
+
+func (c *gettyRPCClient) updateActive(active int64) {
+	atomic.StoreInt64(&c.active, active)
+}
+
+func (c *gettyRPCClient) getActive() int64 {
+	return atomic.LoadInt64(&c.active)
 }
 
 func (c *gettyRPCClient) newSession(session getty.Session) error {
@@ -142,7 +151,8 @@ func (c *gettyRPCClient) removeSession(session getty.Session) {
 	}
 	log.Info("after remove session{%s}, left session number:%d", session.Stat(), len(c.sessions))
 	if len(c.sessions) == 0 {
-		c.close() // -> pool.remove(c)
+		c.pool.remove(c)
+		c.close()
 	}
 }
 
@@ -196,10 +206,8 @@ func (c *gettyRPCClient) isAvailable() bool {
 }
 
 func (c *gettyRPCClient) close() error {
-	err := jerrors.Errorf("close gettyRPCClient{%#v} again", c)
+	closeErr := jerrors.Errorf("close gettyRPCClient{%#v} again", c)
 	c.once.Do(func() {
-		// delete @c from client pool
-		c.pool.remove(c)
 		c.gettyClient.Close()
 		c.gettyClient = nil
 		for _, s := range c.sessions {
@@ -209,10 +217,17 @@ func (c *gettyRPCClient) close() error {
 		}
 		c.sessions = c.sessions[:0]
 
-		c.created = 0
-		err = nil
+		c.updateActive(0)
+		closeErr = nil
 	})
-	return err
+	return closeErr
+}
+
+func (c *gettyRPCClient) safeClose() error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	return c.close()
 }
 
 type rpcClientArray struct {
@@ -238,20 +253,22 @@ func (a *rpcClientArray) Put(clt *gettyRPCClient) {
 }
 
 func (a *rpcClientArray) Get(key string, pool *gettyRPCClientPool) *gettyRPCClient {
-	now := time.Now().Unix()
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
+	now := time.Now().Unix()
 	for len(a.array) > 0 {
 		conn := a.array[len(a.array)-1]
 		a.array = a.array[:len(a.array)-1]
 		pool.connMap.Store(key, a)
 
-		if d := now - conn.created; d > pool.ttl {
-			conn.close() // -> pool.remove(c)
+		if d := now - conn.getActive(); d > pool.ttl {
+			pool.remove(conn)
+			conn.safeClose()
 			continue
 		}
 
+		conn.updateActive(now)
 		return conn
 	}
 
@@ -262,6 +279,7 @@ func (a *rpcClientArray) Remove(key string, conn *gettyRPCClient, p *gettyRPCCli
 	if a.Size() <= 0 {
 		return
 	}
+
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
@@ -279,7 +297,7 @@ func (a *rpcClientArray) Close() {
 	defer a.lock.Unlock()
 
 	for i := range a.array {
-		a.array[i].close()
+		a.array[i].safeClose()
 	}
 
 	a.array = a.array[:0]
@@ -327,15 +345,15 @@ func (p *gettyRPCClientPool) getConn(protocol, addr string) (*gettyRPCClient, er
 	}
 
 	// create new conn
-	return newGettyRPCClientConn(p, protocol, addr)
+	return newGettyRPCClient(p, protocol, addr)
 }
 
 func (p *gettyRPCClientPool) release(conn *gettyRPCClient, err error) {
-	if conn == nil || conn.created == 0 {
+	if conn == nil || conn.getActive() == 0 {
 		return
 	}
 	if err != nil {
-		conn.close()
+		conn.safeClose()
 		return
 	}
 
@@ -351,7 +369,7 @@ func (p *gettyRPCClientPool) release(conn *gettyRPCClient, err error) {
 		connArray = newRpcClientArray()
 	}
 	if connArray.Size() >= p.size {
-		conn.close()
+		conn.safeClose()
 		return
 	}
 
@@ -363,7 +381,7 @@ func (p *gettyRPCClientPool) release(conn *gettyRPCClient, err error) {
 }
 
 func (p *gettyRPCClientPool) remove(conn *gettyRPCClient) {
-	if conn == nil || conn.created == 0 {
+	if conn == nil || conn.getActive() == 0 {
 		return
 	}
 
