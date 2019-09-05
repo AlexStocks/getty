@@ -6,20 +6,24 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 import (
-	"github.com/AlexStocks/getty"
 	log "github.com/AlexStocks/log4go"
 	jerrors "github.com/juju/errors"
+)
+
+import (
+	"github.com/AlexStocks/getty"
 )
 
 type gettyRPCClient struct {
 	once     sync.Once
 	protocol string
 	addr     string
-	created  int64 // 为0，则说明没有被创建或者被销毁了
+	active   int64 // 为0，则说明没有被创建或者被销毁了
 
 	pool *gettyRPCClientPool
 
@@ -56,9 +60,17 @@ func newGettyRPCClientConn(pool *gettyRPCClientPool, protocol, addr string) (*ge
 		time.Sleep(1e6)
 	}
 	log.Info("client init ok")
-	c.created = time.Now().Unix()
+	c.updateActive(time.Now().Unix())
 
 	return c, nil
+}
+
+func (c *gettyRPCClient) updateActive(active int64) {
+	atomic.StoreInt64(&c.active, active)
+}
+
+func (c *gettyRPCClient) getActive() int64 {
+	return atomic.LoadInt64(&c.active)
 }
 
 func (c *gettyRPCClient) newSession(session getty.Session) error {
@@ -209,7 +221,7 @@ func (c *gettyRPCClient) close() error {
 		}
 		c.sessions = c.sessions[:0]
 
-		c.created = 0
+		c.updateActive(0)
 		err = nil
 	})
 	return err
@@ -247,11 +259,12 @@ func (a *rpcClientArray) Get(key string, pool *gettyRPCClientPool) *gettyRPCClie
 		a.array = a.array[:len(a.array)-1]
 		pool.connMap.Store(key, a)
 
-		if d := now - conn.created; d > pool.ttl {
+		if d := now - conn.getActive(); d > pool.ttl {
 			conn.close() // -> pool.remove(c)
 			continue
 		}
 
+		conn.updateActive(now)
 		return conn
 	}
 
@@ -330,7 +343,7 @@ func (p *gettyRPCClientPool) getConn(protocol, addr string) (*gettyRPCClient, er
 }
 
 func (p *gettyRPCClientPool) release(conn *gettyRPCClient, err error) {
-	if conn == nil || conn.created == 0 {
+	if conn == nil || conn.getActive() == 0 {
 		return
 	}
 	if err != nil {
@@ -362,7 +375,7 @@ func (p *gettyRPCClientPool) release(conn *gettyRPCClient, err error) {
 }
 
 func (p *gettyRPCClientPool) remove(conn *gettyRPCClient) {
-	if conn == nil || conn.created == 0 {
+	if conn == nil || conn.getActive() == 0 {
 		return
 	}
 

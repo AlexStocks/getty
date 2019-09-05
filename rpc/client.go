@@ -7,9 +7,12 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/getty"
 	"github.com/AlexStocks/goext/sync/atomic"
 	jerrors "github.com/juju/errors"
+)
+
+import (
+	"github.com/AlexStocks/getty"
 )
 
 var (

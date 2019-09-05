@@ -8,16 +8,16 @@ import (
 )
 
 import (
-	jerrors "github.com/juju/errors"
-)
-
-import (
-	"github.com/AlexStocks/getty/rpc"
 	"github.com/AlexStocks/goext/database/registry"
 	"github.com/AlexStocks/goext/database/registry/etcdv3"
 	"github.com/AlexStocks/goext/database/registry/zookeeper"
 	"github.com/AlexStocks/goext/net"
 	"github.com/AlexStocks/goext/strings"
+	jerrors "github.com/juju/errors"
+)
+
+import (
+	"github.com/AlexStocks/getty/rpc"
 )
 
 // Server micro service provider

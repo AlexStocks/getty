@@ -10,14 +10,11 @@ import (
 )
 
 import (
+	log "github.com/AlexStocks/log4go"
 	gxbytes "github.com/dubbogo/gost/bytes"
 	"github.com/gogo/protobuf/proto"
 	jsoniter "github.com/json-iterator/go"
 	jerrors "github.com/juju/errors"
-)
-
-import (
-	log "github.com/AlexStocks/log4go"
 )
 
 ////////////////////////////////////////////
