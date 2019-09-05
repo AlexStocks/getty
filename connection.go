@@ -4,7 +4,7 @@
 # LICENCE    : Apache License 2.0
 # EMAIL      : alexstocks@foxmail.com
 # MOD        : 2016-08-17 11:21
-# FILE       : conn.go
+# FILE       : connection.go
 ******************************************************/
 
 package getty
@@ -90,7 +90,7 @@ func (c *gettyConn) GetActive() time.Time {
 	return launchTime.Add(time.Duration(atomic.LoadInt64(&(c.active))))
 }
 
-func (c *gettyConn) Write(interface{}) (int, error) {
+func (c *gettyConn) write(interface{}) (int, error) {
 	return 0, nil
 }
 
@@ -259,7 +259,7 @@ func (t *gettyTCPConn) read(p []byte) (int, error) {
 }
 
 // tcp connection write
-func (t *gettyTCPConn) Write(pkg interface{}) (int, error) {
+func (t *gettyTCPConn) write(pkg interface{}) (int, error) {
 	var (
 		err         error
 		currentTime time.Time
@@ -412,7 +412,7 @@ func (u *gettyUDPConn) read(p []byte) (int, *net.UDPAddr, error) {
 }
 
 // write udp packet, @ctx should be of type UDPContext
-func (u *gettyUDPConn) Write(udpCtx interface{}) (int, error) {
+func (u *gettyUDPConn) write(udpCtx interface{}) (int, error) {
 	var (
 		err         error
 		currentTime time.Time
@@ -579,7 +579,7 @@ func (w *gettyWSConn) updateWriteDeadline() error {
 }
 
 // websocket connection write
-func (w *gettyWSConn) Write(pkg interface{}) (int, error) {
+func (w *gettyWSConn) write(pkg interface{}) (int, error) {
 	var (
 		err error
 		ok  bool

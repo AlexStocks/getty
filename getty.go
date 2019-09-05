@@ -116,7 +116,7 @@ type Connection interface {
 	writeTimeout() time.Duration
 	// SetWriteTimeout sets deadline for the future read calls.
 	SetWriteTimeout(time.Duration)
-	Write(interface{}) (int, error)
+	write(interface{}) (int, error)
 	// don't distinguish between tcp connection and websocket connection. Because
 	// gorilla/websocket/conn.go:(Conn)Close also invoke net.Conn.Close
 	close(int)

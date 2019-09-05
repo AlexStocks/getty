@@ -393,12 +393,13 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 		} else {
 			pkg = pkgBytes
 		}
-		_, err = s.Connection.Write(pkg)
+		_, err = s.Connection.write(pkg)
 		if err != nil {
 			log.Warn("%s, [session.WritePkg] @s.Connection.Write(pkg:%#v) = err:%v", s.Stat(), pkg, err)
 			return jerrors.Trace(err)
 		}
 		s.incWritePkgNum()
+		return nil
 	}
 	select {
 	case s.wQ <- pkg:
@@ -419,7 +420,7 @@ func (s *session) WriteBytes(pkg []byte) error {
 	}
 
 	// s.conn.SetWriteTimeout(time.Now().Add(s.wTimeout))
-	if _, err := s.Connection.Write(pkg); err != nil {
+	if _, err := s.Connection.write(pkg); err != nil {
 		return jerrors.Annotatef(err, "s.Connection.Write(pkg len:%d)", len(pkg))
 	}
 
