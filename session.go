@@ -88,6 +88,8 @@ type session struct {
 
 	// goroutines sync
 	grNum int32
+	// read goroutines done signal
+	rDone chan struct{}
 	lock  sync.RWMutex
 }
 
@@ -105,6 +107,8 @@ func newSession(endPoint EndPoint, conn Connection) *session {
 		done:  make(chan struct{}),
 		wait:  pendingDuration,
 		attrs: NewValuesContext(nil),
+		rDone: make(chan struct{}),
+		grNum: 0,
 	}
 
 	ss.Connection.setSession(ss)
@@ -145,6 +149,7 @@ func (s *session) Reset() {
 	s.period = period
 	s.wait = pendingDuration
 	s.attrs = NewValuesContext(nil)
+	s.rDone = make(chan struct{})
 	s.grNum = 0
 
 	s.SetWriteTimeout(netIOTimeout)
@@ -487,8 +492,6 @@ func (s *session) handleLoop() {
 	)
 
 	defer func() {
-		var grNum int32
-
 		if r := recover(); r != nil {
 			const size = 64 << 10
 			rBuf := make([]byte, size)
@@ -496,7 +499,7 @@ func (s *session) handleLoop() {
 			log.Errorf("[session.handleLoop] panic session %s: err=%s\n%s", s.sessionToken(), r, rBuf)
 		}
 
-		grNum = atomic.AddInt32(&(s.grNum), -1)
+		grNum := atomic.AddInt32(&(s.grNum), -1)
 		s.listener.OnClose(s)
 		log.Info("%s, [session.handleLoop] goroutine exit now, left gr num %d", s.Stat(), grNum)
 		s.gc()
@@ -511,19 +514,17 @@ LOOP:
 		select {
 		case <-s.done:
 			// this case branch assure the (session)handleLoop gr will exit before (session)handlePackage gr.
-			if atomic.LoadInt32(&(s.grNum)) == 1 { // make sure @(session)handlePackage goroutine has been closed.
-				if len(s.wQ) == 0 {
-					log.Infof("%s, [session.handleLoop] got done signal. wQ is nil.", s.Stat())
-					break LOOP
-				}
-				counter.Start()
-				// if time.Since(start).Nanoseconds() >= s.wait.Nanoseconds() {
-				if counter.Count() > s.wait.Nanoseconds() {
-					log.Infof("%s, [session.handleLoop] got done signal ", s.Stat())
-					break LOOP
-				}
+			<-s.rDone
+			if len(s.wQ) == 0 {
+				log.Infof("%s, [session.handleLoop] got done signal. wQ is nil.", s.Stat())
+				break LOOP
 			}
-
+			counter.Start()
+			// if time.Since(start).Nanoseconds() >= s.wait.Nanoseconds() {
+			if counter.Count() > s.wait.Nanoseconds() {
+				log.Infof("%s, [session.handleLoop] got done signal ", s.Stat())
+				break LOOP
+			}
 		case outPkg = <-s.wQ:
 			if flag {
 				if err = s.writer.Write(s, outPkg); err != nil {
@@ -568,8 +569,6 @@ func (s *session) handlePackage() {
 	)
 
 	defer func() {
-		var grNum int32
-
 		if r := recover(); r != nil {
 			const size = 64 << 10
 			rBuf := make([]byte, size)
@@ -577,7 +576,8 @@ func (s *session) handlePackage() {
 			log.Errorf("[session.handlePackage] panic session %s: err=%s\n%s", s.sessionToken(), r, rBuf)
 		}
 
-		grNum = atomic.AddInt32(&(s.grNum), -1)
+		close(s.rDone)
+		grNum := atomic.AddInt32(&(s.grNum), -1)
 		log.Infof("%s, [session.handlePackage] gr will exit now, left gr num %d", s.sessionToken(), grNum)
 		s.stop()
 		if err != nil {
