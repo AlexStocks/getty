@@ -10,6 +10,10 @@
 ## develop history ##
 ---
 
+- 2019/09/05
+    > feature
+    * add writev
+
 - 2018/08/19
     > Feature
     * use multiple service config

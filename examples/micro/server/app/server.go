@@ -19,10 +19,14 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/getty/micro"
 	"github.com/AlexStocks/goext/net"
 	log "github.com/AlexStocks/log4go"
 	jerrors "github.com/juju/errors"
+)
+
+import (
+	"github.com/AlexStocks/getty"
+	"github.com/AlexStocks/getty/micro"
 )
 
 const (
@@ -40,7 +44,7 @@ func main() {
 
 	initServer()
 	log.Info("%s starts successfull! its version=%s, its listen ends=%s:%s\n",
-		conf.AppName, Version, conf.Host, conf.Ports)
+		conf.AppName, getty.Version, conf.Host, conf.Ports)
 
 	initSignal()
 }

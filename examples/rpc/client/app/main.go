@@ -10,7 +10,6 @@
 package main
 
 import (
-	"github.com/AlexStocks/getty"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
@@ -22,10 +21,14 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/getty/rpc"
 	"github.com/AlexStocks/goext/net"
 	log "github.com/AlexStocks/log4go"
 	jerrors "github.com/juju/errors"
+)
+
+import (
+	"github.com/AlexStocks/getty"
+	"github.com/AlexStocks/getty/rpc"
 )
 
 const (

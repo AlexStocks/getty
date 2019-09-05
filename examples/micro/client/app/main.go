@@ -32,6 +32,7 @@ import (
 )
 
 import (
+	"github.com/AlexStocks/getty"
 	"github.com/AlexStocks/getty/micro"
 	"github.com/AlexStocks/getty/rpc"
 )
@@ -59,7 +60,7 @@ func main() {
 	initProfiling()
 
 	initClient()
-	log.Info("%s starts successfull! its version=%s\n", conf.AppName, Version)
+	log.Info("%s starts successfull! its version=%s\n", conf.AppName, getty.Version)
 
 	go test()
 
