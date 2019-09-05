@@ -10,6 +10,7 @@
 package main
 
 import (
+	"github.com/AlexStocks/getty"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
@@ -45,8 +46,7 @@ func main() {
 	initProfiling()
 
 	initClient()
-	// gxlog.CInfo("%s starts successfull! its version=%s\n", conf.AppName, Version)
-	log.Info("%s starts successfull! its version=%s\n", conf.AppName, Version)
+	log.Info("%s starts successfull! its version=%s\n", conf.AppName, getty.Version)
 
 	go test()
 

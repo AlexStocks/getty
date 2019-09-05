@@ -10,6 +10,7 @@
 package main
 
 import (
+	"github.com/AlexStocks/getty"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -40,7 +41,7 @@ func main() {
 
 	initServer()
 	log.Info("%s starts successfull! its version=%s, its listen ends=%s:%s\n",
-		conf.AppName, Version, conf.Host, conf.Ports)
+		conf.AppName, getty.Version, conf.Host, conf.Ports)
 
 	initSignal()
 }

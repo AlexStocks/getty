@@ -10,6 +10,10 @@
 ## develop history ##
 ---
 
+- 2019/09/05
+    > feature
+    * add writev
+    
 - 2018/06/24
     > improvement
     * delete this, using name abbreviation instead.
