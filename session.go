@@ -371,10 +371,9 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 	var err error
 	if timeout <= 0 {
 		if err = s.writer.Write(s, pkg); err != nil {
-			s.incWritePkgNum()
-			// gxlog.CError("after incWritePkgNum, ss:%s", s.Stat())
+			return perrors.WithStack(err)
 		}
-		return perrors.WithStack(err)
+		s.incWritePkgNum()
 	}
 	select {
 	case s.wQ <- pkg:
