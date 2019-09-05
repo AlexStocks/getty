@@ -317,13 +317,12 @@ func (p *gettyRPCClientPool) getConn(protocol, addr string) (*gettyRPCClient, er
 
 	key := builder.String()
 	connArray, ok := p.connMap.Load(key)
-	if !ok {
+	if ok {
+		clt := connArray.Get(key, p)
+		if clt != nil {
+			return clt, nil
+		}
 		return nil, errClientPoolClosed
-	}
-
-	clt := connArray.Get(key, p)
-	if clt != nil {
-		return clt, nil
 	}
 
 	// create new conn
