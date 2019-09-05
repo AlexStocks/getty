@@ -36,7 +36,7 @@ var (
 	errClientPoolClosed = jerrors.New("client pool closed")
 )
 
-func newGettyRPCClientConn(pool *gettyRPCClientPool, protocol, addr string) (*gettyRPCClient, error) {
+func newGettyRPCClient(pool *gettyRPCClientPool, protocol, addr string) (*gettyRPCClient, error) {
 	c := &gettyRPCClient{
 		protocol: protocol,
 		addr:     addr,
@@ -227,6 +227,13 @@ func (c *gettyRPCClient) close() error {
 	return err
 }
 
+func (c *gettyRPCClient) safeClose() error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	return c.close()
+}
+
 type rpcClientArray struct {
 	lock  sync.Mutex
 	array []*gettyRPCClient
@@ -260,7 +267,7 @@ func (a *rpcClientArray) Get(key string, pool *gettyRPCClientPool) *gettyRPCClie
 		pool.connMap.Store(key, a)
 
 		if d := now - conn.getActive(); d > pool.ttl {
-			conn.close() // -> pool.remove(c)
+			conn.safeClose() // -> pool.remove(c)
 			continue
 		}
 
@@ -292,7 +299,7 @@ func (a *rpcClientArray) Close() {
 	defer a.lock.Unlock()
 
 	for i := range a.array {
-		a.array[i].close()
+		a.array[i].safeClose()
 	}
 
 	a.array = a.array[:0]
@@ -339,7 +346,7 @@ func (p *gettyRPCClientPool) getConn(protocol, addr string) (*gettyRPCClient, er
 	}
 
 	// create new conn
-	return newGettyRPCClientConn(p, protocol, addr)
+	return newGettyRPCClient(p, protocol, addr)
 }
 
 func (p *gettyRPCClientPool) release(conn *gettyRPCClient, err error) {
@@ -347,7 +354,7 @@ func (p *gettyRPCClientPool) release(conn *gettyRPCClient, err error) {
 		return
 	}
 	if err != nil {
-		conn.close()
+		conn.safeClose()
 		return
 	}
 
@@ -363,7 +370,7 @@ func (p *gettyRPCClientPool) release(conn *gettyRPCClient, err error) {
 		connArray = newRpcClientArray()
 	}
 	if connArray.Size() >= p.size {
-		conn.close()
+		conn.safeClose()
 		return
 	}
 
