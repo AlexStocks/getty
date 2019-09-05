@@ -37,6 +37,7 @@ const (
 	period          = 60 * 1e9 // 1 minute
 	pendingDuration = 3e9
 	defaultQLen     = 1024
+	maxIovecNum     = 10
 
 	defaultSessionName    = "session"
 	defaultTCPSessionName = "tcp-session"
@@ -371,13 +372,30 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 		}
 	}()
 
-	var err error
 	if timeout <= 0 {
-		if err = s.writer.Write(s, pkg); err != nil {
-			s.incWritePkgNum()
-			// gxlog.CError("after incWritePkgNum, ss:%s", s.Stat())
+		pkgBytes, err := s.writer.Write(s, pkg)
+		if err != nil {
+			return jerrors.Trace(err)
 		}
-		return jerrors.Trace(err)
+
+		var udpCtxPtr *UDPContext
+		if udpCtx, ok := pkg.(UDPContext); ok {
+			udpCtxPtr = &udpCtx
+		} else if udpCtxP, ok := pkg.(*UDPContext); ok {
+			udpCtxPtr = udpCtxP
+		}
+		if udpCtxPtr != nil {
+			udpCtxPtr.Pkg = pkgBytes
+			pkg = *udpCtxPtr
+		} else {
+			pkg = pkgBytes
+		}
+		_, err = s.Connection.Write(pkg)
+		if err != nil {
+			log.Warn("%s, [session.WritePkg] @s.Connection.Write(pkg:%#v) = err:%v", s.Stat(), pkg, err)
+			return jerrors.Trace(err)
+		}
+		s.incWritePkgNum()
 	}
 	select {
 	case s.wQ <- pkg:
@@ -443,7 +461,6 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 		l += len(pkgs[i])
 	}
 
-	// return s.Connection.Write(arr)
 	if err = s.WriteBytes(arr); err != nil {
 		return jerrors.Trace(err)
 	}
@@ -451,7 +468,6 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 	num := len(pkgs) - 1
 	for i := 0; i < num; i++ {
 		s.incWritePkgNum()
-		// gxlog.CError("after write, ss:%s", s.Stat())
 	}
 
 	return nil
@@ -485,13 +501,17 @@ func (s *session) run() {
 
 func (s *session) handleLoop() {
 	var (
-		err    error
-		flag   bool
-		wsFlag bool
-		wsConn *gettyWSConn
-		// start  time.Time
-		counter gxtime.CountWatch
-		outPkg  interface{}
+		err      error
+		ok       bool
+		flag     bool
+		wsFlag   bool
+		udpFlag  bool
+		loopFlag bool
+		wsConn   *gettyWSConn
+		counter  gxtime.CountWatch
+		outPkg   interface{}
+		pkgBytes []byte
+		iovec    [][]byte
 	)
 
 	defer func() {
@@ -510,6 +530,8 @@ func (s *session) handleLoop() {
 
 	flag = true // do not do any read/Write/cron operation while got Write error
 	wsConn, wsFlag = s.Connection.(*gettyWSConn)
+	_, udpFlag = s.Connection.(*gettyUDPConn)
+	iovec = make([][]byte, 0, maxIovecNum)
 LOOP:
 	for {
 		// A select blocks until one of its cases is ready to run.
@@ -529,17 +551,63 @@ LOOP:
 				break LOOP
 			}
 
-		case outPkg = <-s.wQ:
-			if flag {
-				if err = s.writer.Write(s, outPkg); err != nil {
+		case outPkg, ok = <-s.wQ:
+			if !ok {
+				continue
+			}
+			if !flag {
+				log.Warn("[session.handleLoop] drop write out package %#v", outPkg)
+				continue
+			}
+
+			if udpFlag || wsFlag {
+				err = s.WritePkg(outPkg, 0)
+				if err != nil {
 					log.Error("%s, [session.handleLoop] = error{%s}", s.sessionToken(), jerrors.ErrorStack(err))
 					s.stop()
-					flag = false
 					// break LOOP
+					flag = false
 				}
-				//s.incWritePkgNum()
-			} else {
-				log.Info("[session.handleLoop] drop writeout package{%#v}", outPkg)
+
+				continue
+			}
+
+			iovec = iovec[:0]
+			for idx := 0; idx < maxIovecNum; idx++ {
+				pkgBytes, err = s.writer.Write(s, outPkg)
+				if err != nil {
+					log.Error("%s, [session.handleLoop] = error{%s}", s.sessionToken(), jerrors.ErrorStack(err))
+					s.stop()
+					// break LOOP
+					flag = false
+					break
+				}
+				iovec = append(iovec, pkgBytes)
+
+				if idx < maxIovecNum-1 {
+					loopFlag = true
+					select {
+					case outPkg, ok = <-s.wQ:
+						if !ok {
+							loopFlag = false
+						}
+
+					default:
+						loopFlag = false
+						break
+					}
+					if !loopFlag {
+						break // break for-idx loop
+					}
+				}
+			}
+			err = s.WriteBytesArray(iovec[:]...)
+			if err != nil {
+				log.Error("%s, [session.handleLoop]s.WriteBytesArray(iovec len:%d) = error{%s}",
+					s.sessionToken(), len(iovec), jerrors.ErrorStack(err))
+				s.stop()
+				// break LOOP
+				flag = false
 			}
 
 		case <-wheel.After(s.period):
