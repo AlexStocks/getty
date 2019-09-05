@@ -45,7 +45,7 @@ type Writer interface {
 	Write(Session, interface{}) ([]byte, error)
 }
 
-// tcp package handler interface
+// package handler interface
 type ReadWriter interface {
 	Reader
 	Writer

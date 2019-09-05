@@ -359,6 +359,9 @@ func (s *session) sessionToken() string {
 }
 
 func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
+	if pkg == nil {
+		return fmt.Errorf("@pkg is nil")
+	}
 	if s.IsClosed() {
 		return ErrSessionClosed
 	}
