@@ -1,0 +1,50 @@
+# yaml configure file
+app_name : "ECHO-CLIENT"
+
+# host
+local_host : "127.0.0.1"
+
+# server
+server_host : "127.0.0.1"
+server_port : 10000
+
+profile_port             : 20080
+
+# connection pool
+# 连接池连接数目
+connection_number : 2
+
+# session
+# client与server之间连接的心跳周期
+heartbeat_period : "10s"
+# client与server之间连接的超时时间
+session_timeout  : "20s"
+
+# client
+# client echo request string
+echo_string  : "Hello, getty!"
+# 发送echo请求次数
+echo_times  : 10000
+
+# app fail fast
+fail_fast_timeout : "3s"
+
+# tcp
+getty_session_param:
+    compress_encoding : true
+    tcp_no_delay : true
+    tcp_keep_alive : true
+    keep_alive_period : "120s"
+    tcp_r_buf_size : 262144
+    tcp_w_buf_size : 65536
+    pkg_rq_size : 512
+    pkg_wq_size : 256
+    tcp_read_timeout : "1s"
+    tcp_write_timeout : "5s"
+    wait_timeout : "1s"
+    max_msg_len : 128
+    session_name : "echo-client"
+
+task_queue_length : 1024
+task_queue_number : 20
+task_pool_size : 1000
