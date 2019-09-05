@@ -322,7 +322,7 @@ func (p *gettyRPCClientPool) getConn(protocol, addr string) (*gettyRPCClient, er
 		if clt != nil {
 			return clt, nil
 		}
-		// 		return nil, errClientPoolClosed
+		return nil, errClientPoolClosed
 	}
 
 	// create new conn
