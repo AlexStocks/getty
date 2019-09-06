@@ -100,11 +100,11 @@ func WithReconnectInterval(reconnectInterval int) ClientOption {
 
 // @num is connection number.
 func WithConnectionNumber(num int) ClientOption {
-    return func(o *ClientOptions) {
-        if 0 < num  {
-            o.number = num
-        }
-    }
+	return func(o *ClientOptions) {
+		if 0 < num {
+			o.number = num
+		}
+	}
 }
 
 // @cert is client certificate file. it can be empty.
