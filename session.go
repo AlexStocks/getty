@@ -393,7 +393,7 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 		} else {
 			pkg = pkgBytes
 		}
-		_, err = s.Connection.write(pkg)
+		_, err = s.Connection.send(pkg)
 		if err != nil {
 			log.Warn("%s, [session.WritePkg] @s.Connection.Write(pkg:%#v) = err:%v", s.Stat(), pkg, err)
 			return jerrors.Trace(err)
@@ -420,7 +420,7 @@ func (s *session) WriteBytes(pkg []byte) error {
 	}
 
 	// s.conn.SetWriteTimeout(time.Now().Add(s.wTimeout))
-	if _, err := s.Connection.write(pkg); err != nil {
+	if _, err := s.Connection.send(pkg); err != nil {
 		return jerrors.Annotatef(err, "s.Connection.Write(pkg len:%d)", len(pkg))
 	}
 
@@ -723,7 +723,7 @@ func (s *session) handleTCPPackage() error {
 		for {
 			// for clause for the network timeout condition check
 			// s.conn.SetReadTimeout(time.Now().Add(s.rTimeout))
-			bufLen, err = conn.read(buf)
+			bufLen, err = conn.recv(buf)
 			if err != nil {
 				if netError, ok = jerrors.Cause(err).(net.Error); ok && netError.Timeout() {
 					break
@@ -803,7 +803,7 @@ func (s *session) handleUDPPackage() error {
 			break
 		}
 
-		bufLen, addr, err = conn.read(buf)
+		bufLen, addr, err = conn.recv(buf)
 		log.Debug("conn.read() = bufLen:%d, addr:%#v, err:%s", bufLen, addr, jerrors.ErrorStack(err))
 		if netError, ok = jerrors.Cause(err).(net.Error); ok && netError.Timeout() {
 			continue
@@ -864,7 +864,7 @@ func (s *session) handleWSPackage() error {
 		if s.IsClosed() {
 			break
 		}
-		pkg, err = conn.read()
+		pkg, err = conn.recv()
 		if netError, ok = jerrors.Cause(err).(net.Error); ok && netError.Timeout() {
 			continue
 		}
