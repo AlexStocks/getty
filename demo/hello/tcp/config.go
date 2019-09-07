@@ -15,7 +15,6 @@ import (
 
 import (
 	"github.com/dubbogo/getty"
-	"github.com/dubbogo/gost/sync"
 )
 
 import (
@@ -24,20 +23,8 @@ import (
 
 var (
 	pkgHandler    = &hello.PackageHandler{}
-	eventListener = &hello.MessageHandler{}
+	EventListener = &hello.MessageHandler{}
 )
-
-func NewHelloClientSession(session getty.Session, taskPool *gxsync.TaskPool) (err error) {
-	eventListener.SessionOnOpen = func(session getty.Session) {
-		hello.Sessions = append(hello.Sessions, session)
-	}
-	err = InitialSession(session)
-	if err != nil {
-		return
-	}
-	session.SetTaskPool(taskPool)
-	return
-}
 
 func InitialSession(session getty.Session) (err error) {
 	session.SetCompressType(getty.CompressZip)
@@ -65,7 +52,7 @@ func InitialSession(session getty.Session) (err error) {
 
 	session.SetName("hello")
 	session.SetMaxMsgLen(128)
-	session.SetRQLen(1024)
+	// session.SetRQLen(1024)
 	session.SetWQLen(512)
 	session.SetReadTimeout(time.Second)
 	session.SetWriteTimeout(5 * time.Second)
@@ -73,6 +60,6 @@ func InitialSession(session getty.Session) (err error) {
 	session.SetWaitTime(time.Second)
 
 	session.SetPkgHandler(pkgHandler)
-	session.SetEventListener(eventListener)
+	session.SetEventListener(EventListener)
 	return nil
 }
