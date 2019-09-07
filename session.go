@@ -21,6 +21,7 @@ import (
 
 import (
 	gxbytes "github.com/dubbogo/gost/bytes"
+	gxsync "github.com/dubbogo/gost/sync"
 	"github.com/gorilla/websocket"
 	jerrors "github.com/juju/errors"
 )
@@ -78,7 +79,7 @@ type session struct {
 	// handle logic
 	maxMsgLen int32
 	// task queue
-	tPool *TaskPool
+	tPool *gxsync.TaskPool
 
 	// heartbeat
 	period time.Duration
@@ -91,10 +92,10 @@ type session struct {
 	// attribute
 	attrs *gxcontext.ValuesContext
 
-	// read goroutines done signal
-	rDone chan struct{}
 	// goroutines sync
 	grNum int32
+	// read goroutines done signal
+	rDone chan struct{}
 	lock  sync.RWMutex
 }
 
@@ -284,7 +285,7 @@ func (s *session) SetCronPeriod(period int) {
 	s.period = time.Duration(period) * time.Millisecond
 }
 
-// set @session's read queue size
+// Deprecated: don't use read queue.
 func (s *session) SetRQLen(readQLen int) {}
 
 // set @session's Write queue size
@@ -311,7 +312,7 @@ func (s *session) SetWaitTime(waitTime time.Duration) {
 }
 
 // set task pool
-func (s *session) SetTaskPool(p *TaskPool) {
+func (s *session) SetTaskPool(p *gxsync.TaskPool) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
@@ -378,6 +379,7 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 	if timeout <= 0 {
 		pkgBytes, err := s.writer.Write(s, pkg)
 		if err != nil {
+			log.Warn("%s, [session.WritePkg] session.writer.Write(@pkg:%#v) = error:%v", s.Stat(), pkg, err)
 			return jerrors.Trace(err)
 		}
 
@@ -493,6 +495,7 @@ func (s *session) run() {
 	// call session opened
 	s.UpdateActive()
 	if err := s.listener.OnOpen(s); err != nil {
+		log.Error("[OnOpen] session %s, error: %#v", s.Stat(), err)
 		s.Close()
 		return
 	}
@@ -542,7 +545,7 @@ LOOP:
 		// It choose one at random if multiple are ready. Otherwise it choose default branch if none is ready.
 		select {
 		case <-s.done:
-			// this branch assure the (session)handleLoop gr will exit before (session)handlePackage gr.
+			// this case assure the (session)handleLoop gr will exit before (session)handlePackage gr.
 			<-s.rDone
 
 			if len(s.wQ) == 0 {

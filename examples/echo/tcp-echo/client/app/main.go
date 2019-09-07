@@ -30,6 +30,7 @@ import (
 	gxnet "github.com/AlexStocks/goext/net"
 	gxtime "github.com/AlexStocks/goext/time"
 	log "github.com/AlexStocks/log4go"
+	"github.com/dubbogo/gost/sync"
 )
 
 const (
@@ -42,7 +43,7 @@ const (
 
 var (
 	client   EchoClient
-	taskPool *getty.TaskPool
+	taskPool *gxsync.TaskPool
 )
 
 ////////////////////////////////////////////////////////////////////
@@ -115,10 +116,10 @@ func newSession(session getty.Session) error {
 
 func initClient() {
 	if conf.TaskPoolSize != 0 {
-		taskPool = getty.NewTaskPool(
-			getty.WithTaskPoolTaskPoolSize(conf.TaskPoolSize),
-			getty.WithTaskPoolTaskQueueLength(conf.TaskQueueLength),
-			getty.WithTaskPoolTaskQueueNumber(conf.TaskQueueNumber),
+		taskPool = gxsync.NewTaskPool(
+			gxsync.WithTaskPoolTaskPoolSize(conf.TaskPoolSize),
+			gxsync.WithTaskPoolTaskQueueLength(conf.TaskQueueLength),
+			gxsync.WithTaskPoolTaskQueueNumber(conf.TaskQueueNumber),
 		)
 	}
 

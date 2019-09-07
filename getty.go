@@ -16,6 +16,10 @@ import (
 	"time"
 )
 
+import (
+	"github.com/dubbogo/gost/sync"
+)
+
 // NewSessionCallback will be invoked when server accepts a new client connection or client connects to server successfully.
 // If there are too many client connections or u do not want to connect a server again, u can return non-nil error. And
 // then getty will close the new session.
@@ -150,11 +154,12 @@ type Session interface {
 	SetReader(Reader)
 	SetWriter(Writer)
 	SetCronPeriod(int)
-	// DEPRECATED
+
+	// Deprecated: don't use read queue.
 	SetRQLen(int)
 	SetWQLen(int)
 	SetWaitTime(time.Duration)
-	SetTaskPool(*TaskPool)
+	SetTaskPool(*gxsync.TaskPool)
 
 	GetAttribute(interface{}) interface{}
 	SetAttribute(interface{}, interface{})
