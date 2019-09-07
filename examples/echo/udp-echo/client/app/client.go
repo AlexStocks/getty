@@ -71,7 +71,7 @@ func (c *EchoClient) selectSession() getty.Session {
 	defer c.lock.RUnlock()
 	count := len(c.sessions)
 	if count == 0 {
-		//log.Warn("client session array is nil...")
+		log.Warn("client session array is nil...")
 		return nil
 	}
 

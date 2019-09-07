@@ -25,12 +25,15 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/getty"
 	gxlog "github.com/AlexStocks/goext/log"
 	gxnet "github.com/AlexStocks/goext/net"
 	gxtime "github.com/AlexStocks/goext/time"
 	log "github.com/AlexStocks/log4go"
 	"github.com/dubbogo/gost/sync"
+)
+
+import (
+	"github.com/AlexStocks/getty"
 )
 
 const (
