@@ -38,7 +38,7 @@ func main() {
 
 	util.SetLimit()
 
-    util.Profiling(*pprofPort)
+	util.Profiling(*pprofPort)
 
 	options := []getty.ServerOption{getty.WithLocalAddress(":8090")}
 

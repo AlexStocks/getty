@@ -22,11 +22,12 @@ func (h *PackageHandler) Read(ss getty.Session, data []byte) (interface{}, int, 
 	return s, len(s), nil
 }
 
-func (h *PackageHandler) Write(ss getty.Session, pkg interface{}) error {
+func (h *PackageHandler) Write(ss getty.Session, pkg interface{}) ([]byte, error) {
 	s, ok := pkg.(string)
 	if !ok {
 		log.Infof("illegal pkg:%+v", pkg)
-		return errors.New("invalid package")
+		return nil, errors.New("invalid package")
 	}
-	return ss.WriteBytes([]byte(s))
+
+	return []byte(s), nil
 }

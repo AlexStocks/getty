@@ -34,7 +34,7 @@ var (
 )
 
 var (
-    taskPool *gxsync.TaskPool
+	taskPool *gxsync.TaskPool
 )
 
 func main() {
@@ -44,13 +44,13 @@ func main() {
 
 	util.Profiling(*pprofPort)
 
-    if *taskPoolMode {
-        taskPool = gxsync.NewTaskPool(
-            gxsync.WithTaskPoolTaskQueueLength(*taskPoolQueueLength),
-            gxsync.WithTaskPoolTaskQueueNumber(*taskPoolQueueNumber),
-            gxsync.WithTaskPoolTaskPoolSize(*taskPoolSize),
-        )
-    }
+	if *taskPoolMode {
+		taskPool = gxsync.NewTaskPool(
+			gxsync.WithTaskPoolTaskQueueLength(*taskPoolQueueLength),
+			gxsync.WithTaskPoolTaskQueueNumber(*taskPoolQueueNumber),
+			gxsync.WithTaskPoolTaskPoolSize(*taskPoolSize),
+		)
+	}
 
 	client := getty.NewTCPClient(
 		getty.WithServerAddress(*ip+":8090"),
@@ -63,4 +63,3 @@ func main() {
 
 	util.WaitCloseSignals(client)
 }
-

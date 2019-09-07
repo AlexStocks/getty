@@ -8,13 +8,13 @@
 package util
 
 import (
-    "fmt"
+	"fmt"
 	"net/http"
 	_ "net/http/pprof"
 )
 
 func Profiling(port int) {
 	go func() {
-        http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
+		http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
 	}()
 }
