@@ -6,9 +6,12 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/getty"
 	log "github.com/AlexStocks/log4go"
 	jerrors "github.com/juju/errors"
+)
+
+import (
+	"github.com/AlexStocks/getty"
 )
 
 ////////////////////////////////////////////
@@ -83,20 +86,20 @@ func (p *RpcServerPackageHandler) Read(ss getty.Session, data []byte) (interface
 	return req, length, nil
 }
 
-func (p *RpcServerPackageHandler) Write(ss getty.Session, pkg interface{}) error {
+func (p *RpcServerPackageHandler) Write(ss getty.Session, pkg interface{}) ([]byte, error) {
 	resp, ok := pkg.(GettyPackage)
 	if !ok {
 		log.Error("illegal pkg:%+v\n", pkg)
-		return jerrors.New("invalid rpc response")
+		return nil, jerrors.New("invalid rpc response")
 	}
 
 	buf, err := resp.Marshal()
 	if err != nil {
 		log.Warn("binary.Write(resp{%#v}) = err{%#v}", resp, err)
-		return jerrors.Trace(err)
+		return nil, jerrors.Trace(err)
 	}
 
-	return jerrors.Trace(ss.WriteBytes(buf.Bytes()))
+	return buf.Bytes(), nil
 }
 
 ////////////////////////////////////////////
@@ -133,18 +136,18 @@ func (p *RpcClientPackageHandler) Read(ss getty.Session, data []byte) (interface
 	return resp, length, nil
 }
 
-func (p *RpcClientPackageHandler) Write(ss getty.Session, pkg interface{}) error {
+func (p *RpcClientPackageHandler) Write(ss getty.Session, pkg interface{}) ([]byte, error) {
 	req, ok := pkg.(GettyPackage)
 	if !ok {
 		log.Error("illegal pkg:%+v\n", pkg)
-		return jerrors.New("invalid rpc request")
+		return nil, jerrors.New("invalid rpc request")
 	}
 
 	buf, err := req.Marshal()
 	if err != nil {
 		log.Warn("binary.Write(req{%#v}) = err{%#v}", req, jerrors.ErrorStack(err))
-		return jerrors.Trace(err)
+		return nil, jerrors.Trace(err)
 	}
 
-	return jerrors.Trace(ss.WriteBytes(buf.Bytes()))
+	return buf.Bytes(), nil
 }

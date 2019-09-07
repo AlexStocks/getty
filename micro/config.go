@@ -1,9 +1,12 @@
 package micro
 
 import (
-	"github.com/AlexStocks/getty/rpc"
 	"github.com/AlexStocks/goext/container/set/strset"
 	jerrors "github.com/juju/errors"
+)
+
+import (
+	"github.com/AlexStocks/getty/rpc"
 )
 
 const (

@@ -7,10 +7,13 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/getty"
 	gxnet "github.com/AlexStocks/goext/net"
 	log "github.com/AlexStocks/log4go"
 	jerrors "github.com/juju/errors"
+)
+
+import (
+	"github.com/AlexStocks/getty"
 )
 
 type Server struct {

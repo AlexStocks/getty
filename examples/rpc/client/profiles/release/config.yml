@@ -1,0 +1,41 @@
+# server
+server_host : "127.0.0.1"
+server_port : 10000
+
+core:
+    app_name : "RPC-CLIENT"
+    host : "127.0.0.1"
+    profile_port : 20086
+
+    # client 与 server单个peer与peer之间连接数目 
+    connection_number : 2
+
+    # session
+    # client与server之间连接的心跳周期
+    heartbeat_period : "10s"
+    # client与server之间连接的超时时间
+    session_timeout : "20s"
+
+    # app fail fast
+    fail_fast_timeout : "3s"
+
+    # connection pool
+    pool_size : 64
+    pool_ttl : 600
+
+    # tcp
+    getty_session_param:
+        compress_encoding : true
+        tcp_no_delay : true
+        tcp_keep_alive : true
+        keep_alive_period : "120s"
+        tcp_r_buf_size : 262144
+        tcp_w_buf_size : 65536
+        pkg_rq_size : 1024
+        pkg_wq_size : 512
+        tcp_read_timeout : "1s"
+        tcp_write_timeout : "5s"
+        wait_timeout : "1s"
+        max_msg_len : 1024
+        session_name : "getty-micro-server"
+

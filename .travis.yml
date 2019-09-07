@@ -1,0 +1,15 @@
+language: go
+
+go:
+  - "1.12"
+
+env:
+  - GO111MODULE=off
+
+install: true
+
+script:
+  - go fmt ./... && [[ -z `git status -s` ]]
+
+after_success:
+  - bash <(curl -s https://codecov.io/bash)

@@ -42,10 +42,10 @@ type Reader interface {
 // Writer is used to marshal pkg and write to session
 type Writer interface {
 	// if @Session is udpGettySession, the second parameter is UDPContext.
-	Write(Session, interface{}) error
+	Write(Session, interface{}) ([]byte, error)
 }
 
-// tcp package handler interface
+// package handler interface
 type ReadWriter interface {
 	Reader
 	Writer
@@ -116,7 +116,7 @@ type Connection interface {
 	writeTimeout() time.Duration
 	// SetWriteTimeout sets deadline for the future read calls.
 	SetWriteTimeout(time.Duration)
-	Write(interface{}) (int, error)
+	send(interface{}) (int, error)
 	// don't distinguish between tcp connection and websocket connection. Because
 	// gorilla/websocket/conn.go:(Conn)Close also invoke net.Conn.Close
 	close(int)

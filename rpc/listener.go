@@ -7,10 +7,12 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/getty"
-	jerrors "github.com/juju/errors"
-
 	log "github.com/AlexStocks/log4go"
+	jerrors "github.com/juju/errors"
+)
+
+import (
+	"github.com/AlexStocks/getty"
 )
 
 var (
