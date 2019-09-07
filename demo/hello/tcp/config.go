@@ -15,6 +15,7 @@ import (
 
 import (
 	"github.com/dubbogo/getty"
+	"github.com/dubbogo/gost/sync"
 )
 
 import (
@@ -30,12 +31,12 @@ func NewHelloClientSession(session getty.Session, taskPool *gxsync.TaskPool) (er
 	eventListener.SessionOnOpen = func(session getty.Session) {
 		hello.Sessions = append(hello.Sessions, session)
 	}
-    err = InitialSession(session)
-    if err != nil {
-        return
-    }
-    session.SetTaskPool(taskPool)
-    return
+	err = InitialSession(session)
+	if err != nil {
+		return
+	}
+	session.SetTaskPool(taskPool)
+	return
 }
 
 func InitialSession(session getty.Session) (err error) {
