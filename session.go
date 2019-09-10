@@ -33,6 +33,7 @@ const (
 	period                = 60 * 1e9 // 1 minute
 	pendingDuration       = 3e9
 	defaultQLen           = 1024
+	maxIovecNum           = 10
 	defaultSessionName    = "session"
 	defaultTCPSessionName = "tcp-session"
 	defaultUDPSessionName = "udp-session"
@@ -108,7 +109,6 @@ func newSession(endPoint EndPoint, conn Connection) *session {
 		wait:  pendingDuration,
 		attrs: NewValuesContext(nil),
 		rDone: make(chan struct{}),
-		grNum: 0,
 	}
 
 	ss.Connection.setSession(ss)
@@ -355,6 +355,9 @@ func (s *session) sessionToken() string {
 }
 
 func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
+	if pkg == nil {
+		return fmt.Errorf("@pkg is nil")
+	}
 	if s.IsClosed() {
 		return ErrSessionClosed
 	}
@@ -368,12 +371,31 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 		}
 	}()
 
-	var err error
 	if timeout <= 0 {
-		if err = s.writer.Write(s, pkg); err != nil {
+		pkgBytes, err := s.writer.Write(s, pkg)
+		if err != nil {
+			log.Warnf("%s, [session.WritePkg] session.writer.Write(@pkg:%#v) = error:%v", s.Stat(), pkg, err)
+			return perrors.WithStack(err)
+		}
+		var udpCtxPtr *UDPContext
+		if udpCtx, ok := pkg.(UDPContext); ok {
+			udpCtxPtr = &udpCtx
+		} else if udpCtxP, ok := pkg.(*UDPContext); ok {
+			udpCtxPtr = udpCtxP
+		}
+		if udpCtxPtr != nil {
+			udpCtxPtr.Pkg = pkgBytes
+			pkg = *udpCtxPtr
+		} else {
+			pkg = pkgBytes
+		}
+		_, err = s.Connection.send(pkg)
+		if err != nil {
+			log.Warn("%s, [session.WritePkg] @s.Connection.Write(pkg:%#v) = err:%v", s.Stat(), pkg, err)
 			return perrors.WithStack(err)
 		}
 		s.incWritePkgNum()
+		return nil
 	}
 	select {
 	case s.wQ <- pkg:
@@ -394,7 +416,7 @@ func (s *session) WriteBytes(pkg []byte) error {
 	}
 
 	// s.conn.SetWriteTimeout(time.Now().Add(s.wTimeout))
-	if _, err := s.Connection.Write(pkg); err != nil {
+	if _, err := s.Connection.send(pkg); err != nil {
 		return perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
 	}
 
@@ -403,7 +425,7 @@ func (s *session) WriteBytes(pkg []byte) error {
 	return nil
 }
 
-// Write multiple packages at once
+// Write multiple packages at once. so we invoke write sys.call just one time.
 func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 	if s.IsClosed() {
 		return ErrSessionClosed
@@ -438,7 +460,6 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 		l += len(pkgs[i])
 	}
 
-	// return s.Connection.Write(arr)
 	if err = s.WriteBytes(arr); err != nil {
 		return perrors.WithStack(err)
 	}
@@ -446,7 +467,6 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 	num := len(pkgs) - 1
 	for i := 0; i < num; i++ {
 		s.incWritePkgNum()
-		// gxlog.CError("after write, ss:%s", s.Stat())
 	}
 
 	return nil
@@ -468,7 +488,7 @@ func (s *session) run() {
 	// call session opened
 	s.UpdateActive()
 	if err := s.listener.OnOpen(s); err != nil {
-		log.Errorf("[OnOpen] error: %#v", err)
+		log.Errorf("[OnOpen] session %s, error: %#v", s.Stat(), err)
 		s.Close()
 		return
 	}
@@ -481,13 +501,17 @@ func (s *session) run() {
 
 func (s *session) handleLoop() {
 	var (
-		err    error
-		flag   bool
-		wsFlag bool
-		wsConn *gettyWSConn
-		// start  time.Time
-		counter gxtime.CountWatch
-		outPkg  interface{}
+		err      error
+		ok       bool
+		flag     bool
+		wsFlag   bool
+		udpFlag  bool
+		loopFlag bool
+		wsConn   *gettyWSConn
+		counter  gxtime.CountWatch
+		outPkg   interface{}
+		pkgBytes []byte
+		iovec    [][]byte
 	)
 
 	defer func() {
@@ -506,6 +530,8 @@ func (s *session) handleLoop() {
 
 	flag = true // do not do any read/Write/cron operation while got Write error
 	wsConn, wsFlag = s.Connection.(*gettyWSConn)
+	_, udpFlag = s.Connection.(*gettyUDPConn)
+	iovec = make([][]byte, 0, maxIovecNum)
 LOOP:
 	for {
 		// A select blocks until one of its cases is ready to run.
@@ -519,21 +545,67 @@ LOOP:
 				break LOOP
 			}
 			counter.Start()
-			// if time.Since(start).Nanoseconds() >= s.wait.Nanoseconds() {
 			if counter.Count() > s.wait.Nanoseconds() {
 				log.Infof("%s, [session.handleLoop] got done signal ", s.Stat())
 				break LOOP
 			}
-		case outPkg = <-s.wQ:
-			if flag {
-				if err = s.writer.Write(s, outPkg); err != nil {
+		case outPkg, ok = <-s.wQ:
+			if !ok {
+				continue
+			}
+			if !flag {
+				log.Warn("[session.handleLoop] drop write out package %#v", outPkg)
+				continue
+			}
+
+			if udpFlag || wsFlag {
+				err = s.WritePkg(outPkg, 0)
+				if err != nil {
 					log.Errorf("%s, [session.handleLoop] = error:%+v", s.sessionToken(), err)
 					s.stop()
-					flag = false
 					// break LOOP
+					flag = false
 				}
-			} else {
-				log.Infof("[session.handleLoop] drop writeout package{%#v}", outPkg)
+
+				continue
+			}
+
+			iovec = iovec[:0]
+			for idx := 0; idx < maxIovecNum; idx++ {
+				pkgBytes, err = s.writer.Write(s, outPkg)
+				if err != nil {
+					log.Errorf("%s, [session.handleLoop] = error:%+v", s.sessionToken(), err)
+					s.stop()
+					// break LOOP
+					flag = false
+					break
+				}
+				iovec = append(iovec, pkgBytes)
+
+				if idx < maxIovecNum-1 {
+					loopFlag = true
+					select {
+					case outPkg, ok = <-s.wQ:
+						if !ok {
+							loopFlag = false
+						}
+
+					default:
+						loopFlag = false
+						break
+					}
+					if !loopFlag {
+						break // break for-idx loop
+					}
+				}
+			}
+			err = s.WriteBytesArray(iovec[:]...)
+			if err != nil {
+				log.Errorf("%s, [session.handleLoop]s.WriteBytesArray(iovec len:%d) = error:%+v",
+					s.sessionToken(), len(iovec), err)
+				s.stop()
+				// break LOOP
+				flag = false
 			}
 
 		case <-wheel.After(s.period):
@@ -643,7 +715,7 @@ func (s *session) handleTCPPackage() error {
 		for {
 			// for clause for the network timeout condition check
 			// s.conn.SetReadTimeout(time.Now().Add(s.rTimeout))
-			bufLen, err = conn.read(buf)
+			bufLen, err = conn.recv(buf)
 			if err != nil {
 				if netError, ok = perrors.Cause(err).(net.Error); ok && netError.Timeout() {
 					break
@@ -664,7 +736,6 @@ func (s *session) handleTCPPackage() error {
 			if pktBuf.Len() <= 0 {
 				break
 			}
-			// pkg, err = s.pkgHandler.Read(s, pktBuf)
 			pkg, pkgLen, err = s.reader.Read(s, pktBuf.Bytes())
 			// for case 3/case 4
 			if err == nil && s.maxMsgLen > 0 && pkgLen > int(s.maxMsgLen) {
@@ -724,7 +795,7 @@ func (s *session) handleUDPPackage() error {
 			break
 		}
 
-		bufLen, addr, err = conn.read(buf)
+		bufLen, addr, err = conn.recv(buf)
 		log.Debugf("conn.read() = bufLen:%d, addr:%#v, err:%+v", bufLen, addr, err)
 		if netError, ok = perrors.Cause(err).(net.Error); ok && netError.Timeout() {
 			continue
@@ -785,7 +856,7 @@ func (s *session) handleWSPackage() error {
 		if s.IsClosed() {
 			break
 		}
-		pkg, err = conn.read()
+		pkg, err = conn.recv()
 		if netError, ok = perrors.Cause(err).(net.Error); ok && netError.Timeout() {
 			continue
 		}

@@ -4,7 +4,7 @@
 # LICENCE    : Apache License 2.0
 # EMAIL      : alexstocks@foxmail.com
 # MOD        : 2016-08-17 11:21
-# FILE       : conn.go
+# FILE       : connection.go
 ******************************************************/
 
 package getty
@@ -89,7 +89,7 @@ func (c *gettyConn) GetActive() time.Time {
 	return launchTime.Add(time.Duration(atomic.LoadInt64(&(c.active))))
 }
 
-func (c *gettyConn) Write(interface{}) (int, error) {
+func (c *gettyConn) send(interface{}) (int, error) {
 	return 0, nil
 }
 
@@ -228,7 +228,7 @@ func (t *gettyTCPConn) SetCompressType(c CompressType) {
 }
 
 // tcp connection read
-func (t *gettyTCPConn) read(p []byte) (int, error) {
+func (t *gettyTCPConn) recv(p []byte) (int, error) {
 	var (
 		err         error
 		currentTime time.Time
@@ -258,7 +258,7 @@ func (t *gettyTCPConn) read(p []byte) (int, error) {
 }
 
 // tcp connection write
-func (t *gettyTCPConn) Write(pkg interface{}) (int, error) {
+func (t *gettyTCPConn) send(pkg interface{}) (int, error) {
 	var (
 		err         error
 		currentTime time.Time
@@ -379,7 +379,7 @@ func (u *gettyUDPConn) SetCompressType(c CompressType) {
 }
 
 // udp connection read
-func (u *gettyUDPConn) read(p []byte) (int, *net.UDPAddr, error) {
+func (u *gettyUDPConn) recv(p []byte) (int, *net.UDPAddr, error) {
 	var (
 		err         error
 		currentTime time.Time
@@ -411,7 +411,7 @@ func (u *gettyUDPConn) read(p []byte) (int, *net.UDPAddr, error) {
 }
 
 // write udp packet, @ctx should be of type UDPContext
-func (u *gettyUDPConn) Write(udpCtx interface{}) (int, error) {
+func (u *gettyUDPConn) send(udpCtx interface{}) (int, error) {
 	var (
 		err         error
 		currentTime time.Time
@@ -539,7 +539,7 @@ func (w *gettyWSConn) handlePong(string) error {
 }
 
 // websocket connection read
-func (w *gettyWSConn) read() ([]byte, error) {
+func (w *gettyWSConn) recv() ([]byte, error) {
 	// Pls do not set read deadline when using ReadMessage. AlexStocks 20180310
 	// gorilla/websocket/conn.go:NextReader will always fail when got a timeout error.
 	_, b, e := w.conn.ReadMessage() // the first return value is message type.
@@ -578,7 +578,7 @@ func (w *gettyWSConn) updateWriteDeadline() error {
 }
 
 // websocket connection write
-func (w *gettyWSConn) Write(pkg interface{}) (int, error) {
+func (w *gettyWSConn) send(pkg interface{}) (int, error) {
 	var (
 		err error
 		ok  bool
