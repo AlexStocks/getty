@@ -1,0 +1,11 @@
+language: go
+
+go:
+  - "1.11"
+  - "1.12"
+  - "1.13"
+
+script:
+  - go fmt ./... && [[ -z `git status -s` ]]
+  - GO111MODULE=on && go mod vendor && go test ./... -bench . -race -v
+
