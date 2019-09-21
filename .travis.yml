@@ -1,15 +1,11 @@
 language: go
 
 go:
+  - "1.11"
   - "1.12"
-
-env:
-  - GO111MODULE=off
-
-install: true
+  - "1.13"
 
 script:
   - go fmt ./... && [[ -z `git status -s` ]]
+  - GO111MODULE=on && go mod vendor && go test ./... -bench . -race -v
 
-after_success:
-  - bash <(curl -s https://codecov.io/bash)
