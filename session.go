@@ -12,6 +12,7 @@ package getty
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"net"
 	"runtime"
 	"sync"
@@ -524,7 +525,7 @@ func (s *session) handleLoop() {
 
 		grNum := atomic.AddInt32(&(s.grNum), -1)
 		s.listener.OnClose(s)
-		log.Info("%s, [session.handleLoop] goroutine exit now, left gr num %d", s.Stat(), grNum)
+		log.Infof("%s, [session.handleLoop] goroutine exit now, left gr num %d", s.Stat(), grNum)
 		s.gc()
 	}()
 
@@ -718,6 +719,11 @@ func (s *session) handleTCPPackage() error {
 			bufLen, err = conn.recv(buf)
 			if err != nil {
 				if netError, ok = perrors.Cause(err).(net.Error); ok && netError.Timeout() {
+					break
+				}
+				if perrors.Cause(err) == io.EOF {
+					err = nil
+					exit = true
 					break
 				}
 				log.Errorf("%s, [session.conn.read] = error:%+v", s.sessionToken(), err)
