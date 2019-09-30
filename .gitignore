@@ -20,4 +20,3 @@ classes
 *.swp
 
 vendor/
-coverage.txt
