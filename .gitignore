@@ -19,6 +19,4 @@ classes
 # vim
 *.swp
 
-# go mod
-go.mod
-go.sum
+vendor/
