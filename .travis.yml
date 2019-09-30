@@ -9,4 +9,4 @@ env:
 
 script:
   - go fmt ./... && [[ -z `git status -s` ]]
-  - go mod vendor && go test ./... -bench . -race -v
+  - go mod vendor && go test ./... -coverprofile=coverage.txt -covermode=atomic
