@@ -35,7 +35,7 @@ func (c *ServiceConfig) CheckValidity() error {
 	}
 
 	if c.LocalPort <= 0 || 65535 < c.LocalPort {
-		return jerrors.Errorf(ErrIllegalConf+"local port %s", c.LocalPort)
+		return jerrors.Errorf(ErrIllegalConf+"local port %d", c.LocalPort)
 	}
 
 	if len(c.Group) == 0 {
