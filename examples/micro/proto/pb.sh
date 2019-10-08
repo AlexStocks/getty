@@ -21,7 +21,7 @@ gogopath=~/test/golang/lib/src/
 protoc -I=$gopath:$gogopath:./ --gogoslick_out=./  service.proto
 
 cp ./service.pb.go ../client/app
-cp ./test.go ../client/app
+cp ./test.go.tmp ../client/app/test.go
 
 cp ./service.pb.go ../server/app
-cp ./test.go ../server/app
+cp ./test.go.tmp ../server/app/test.go
