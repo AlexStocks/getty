@@ -12,6 +12,7 @@ package getty
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"net"
 	"runtime"
 	"sync"
@@ -729,6 +730,11 @@ func (s *session) handleTCPPackage() error {
 			bufLen, err = conn.recv(buf)
 			if err != nil {
 				if netError, ok = jerrors.Cause(err).(net.Error); ok && netError.Timeout() {
+					break
+				}
+				if jerrors.Cause(err) == io.EOF {
+					err = nil
+					exit = true
 					break
 				}
 				log.Error("%s, [session.conn.read] = error{%s}", s.sessionToken(), jerrors.ErrorStack(err))
