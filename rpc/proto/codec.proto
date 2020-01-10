@@ -24,7 +24,7 @@ option (gogoproto.goproto_enum_prefix_all) = false;
 //////////////////////////////////////////
 
 enum CallType {
-	CT_UNKOWN        = 0;
+	CT_UNKNOWN       = 0;
 	CT_OneWay        = 1;
 	CT_TwoWay        = 2;
 	CT_TwoWayNoReply = 3;
