@@ -24,6 +24,14 @@ type rpcSession struct {
 	reqNum  int32
 }
 
+func (s *rpcSession)AddReqNum(num int32) {
+	atomic.AddInt32(&s.reqNum, num)
+}
+
+func (s *rpcSession)GetReqNum() int32 {
+	return atomic.LoadInt32(&s.reqNum)
+}
+
 ////////////////////////////////////////////
 // RpcServerHandler
 ////////////////////////////////////////////
@@ -76,11 +84,21 @@ func (h *RpcServerHandler) OnClose(session getty.Session) {
 }
 
 func (h *RpcServerHandler) OnMessage(session getty.Session, pkg interface{}) {
-	h.rwlock.Lock()
-	if _, ok := h.sessionMap[session]; ok {
-		h.sessionMap[session].reqNum++
+	var rs *rpcSession
+	if session != nil {
+		func() {
+			h.rwlock.RLock()
+			defer h.rwlock.RUnlock()
+
+			if _, ok := h.sessionMap[session]; ok {
+				rs = h.sessionMap[session]
+			}
+		}()
+		if rs != nil {
+			rs.AddReqNum(1)
+		}
 	}
-	h.rwlock.Unlock()
+
 
 	req, ok := pkg.(GettyRPCRequestPackage)
 	if !ok {
@@ -121,7 +139,7 @@ func (h *RpcServerHandler) OnCron(session getty.Session) {
 		if h.sessionTimeout.Nanoseconds() < time.Since(active).Nanoseconds() {
 			flag = true
 			log.Warn("session{%s} timeout{%s}, reqNum{%d}",
-				session.Stat(), time.Since(active).String(), h.sessionMap[session].reqNum)
+				session.Stat(), time.Since(active).String(), h.sessionMap[session].GetReqNum())
 		}
 	}
 	h.rwlock.RUnlock()
@@ -250,7 +268,7 @@ func (h *RpcClientHandler) OnCron(session getty.Session) {
 	}
 	if h.conn.pool.rpcClient.conf.sessionTimeout.Nanoseconds() < time.Since(session.GetActive()).Nanoseconds() {
 		log.Warn("session{%s} timeout{%s}, reqNum{%d}",
-			session.Stat(), time.Since(session.GetActive()).String(), rpcSession.reqNum)
+			session.Stat(), time.Since(session.GetActive()).String(), rpcSession.GetReqNum())
 		h.conn.removeSession(session) // -> h.conn.close() -> h.conn.pool.remove(h.conn)
 		return
 	}

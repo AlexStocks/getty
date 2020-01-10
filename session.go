@@ -28,8 +28,7 @@ import (
 )
 
 import (
-	gxcontext "github.com/AlexStocks/goext/context"
-	gxtime "github.com/AlexStocks/goext/time"
+	gxtime "github.com/dubbogo/gost/time"
 	log "github.com/AlexStocks/log4go"
 )
 
@@ -91,7 +90,7 @@ type session struct {
 	done chan struct{}
 
 	// attribute
-	attrs *gxcontext.ValuesContext
+	attrs *ValuesContext
 
 	// goroutines sync
 	grNum int32
@@ -113,7 +112,7 @@ func newSession(endPoint EndPoint, conn Connection) *session {
 
 		done:  make(chan struct{}),
 		wait:  pendingDuration,
-		attrs: gxcontext.NewValuesContext(nil),
+		attrs: NewValuesContext(nil),
 		rDone: make(chan struct{}),
 	}
 
@@ -154,7 +153,7 @@ func (s *session) Reset() {
 	s.done = make(chan struct{})
 	s.period = period
 	s.wait = pendingDuration
-	s.attrs = gxcontext.NewValuesContext(nil)
+	s.attrs = NewValuesContext(nil)
 	s.rDone = make(chan struct{})
 	s.grNum = 0
 

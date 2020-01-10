@@ -23,8 +23,6 @@ import (
 )
 
 import (
-	gxnet "github.com/AlexStocks/goext/net"
-	gxtime "github.com/AlexStocks/goext/time"
 	log "github.com/AlexStocks/log4go"
 	"github.com/gorilla/websocket"
 	jerrors "github.com/juju/errors"
@@ -32,7 +30,7 @@ import (
 
 var (
 	errSelfConnect        = jerrors.New("connect self!")
-	serverFastFailTimeout = gxtime.TimeSecondDuration(1)
+	serverFastFailTimeout = time.Second * 1
 	serverID              = EndPointID(0)
 )
 
@@ -216,7 +214,7 @@ func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 	if err != nil {
 		return nil, jerrors.Trace(err)
 	}
-	if gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
+	if IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 		log.Warn("conn.localAddr{%s} == conn.RemoteAddr", conn.LocalAddr().String(), conn.RemoteAddr().String())
 		return nil, errSelfConnect
 	}

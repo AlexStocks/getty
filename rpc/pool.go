@@ -43,7 +43,7 @@ func newGettyRPCClient(pool *gettyRPCClientPool, protocol, addr string) (*gettyR
 		pool:     pool,
 		gettyClient: getty.NewTCPClient(
 			getty.WithServerAddress(addr),
-			getty.WithConnectionNumber((int)(pool.rpcClient.conf.ConnectionNum)),
+			getty.WithConnectionNumber(pool.rpcClient.conf.ConnectionNum),
 		),
 	}
 	c.gettyClient.RunEventLoop(c.newSession)
@@ -130,8 +130,8 @@ func (c *gettyRPCClient) addSession(session getty.Session) {
 	}
 
 	c.lock.Lock()
+	defer c.lock.Unlock()
 	c.sessions = append(c.sessions, &rpcSession{session: session})
-	c.lock.Unlock()
 }
 
 func (c *gettyRPCClient) removeSession(session getty.Session) {
@@ -139,21 +139,27 @@ func (c *gettyRPCClient) removeSession(session getty.Session) {
 		return
 	}
 
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	if c.sessions == nil {
-		return
-	}
-
-	for i, s := range c.sessions {
-		if s.session == session {
-			c.sessions = append(c.sessions[:i], c.sessions[i+1:]...)
-			log.Debug("delete session{%s}, its index{%d}", session.Stat(), i)
-			break
+	var removeFlag bool
+	func() {
+		c.lock.Lock()
+		defer c.lock.Unlock()
+		if len(c.sessions) == 0 {
+			return
 		}
-	}
-	log.Info("after remove session{%s}, left session number:%d", session.Stat(), len(c.sessions))
-	if len(c.sessions) == 0 {
+
+		for i, s := range c.sessions {
+			if s.session == session {
+				c.sessions = append(c.sessions[:i], c.sessions[i+1:]...)
+				log.Debug("delete session{%s}, its index{%d}", session.Stat(), i)
+				break
+			}
+		}
+		log.Info("after remove session{%s}, left session number:%d", session.Stat(), len(c.sessions))
+		if len(c.sessions) == 0 {
+			removeFlag = true
+		}
+	}()
+	if removeFlag {
 		c.close() // -> pool.remove(c)
 	}
 }
@@ -162,17 +168,24 @@ func (c *gettyRPCClient) updateSession(session getty.Session) {
 	if session == nil {
 		return
 	}
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	if c.sessions == nil {
-		return
-	}
 
-	for i, s := range c.sessions {
-		if s.session == session {
-			c.sessions[i].reqNum++
-			break
+	var rs *rpcSession
+	func() {
+		c.lock.RLock()
+		defer c.lock.RUnlock()
+		if c.sessions == nil {
+			return
 		}
+
+		for i, s := range c.sessions {
+			if s.session == session {
+				rs = c.sessions[i]
+				break
+			}
+		}
+	}()
+	if rs != nil {
+		rs.AddReqNum(1)
 	}
 }
 
@@ -183,7 +196,7 @@ func (c *gettyRPCClient) getClientRpcSession(session getty.Session) (rpcSession,
 	)
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	if c.sessions == nil {
+	if len(c.sessions) == 0 {
 		return rpcSession, errClientClosed
 	}
 
@@ -212,30 +225,46 @@ func (c *gettyRPCClient) close() error {
 	c.once.Do(func() {
 		// delete @c from client pool
 		c.pool.remove(c)
-		c.gettyClient.Close()
-		c.gettyClient = nil
-		for _, s := range c.sessions {
-			log.Info("close client session{%s, last active:%s, request number:%d}",
-				s.session.Stat(), s.session.GetActive().String(), s.reqNum)
-			s.session.Close()
-		}
-		c.sessions = c.sessions[:0]
+
+		var (
+			gettyClient getty.Client
+			sessions []*rpcSession
+		)
+		func() {
+			c.lock.Lock()
+			defer c.lock.Unlock()
+
+			gettyClient = c.gettyClient
+			c.gettyClient = nil
+
+			sessions = make([]*rpcSession, 0 , len(c.sessions))
+			for _, s := range c.sessions {
+				sessions = append(sessions, s)
+			}
+			c.sessions = c.sessions[:0]
+		}()
 
 		c.updateActive(0)
+
+		go func() {
+			if gettyClient != nil {
+				gettyClient.Close()
+			}
+			for _, s := range sessions {
+				log.Info("close client session{%s, last active:%s, request number:%d}",
+					s.session.Stat(), s.session.GetActive().String(), s.GetReqNum())
+				s.session.Close()
+			}
+		}()
+
 		err = nil
 	})
+
 	return err
 }
 
-func (c *gettyRPCClient) safeClose() error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
-	return c.close()
-}
-
 type rpcClientArray struct {
-	lock  sync.Mutex
+	lock  sync.RWMutex
 	array []*gettyRPCClient
 }
 
@@ -246,6 +275,9 @@ func newRpcClientArray() *rpcClientArray {
 }
 
 func (a *rpcClientArray) Size() int {
+	a.lock.RLock()
+	defer a.lock.RUnlock()
+
 	return len(a.array)
 }
 
@@ -267,7 +299,7 @@ func (a *rpcClientArray) Get(key string, pool *gettyRPCClientPool) *gettyRPCClie
 		pool.connMap.Store(key, a)
 
 		if d := now - conn.getActive(); d > pool.ttl {
-			conn.safeClose() // -> pool.remove(c)
+			conn.close() // -> pool.remove(c)
 			continue
 		}
 
@@ -295,14 +327,21 @@ func (a *rpcClientArray) Remove(key string, conn *gettyRPCClient, p *gettyRPCCli
 }
 
 func (a *rpcClientArray) Close() {
-	a.lock.Lock()
-	defer a.lock.Unlock()
+	var array []*gettyRPCClient
+	func() {
+		a.lock.Lock()
+		defer a.lock.Unlock()
 
-	for i := range a.array {
-		a.array[i].safeClose()
+		array = make([]*gettyRPCClient, 0, len(a.array))
+		for i := range a.array {
+			array = append(array, a.array[i])
+		}
+
+		a.array = a.array[:0]
+	}()
+	for i := range array {
+		array[i].close()
 	}
-
-	a.array = a.array[:0]
 }
 
 type gettyRPCClientPool struct {
@@ -354,7 +393,7 @@ func (p *gettyRPCClientPool) release(conn *gettyRPCClient, err error) {
 		return
 	}
 	if err != nil {
-		conn.safeClose()
+		conn.close()
 		return
 	}
 
@@ -370,14 +409,14 @@ func (p *gettyRPCClientPool) release(conn *gettyRPCClient, err error) {
 		connArray = newRpcClientArray()
 	}
 	if connArray.Size() >= p.size {
-		conn.safeClose()
+		conn.close()
 		return
 	}
 
 	connArray.Put(conn)
-	connArray, loaded := p.connMap.LoadOrStore(key, connArray)
+	oldConnArray, loaded := p.connMap.LoadOrStore(key, connArray)
 	if loaded {
-		connArray.Put(conn)
+		oldConnArray.Put(conn)
 	}
 }
 

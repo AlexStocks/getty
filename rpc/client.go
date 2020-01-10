@@ -3,11 +3,11 @@ package rpc
 import (
 	"math/rand"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 import (
-	"github.com/AlexStocks/goext/sync/atomic"
 	jerrors "github.com/juju/errors"
 )
 
@@ -71,7 +71,7 @@ type AsyncCallback func(response CallResponse)
 type Client struct {
 	conf     ClientConfig
 	pool     *gettyRPCClientPool
-	sequence gxatomic.Uint64
+	sequence uint64
 
 	pendingLock      sync.RWMutex
 	pendingResponses map[SequenceType]*PendingResponse
@@ -178,7 +178,7 @@ func (c *Client) call(ct CallType, typ CodecType, addr, service, method string,
 	select {
 	case <-getty.GetTimeWheel().After(opts.ResponseTimeout):
 		err = errClientReadTimeout
-		c.removePendingResponse(SequenceType(rsp.seq))
+		c.removePendingResponse(rsp.seq)
 	case <-rsp.done:
 		err = rsp.err
 	}
@@ -214,7 +214,7 @@ func (c *Client) transfer(session getty.Session, typ CodecType, req *GettyRPCReq
 		pkg      GettyPackage
 	)
 
-	sequence = c.sequence.Add(1)
+	sequence = atomic.AddUint64(&(c.sequence), 1)
 	pkg.H.Magic = MagicType(gettyPackageMagic)
 	pkg.H.LogID = LogIDType(randomID())
 	pkg.H.Sequence = SequenceType(sequence)
@@ -227,13 +227,13 @@ func (c *Client) transfer(session getty.Session, typ CodecType, req *GettyRPCReq
 
 	// cond1
 	if rsp != nil {
-		rsp.seq = sequence
+		rsp.seq = SequenceType(sequence)
 		c.addPendingResponse(rsp)
 	}
 
 	err = session.WritePkg(pkg, opts.RequestTimeout)
 	if err != nil {
-		c.removePendingResponse(SequenceType(rsp.seq))
+		c.removePendingResponse(rsp.seq)
 	} else if rsp != nil { // cond2
 		// cond2 should not merged with cond1. cause the response package may be returned very
 		// soon and it will be handled by other goroutine.
@@ -243,16 +243,10 @@ func (c *Client) transfer(session getty.Session, typ CodecType, req *GettyRPCReq
 	return jerrors.Trace(err)
 }
 
-// func (c *Client) PendingResponseCount() int {
-// 	c.pendingLock.RLock()
-// 	defer c.pendingLock.RUnlock()
-// 	return len(c.pendingResponses)
-// }
-
 func (c *Client) addPendingResponse(pr *PendingResponse) {
 	c.pendingLock.Lock()
 	defer c.pendingLock.Unlock()
-	c.pendingResponses[SequenceType(pr.seq)] = pr
+	c.pendingResponses[pr.seq] = pr
 }
 
 func (c *Client) removePendingResponse(seq SequenceType) *PendingResponse {
@@ -268,10 +262,3 @@ func (c *Client) removePendingResponse(seq SequenceType) *PendingResponse {
 	return nil
 }
 
-// func (c *Client) ClearPendingResponses() map[SequenceType]*PendingResponse {
-// 	c.pendingLock.Lock()
-// 	defer c.pendingLock.Unlock()
-// 	presps := c.pendingResponses
-// 	c.pendingResponses = nil
-// 	return presps
-// }

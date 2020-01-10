@@ -541,7 +541,7 @@ func (resp *GettyRPCResponse) GetHeader() interface{} {
 ////////////////////////////////////////////
 
 type PendingResponse struct {
-	seq       uint64
+	seq       SequenceType
 	err       error
 	start     time.Time
 	readStart time.Time
