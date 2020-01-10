@@ -3,6 +3,7 @@ package rpc
 import (
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
