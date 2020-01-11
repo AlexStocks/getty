@@ -25,6 +25,7 @@ import (
 import (
 	"github.com/gorilla/websocket"
 	perrors "github.com/pkg/errors"
+	"github.com/dubbogo/gost/net"
 )
 
 var (
@@ -213,7 +214,7 @@ func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 	if err != nil {
 		return nil, perrors.WithStack(err)
 	}
-	if IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
+	if gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 		log.Warnf("conn.localAddr{%s} == conn.RemoteAddr", conn.LocalAddr().String(), conn.RemoteAddr().String())
 		return nil, errSelfConnect
 	}
