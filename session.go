@@ -59,7 +59,7 @@ var (
 func init() {
 	span := 100e6 // 100ms
 	buckets := MaxWheelTimeSpan / span
-	wheel = gxtime.NewWheel(time.Duration(span), int(buckets)) // wheel longest span is 30 minute
+	wheel = gxtime.NewWheel(time.Duration(span), int(buckets)) // wheel longest span is 15 minute
 }
 
 func GetTimeWheel() *gxtime.Wheel {
