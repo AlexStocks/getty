@@ -19,6 +19,6 @@ classes
 # vim
 *.swp
 
-# go.sum
-# Gopkg.lock
-# vendor/
+# go mod
+go.mod
+go.sum
