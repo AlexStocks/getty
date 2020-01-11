@@ -25,20 +25,20 @@ import (
 	gxsync "github.com/dubbogo/gost/sync"
 	"github.com/gorilla/websocket"
 	jerrors "github.com/juju/errors"
-)
 
-import (
-	gxtime "github.com/dubbogo/gost/time"
 	log "github.com/AlexStocks/log4go"
+	"github.com/dubbogo/gost/context"
+	gxtime "github.com/dubbogo/gost/time"
 )
 
 const (
-	maxReadBufLen   = 4 * 1024
-	netIOTimeout    = 1e9      // 1s
-	period          = 60 * 1e9 // 1 minute
-	pendingDuration = 3e9
-	defaultQLen     = 1024
-	maxIovecNum     = 10
+	maxReadBufLen    = 4 * 1024
+	netIOTimeout     = 1e9      // 1s
+	period           = 60 * 1e9 // 1 minute
+	pendingDuration  = 3e9
+	defaultQLen      = 1024
+	maxIovecNum      = 10
+	MaxWheelTimeSpan = 900e9 // 900s, 15 minute
 
 	defaultSessionName    = "session"
 	defaultTCPSessionName = "tcp-session"
@@ -53,8 +53,14 @@ const (
 /////////////////////////////////////////
 
 var (
-	wheel = gxtime.NewWheel(gxtime.TimeMillisecondDuration(100), 1200) // wheel longest span is 2 minute
+	wheel *gxtime.Wheel
 )
+
+func init() {
+	span := 100e6 // 100ms
+	buckets := MaxWheelTimeSpan / span
+	wheel = gxtime.NewWheel(time.Duration(span), int(buckets)) // wheel longest span is 30 minute
+}
 
 func GetTimeWheel() *gxtime.Wheel {
 	return wheel
@@ -90,7 +96,7 @@ type session struct {
 	done chan struct{}
 
 	// attribute
-	attrs *ValuesContext
+	attrs *gxcontext.ValuesContext
 
 	// goroutines sync
 	grNum int32
@@ -112,7 +118,7 @@ func newSession(endPoint EndPoint, conn Connection) *session {
 
 		done:  make(chan struct{}),
 		wait:  pendingDuration,
-		attrs: NewValuesContext(nil),
+		attrs: gxcontext.NewValuesContext(nil),
 		rDone: make(chan struct{}),
 	}
 
@@ -153,7 +159,7 @@ func (s *session) Reset() {
 	s.done = make(chan struct{})
 	s.period = period
 	s.wait = pendingDuration
-	s.attrs = NewValuesContext(nil)
+	s.attrs = gxcontext.NewValuesContext(nil)
 	s.rDone = make(chan struct{})
 	s.grNum = 0
 

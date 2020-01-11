@@ -8,6 +8,10 @@ import (
 	jerrors "github.com/juju/errors"
 )
 
+import (
+	"github.com/AlexStocks/getty"
+)
+
 type (
 	GettySessionParam struct {
 		CompressEncoding bool   `default:"false" yaml:"compress_encoding" json:"compress_encoding,omitempty"`
@@ -110,6 +114,11 @@ func (c *ClientConfig) CheckValidity() error {
 		return jerrors.Annotatef(err, "time.ParseDuration(HeartbeatPeroid{%#v})", c.HeartbeatPeriod)
 	}
 
+	if c.heartbeatPeriod >= time.Duration(getty.MaxWheelTimeSpan) {
+		return jerrors.Annotatef(err, "heartbeat_period %s should be less than %s",
+			c.HeartbeatPeriod, time.Duration(getty.MaxWheelTimeSpan))
+	}
+
 	if c.sessionTimeout, err = time.ParseDuration(c.SessionTimeout); err != nil {
 		return jerrors.Annotatef(err, "time.ParseDuration(SessionTimeout{%#v})", c.SessionTimeout)
 	}
@@ -126,6 +135,11 @@ func (c *ServerConfig) CheckValidity() error {
 
 	if c.sessionTimeout, err = time.ParseDuration(c.SessionTimeout); err != nil {
 		return jerrors.Annotatef(err, "time.ParseDuration(SessionTimeout{%#v})", c.SessionTimeout)
+	}
+
+	if c.sessionTimeout >= time.Duration(getty.MaxWheelTimeSpan) {
+		return jerrors.Annotatef(err, "session_timeout %s should be less than %s",
+			c.SessionTimeout, time.Duration(getty.MaxWheelTimeSpan))
 	}
 
 	if c.failFastTimeout, err = time.ParseDuration(c.FailFastTimeout); err != nil {

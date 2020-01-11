@@ -1,7 +1,7 @@
 module github.com/AlexStocks/getty
 
 require (
-        github.com/dubbogo/gost v1.5.1
+	github.com/dubbogo/gost v1.5.2
 	github.com/AlexStocks/log4go v1.0.2
 	github.com/coreos/go-systemd v0.0.0-20190318101727-c7c1946145b6 // indirect
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect

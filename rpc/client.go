@@ -261,4 +261,3 @@ func (c *Client) removePendingResponse(seq SequenceType) *PendingResponse {
 	}
 	return nil
 }
-

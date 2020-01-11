@@ -25,11 +25,11 @@ type rpcSession struct {
 	reqNum  int32
 }
 
-func (s *rpcSession)AddReqNum(num int32) {
+func (s *rpcSession) AddReqNum(num int32) {
 	atomic.AddInt32(&s.reqNum, num)
 }
 
-func (s *rpcSession)GetReqNum() int32 {
+func (s *rpcSession) GetReqNum() int32 {
 	return atomic.LoadInt32(&s.reqNum)
 }
 
@@ -99,7 +99,6 @@ func (h *RpcServerHandler) OnMessage(session getty.Session, pkg interface{}) {
 			rs.AddReqNum(1)
 		}
 	}
-
 
 	req, ok := pkg.(GettyRPCRequestPackage)
 	if !ok {

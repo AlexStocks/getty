@@ -228,7 +228,7 @@ func (c *gettyRPCClient) close() error {
 
 		var (
 			gettyClient getty.Client
-			sessions []*rpcSession
+			sessions    []*rpcSession
 		)
 		func() {
 			c.lock.Lock()
@@ -237,7 +237,7 @@ func (c *gettyRPCClient) close() error {
 			gettyClient = c.gettyClient
 			c.gettyClient = nil
 
-			sessions = make([]*rpcSession, 0 , len(c.sessions))
+			sessions = make([]*rpcSession, 0, len(c.sessions))
 			for _, s := range c.sessions {
 				sessions = append(sessions, s)
 			}
