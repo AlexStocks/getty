@@ -101,7 +101,7 @@ func (c *gettyRPCClient) newSession(session getty.Session) error {
 	session.SetMaxMsgLen(conf.GettySessionParam.MaxMsgLen)
 	session.SetPkgHandler(rpcClientPackageHandler)
 	session.SetEventListener(NewRpcClientHandler(c))
-	session.SetRQLen(conf.GettySessionParam.PkgRQSize)
+	// session.SetRQLen(conf.GettySessionParam.PkgRQSize)
 	session.SetWQLen(conf.GettySessionParam.PkgWQSize)
 	session.SetReadTimeout(conf.GettySessionParam.tcpReadTimeout)
 	session.SetWriteTimeout(conf.GettySessionParam.tcpWriteTimeout)
@@ -284,6 +284,12 @@ func (a *rpcClientArray) Size() int {
 func (a *rpcClientArray) Put(clt *gettyRPCClient) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
+
+	for i := range a.array {
+		if a.array[i] == clt {
+			return
+		}
+	}
 
 	a.array = append(a.array, clt)
 }
