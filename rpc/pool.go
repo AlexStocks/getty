@@ -305,7 +305,7 @@ func (a *rpcClientArray) Get(key string, pool *gettyRPCClientPool) *gettyRPCClie
 		pool.connMap.Store(key, a)
 
 		if d := now - conn.getActive(); d > pool.ttl {
-			conn.close() // -> pool.remove(c)
+			go conn.close() // -> pool.remove(c)
 			continue
 		}
 
