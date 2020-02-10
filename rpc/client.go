@@ -71,6 +71,7 @@ type AsyncCallback func(response CallResponse)
 type Client struct {
 	conf     ClientConfig
 	pool     *gettyRPCClientPool
+	// the sequence sent to server must be an odd number
 	sequence uint64
 
 	pendingLock      sync.RWMutex
@@ -82,9 +83,15 @@ func NewClient(conf *ClientConfig) (*Client, error) {
 		return nil, jerrors.Trace(err)
 	}
 
+	initSequence := uint64(rand.Int63n(time.Now().UnixNano()))
+	if initSequence % 2 == 0 {
+		initSequence ++
+	}
+
 	c := &Client{
 		pendingResponses: make(map[SequenceType]*PendingResponse),
 		conf:             *conf,
+		sequence: initSequence,
 	}
 	c.pool = newGettyRPCClientConnPool(c, conf.PoolSize, time.Duration(int(time.Second)*conf.PoolTTL))
 
@@ -214,7 +221,8 @@ func (c *Client) transfer(session getty.Session, typ CodecType, req *GettyRPCReq
 		pkg      GettyPackage
 	)
 
-	sequence = atomic.AddUint64(&(c.sequence), 1)
+	// it should be an odd number
+	sequence = atomic.AddUint64(&(c.sequence), 2)
 	pkg.H.Magic = MagicType(gettyPackageMagic)
 	pkg.H.LogID = LogIDType(randomID())
 	pkg.H.Sequence = SequenceType(sequence)
