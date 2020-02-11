@@ -63,7 +63,7 @@ func (h *RpcServerHandler) OnOpen(session getty.Session) error {
 		return jerrors.Trace(err)
 	}
 
-	log.Info("got session:%s", session.Stat())
+	log.Debug("got session:%s", session.Stat())
 	h.rwlock.Lock()
 	h.sessionMap[session] = &rpcSession{session: session}
 	h.rwlock.Unlock()
@@ -71,14 +71,14 @@ func (h *RpcServerHandler) OnOpen(session getty.Session) error {
 }
 
 func (h *RpcServerHandler) OnError(session getty.Session, err error) {
-	log.Info("session{%s} got error{%v}, will be closed.", session.Stat(), err)
+	log.Debug("session{%s} got error{%v}, will be closed.", session.Stat(), err)
 	h.rwlock.Lock()
 	delete(h.sessionMap, session)
 	h.rwlock.Unlock()
 }
 
 func (h *RpcServerHandler) OnClose(session getty.Session) {
-	log.Info("session{%s} is closing......", session.Stat())
+	log.Debug("session{%s} is closing......", session.Stat())
 	h.rwlock.Lock()
 	delete(h.sessionMap, session)
 	h.rwlock.Unlock()
@@ -210,7 +210,7 @@ func (h *RpcClientHandler) OnOpen(session getty.Session) error {
 }
 
 func (h *RpcClientHandler) OnError(session getty.Session, err error) {
-	log.Info("session{%s} got error{%v}, will be closed.", session.Stat(), err)
+	log.Error("session{%s} got error{%v}, will be closed.", session.Stat(), err)
 	h.conn.removeSession(session)
 }
 
@@ -225,7 +225,7 @@ func (h *RpcClientHandler) OnMessage(session getty.Session, pkg interface{}) {
 		log.Error("illegal package{%#v}", pkg)
 		return
 	}
-	log.Debug("get rpc response{%#v}", p)
+	// log.Debug("get rpc response{%#v}", p)
 	h.conn.updateSession(session)
 
 	pendingResponse := h.conn.pool.rpcClient.removePendingResponse(p.H.Sequence)

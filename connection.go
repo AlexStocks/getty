@@ -252,7 +252,7 @@ func (t *gettyTCPConn) recv(p []byte) (int, error) {
 	}
 
 	length, err = t.reader.Read(p)
-	log.Debug("now:%s, length:%d, err:%s", currentTime, length, err)
+	// log.Debug("now:%s, length:%d, err:%s", currentTime, length, err)
 	atomic.AddUint32(&t.readBytes, uint32(length))
 	return length, jerrors.Trace(err)
 	//return length, err
