@@ -217,7 +217,7 @@ func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 	}
 	if gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 		log.Warn("conn.localAddr{%s} == conn.RemoteAddr", conn.LocalAddr().String(), conn.RemoteAddr().String())
-		return nil, errSelfConnect
+		return nil, jerrors.Trace(errSelfConnect)
 	}
 
 	ss := newTCPSession(conn, s)
@@ -250,7 +250,7 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 			}
 			client, err = s.accept(newSession)
 			if err != nil {
-				if netErr, ok := err.(net.Error); ok && netErr.Temporary() {
+				if netErr, ok := jerrors.Cause(err).(net.Error); ok && netErr.Temporary() {
 					if delay == 0 {
 						delay = 5 * time.Millisecond
 					} else {

@@ -1,11 +1,11 @@
 module github.com/AlexStocks/getty
 
 require (
-	github.com/dubbogo/gost v1.5.2
+	github.com/AlexStocks/goext v0.3.2
 	github.com/AlexStocks/log4go v1.0.2
 	github.com/coreos/go-systemd v0.0.0-20190318101727-c7c1946145b6 // indirect
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
-	github.com/dubbogo/gost v1.3.0
+	github.com/dubbogo/gost v1.5.2
 	github.com/fatih/camelcase v1.0.0 // indirect
 	github.com/fatih/set v0.2.1 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
@@ -24,7 +24,6 @@ require (
 	github.com/mailru/easyjson v0.0.0-20190312143242-1de009706dbe // indirect
 	github.com/mattn/go-colorable v0.1.1 // indirect
 	github.com/mattn/go-isatty v0.0.7 // indirect
-	github.com/pkg/errors v0.8.1 // indirect
 	github.com/samuel/go-zookeeper v0.0.0-20180130194729-c4fab1ac1bec // indirect
 	github.com/sirupsen/logrus v1.4.0 // indirect
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
