@@ -225,7 +225,7 @@ func (h *RpcClientHandler) OnMessage(session getty.Session, pkg interface{}) {
 		log.Error("illegal package{%#v}", pkg)
 		return
 	}
-	log.Debug("get rpc response{%#v}", p)
+	// log.Debug("get rpc response{%#v}", p)
 	h.conn.updateSession(session)
 
 	pendingResponse := h.conn.pool.rpcClient.removePendingResponse(p.H.Sequence)
