@@ -296,6 +296,18 @@ func (a *rpcClientArray) Put(clt *gettyRPCClient) {
 
 func (a *rpcClientArray) Get(key string, pool *gettyRPCClientPool) *gettyRPCClient {
 	now := time.Now().Unix()
+
+	var array []*gettyRPCClient
+	defer func() {
+		go func() {
+			if len(array) != 0 {
+				for i := range array {
+					array[i].close() // -> pool.remove(c)
+				}
+			}
+		}()
+	}()
+
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
@@ -305,7 +317,7 @@ func (a *rpcClientArray) Get(key string, pool *gettyRPCClientPool) *gettyRPCClie
 		pool.connMap.Store(key, a)
 
 		if d := now - conn.getActive(); d > pool.ttl {
-			go conn.close() // -> pool.remove(c)
+			array = append(array, conn)
 			continue
 		}
 
@@ -387,7 +399,6 @@ func (p *gettyRPCClientPool) getConn(protocol, addr string) (*gettyRPCClient, er
 		if clt != nil {
 			return clt, nil
 		}
-		return nil, errClientPoolClosed
 	}
 
 	// create new conn
