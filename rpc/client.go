@@ -184,8 +184,10 @@ func (c *Client) call(ct CallType, typ CodecType, addr, service, method string,
 
 	select {
 	case <-getty.GetTimeWheel().After(opts.ResponseTimeout):
-		err = errClientReadTimeout
+		// do not close connection
+		// err = errClientReadTimeout
 		c.removePendingResponse(rsp.seq)
+		return jerrors.Trace(errClientReadTimeout)
 	case <-rsp.done:
 		err = rsp.err
 	}
