@@ -395,7 +395,7 @@ func (c *client) connect() {
 	}
 }
 
-// there are two methods to keep connection pool. the first approch is like
+// there are two methods to keep connection pool. the first approach is like
 // redigo's lazy connection pool(https://github.com/gomodule/redigo/blob/master/redis/pool.go:),
 // in which you should apply testOnBorrow to check alive of the connection.
 // the second way is as follows. @RunEventLoop detects the aliveness of the connection

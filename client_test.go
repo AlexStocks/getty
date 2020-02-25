@@ -15,10 +15,6 @@ import (
 
 type PackageHandler struct{}
 
-func NewPackageHandler() *PackageHandler {
-	return &PackageHandler{}
-}
-
 func (h *PackageHandler) Read(ss Session, data []byte) (interface{}, int, error) {
 	return nil, 0, nil
 }
@@ -27,8 +23,8 @@ func (h *PackageHandler) Write(ss Session, pkg interface{}) ([]byte, error) {
 	return nil, nil
 }
 
-type MessageHandler struct{
-	lock sync.Mutex
+type MessageHandler struct {
+	lock  sync.Mutex
 	array []Session
 }
 
@@ -36,7 +32,7 @@ func newMessageHandler() *MessageHandler {
 	return &MessageHandler{}
 }
 
-func (h *MessageHandler)SessionNumber() int {
+func (h *MessageHandler) SessionNumber() int {
 	h.lock.Lock()
 	connNum := len(h.array)
 	h.lock.Unlock()
@@ -51,23 +47,21 @@ func (h *MessageHandler) OnOpen(session Session) error {
 
 	return nil
 }
-func (h *MessageHandler) OnError(session Session, err error) {}
-func (h *MessageHandler) OnClose(session Session) {}
+func (h *MessageHandler) OnError(session Session, err error)         {}
+func (h *MessageHandler) OnClose(session Session)                    {}
 func (h *MessageHandler) OnMessage(session Session, pkg interface{}) {}
-func (h *MessageHandler) OnCron(session Session) {}
+func (h *MessageHandler) OnCron(session Session)                     {}
 
-
-type Package struct {}
+type Package struct{}
 
 func (p Package) String() string {
 	return ""
 }
-func (p Package) Marshal() (*bytes.Buffer, error) { return nil, nil }
+func (p Package) Marshal() (*bytes.Buffer, error)           { return nil, nil }
 func (p *Package) Unmarshal(buf *bytes.Buffer) (int, error) { return 0, nil }
 
-
-var  (
-	pkg Package
+var (
+	pkg        Package
 	pkgHandler PackageHandler
 )
 
@@ -130,7 +124,7 @@ func TestTCPClient(t *testing.T) {
 
 func TestUDPClient(t *testing.T) {
 	var (
-		err error
+		err  error
 		conn *net.UDPConn
 	)
 	func() {
@@ -143,14 +137,14 @@ func TestUDPClient(t *testing.T) {
 
 	addr := conn.LocalAddr()
 	t.Logf("server addr: %v", addr)
-	clt := newClient(UDP_CLIENT ,
+	clt := NewUDPClient(
 		WithServerAddress(addr.String()),
 		WithReconnectInterval(5e8),
 		WithConnectionNumber(1),
 	)
 	assert.NotNil(t, clt)
 	assert.True(t, clt.ID() > 0)
-	assert.Equal(t, clt.endPointType, UDP_CLIENT)
+	//assert.Equal(t, clt.endPointType, UDP_CLIENT)
 
 	var (
 		msgHandler MessageHandler
@@ -165,4 +159,45 @@ func TestUDPClient(t *testing.T) {
 	assert.Equal(t, 1, msgHandler.SessionNumber())
 	clt.Close()
 	assert.True(t, clt.IsClosed())
+}
+
+func TestNewWSClient(t *testing.T) {
+	var (
+		server           Server
+		serverMsgHandler MessageHandler
+	)
+	addr := "127.0.0.1:12345"
+	path := "/hello"
+	func() {
+		server = NewWSServer(
+			WithLocalAddress(addr),
+			WithWebsocketServerPath(path),
+		)
+		newServerSession := func(session Session) error {
+			return newSessionCallback(session, &serverMsgHandler)
+		}
+		go server.RunEventLoop(newServerSession)
+	}()
+	time.Sleep(1e9)
+
+	client := NewWSClient(
+		WithServerAddress("ws://"+addr+path),
+		WithConnectionNumber(1),
+	)
+
+	var (
+		msgHandler MessageHandler
+	)
+	cb := func(session Session) error {
+		return newSessionCallback(session, &msgHandler)
+	}
+
+	client.RunEventLoop(cb)
+	time.Sleep(1e9)
+
+	assert.Equal(t, 1, msgHandler.SessionNumber())
+	client.Close()
+	assert.True(t, client.IsClosed())
+	server.Close()
+	assert.True(t, server.IsClosed())
 }
