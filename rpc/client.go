@@ -69,8 +69,8 @@ type CallResponse struct {
 type AsyncCallback func(response CallResponse)
 
 type Client struct {
-	conf     ClientConfig
-	pool     *gettyRPCClientPool
+	conf ClientConfig
+	pool *gettyRPCClientPool
 	// the sequence sent to server must be an odd number
 	sequence uint64
 
@@ -84,14 +84,14 @@ func NewClient(conf *ClientConfig) (*Client, error) {
 	}
 
 	initSequence := uint64(rand.Int63n(time.Now().UnixNano()))
-	if initSequence % 2 == 0 {
-		initSequence ++
+	if initSequence%2 == 0 {
+		initSequence++
 	}
 
 	c := &Client{
 		pendingResponses: make(map[SequenceType]*PendingResponse),
 		conf:             *conf,
-		sequence: initSequence,
+		sequence:         initSequence,
 	}
 	c.pool = newGettyRPCClientConnPool(c, conf.PoolSize, time.Duration(int(time.Second)*conf.PoolTTL))
 

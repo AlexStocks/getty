@@ -166,7 +166,7 @@ func TestNewWSClient(t *testing.T) {
 		server           Server
 		serverMsgHandler MessageHandler
 	)
-	addr := "127.0.0.1:12345"
+	addr := "127.0.0.1:65000"
 	path := "/hello"
 	func() {
 		server = NewWSServer(
@@ -200,4 +200,56 @@ func TestNewWSClient(t *testing.T) {
 	assert.True(t, client.IsClosed())
 	server.Close()
 	assert.True(t, server.IsClosed())
+}
+
+const (
+	WssProfilePath = "./examples/profiles/wss/"
+	WssServerCRT   = "server_cert/server.crt"
+	WssServerKEY   = "server_cert/server.key"
+	WssClientCRT   = "client_cert/client.crt"
+)
+
+func TestNewWSSClient(t *testing.T) {
+	var (
+		server           Server
+		serverMsgHandler MessageHandler
+	)
+	addr := "127.0.0.1:63450"
+	path := "/hello"
+	func() {
+		server = NewWSSServer(
+			WithLocalAddress(addr),
+			WithWebsocketServerPath(path),
+			WithWebsocketServerCert(WssProfilePath+WssServerCRT),
+			WithWebsocketServerPrivateKey(WssProfilePath+WssServerKEY),
+		)
+		newServerSession := func(session Session) error {
+			return newSessionCallback(session, &serverMsgHandler)
+		}
+		go server.RunEventLoop(newServerSession)
+	}()
+	time.Sleep(1e9)
+
+	client := NewWSSClient(
+		WithServerAddress("wss://"+addr+path),
+		WithConnectionNumber(1),
+		WithRootCertificateFile(WssProfilePath+WssClientCRT),
+	)
+
+	var (
+		msgHandler MessageHandler
+	)
+	cb := func(session Session) error {
+		return newSessionCallback(session, &msgHandler)
+	}
+
+	client.RunEventLoop(cb)
+	time.Sleep(1e9)
+
+	assert.Equal(t, 1, msgHandler.SessionNumber())
+	client.Close()
+	assert.True(t, client.IsClosed())
+	assert.False(t, server.IsClosed())
+	//server.Close()
+	//assert.True(t, server.IsClosed())
 }
