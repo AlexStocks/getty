@@ -92,7 +92,7 @@ type session struct {
 
 	// done
 	wait time.Duration
-	once sync.Once
+	once *sync.Once
 	done chan struct{}
 
 	// attribute
@@ -116,6 +116,7 @@ func newSession(endPoint EndPoint, conn Connection) *session {
 
 		period: period,
 
+		once: &sync.Once{},
 		done:  make(chan struct{}),
 		wait:  pendingDuration,
 		attrs: gxcontext.NewValuesContext(nil),
@@ -154,17 +155,15 @@ func newWSSession(conn *websocket.Conn, endPoint EndPoint) Session {
 }
 
 func (s *session) Reset() {
-	s.name = defaultSessionName
-	s.once = sync.Once{}
-	s.done = make(chan struct{})
-	s.period = period
-	s.wait = pendingDuration
-	s.attrs = gxcontext.NewValuesContext(nil)
-	s.rDone = make(chan struct{})
-	s.grNum = 0
-
-	s.SetWriteTimeout(netIOTimeout)
-	s.SetReadTimeout(netIOTimeout)
+	*s = session{
+		name : defaultSessionName,
+		once : &sync.Once{},
+		done : make(chan struct{}),
+		period : period,
+		wait : pendingDuration,
+		attrs : gxcontext.NewValuesContext(nil),
+		rDone : make(chan struct{}),
+	}
 }
 
 // func (s *session) SetConn(conn net.Conn) { s.gettyConn = newGettyConn(conn) }

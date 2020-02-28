@@ -159,6 +159,8 @@ func TestUDPClient(t *testing.T) {
 	assert.Equal(t, 1, msgHandler.SessionNumber())
 	clt.Close()
 	assert.True(t, clt.IsClosed())
+	msgHandler.array[0].Reset()
+	assert.Nil(t, msgHandler.array[0].Conn())
 }
 
 func TestNewWSClient(t *testing.T) {
@@ -203,7 +205,7 @@ func TestNewWSClient(t *testing.T) {
 }
 
 const (
-	WssProfilePath = "./examples/profiles/wss/"
+	WssProfilePath = "../examples/profiles/wss/"
 	WssServerCRT   = "server_cert/server.crt"
 	WssServerKEY   = "server_cert/server.key"
 	WssClientCRT   = "client_cert/client.crt"
