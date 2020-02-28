@@ -26,7 +26,7 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/getty"
+	"github.com/AlexStocks/getty/transport"
 	gxlog "github.com/AlexStocks/goext/log"
 	gxnet "github.com/AlexStocks/goext/net"
 	gxtime "github.com/AlexStocks/goext/time"

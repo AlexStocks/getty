@@ -16,7 +16,7 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/getty"
+	"github.com/AlexStocks/getty/transport"
 	// "github.com/AlexStocks/goext/strings"
 	log "github.com/AlexStocks/log4go"
 )

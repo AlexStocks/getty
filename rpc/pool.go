@@ -16,7 +16,7 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/getty"
+	"github.com/AlexStocks/getty/transport"
 )
 
 type gettyRPCClient struct {

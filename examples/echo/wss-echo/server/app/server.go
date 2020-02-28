@@ -24,7 +24,7 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/getty"
+	"github.com/AlexStocks/getty/transport"
 	"github.com/AlexStocks/goext/log"
 	"github.com/AlexStocks/goext/net"
 	log "github.com/AlexStocks/log4go"

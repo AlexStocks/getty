@@ -25,7 +25,7 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/getty"
+	"github.com/AlexStocks/getty/transport"
 	"github.com/AlexStocks/goext/log"
 	"github.com/AlexStocks/goext/net"
 	"github.com/AlexStocks/goext/time"
