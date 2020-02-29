@@ -85,6 +85,7 @@ func newSessionCallback(session Session, handler *MessageHandler) error {
 }
 
 func TestTCPClient(t *testing.T) {
+	assert.NotNil(t, GetTimeWheel())
 	listenLocalServer := func() (net.Listener, error) {
 		listener, err := net.Listen("tcp", ":0")
 		if err != nil {
@@ -101,14 +102,14 @@ func TestTCPClient(t *testing.T) {
 
 	addr := listener.Addr().(*net.TCPAddr)
 	t.Logf("server addr: %v", addr)
-	clt := newClient(TCP_CLIENT,
+	clt := NewTCPClient(
 		WithServerAddress(addr.String()),
 		WithReconnectInterval(5e8),
 		WithConnectionNumber(1),
 	)
 	assert.NotNil(t, clt)
 	assert.True(t, clt.ID() > 0)
-	assert.Equal(t, clt.endPointType, TCP_CLIENT)
+	//assert.Equal(t, clt.endPointType, TCP_CLIENT)
 
 	var (
 		msgHandler MessageHandler
@@ -248,6 +249,12 @@ func TestNewWSClient(t *testing.T) {
 	assert.Nil(t, err)
 	err = conn.writePing()
 	assert.Nil(t, err)
+
+	ss.SetReader(nil)
+	assert.Nil(t, ss.(*session).reader)
+	ss.SetWriter(nil)
+	assert.Nil(t, ss.(*session).writer)
+	assert.Nil(t, ss.(*session).GetAttribute("hello"))
 
 	client.Close()
 	assert.True(t, client.IsClosed())
