@@ -116,7 +116,7 @@ func newSession(endPoint EndPoint, conn Connection) *session {
 
 		period: period,
 
-		once: &sync.Once{},
+		once:  &sync.Once{},
 		done:  make(chan struct{}),
 		wait:  pendingDuration,
 		attrs: gxcontext.NewValuesContext(nil),
@@ -156,13 +156,13 @@ func newWSSession(conn *websocket.Conn, endPoint EndPoint) Session {
 
 func (s *session) Reset() {
 	*s = session{
-		name : defaultSessionName,
-		once : &sync.Once{},
-		done : make(chan struct{}),
-		period : period,
-		wait : pendingDuration,
-		attrs : gxcontext.NewValuesContext(nil),
-		rDone : make(chan struct{}),
+		name:   defaultSessionName,
+		once:   &sync.Once{},
+		done:   make(chan struct{}),
+		period: period,
+		wait:   pendingDuration,
+		attrs:  gxcontext.NewValuesContext(nil),
+		rDone:  make(chan struct{}),
 	}
 }
 
@@ -360,6 +360,10 @@ func (s *session) RemoveAttribute(key interface{}) {
 }
 
 func (s *session) sessionToken() string {
+	if s.IsClosed() || s.Connection == nil {
+		return "session-closed"
+	}
+
 	return fmt.Sprintf("{%s:%s:%d:%s<->%s}",
 		s.name, s.EndPoint().EndPointType(), s.ID(), s.LocalAddr(), s.RemoteAddr())
 }
@@ -669,7 +673,9 @@ func (s *session) handlePackage() {
 		s.stop()
 		if err != nil {
 			log.Error("%s, [session.handlePackage] error{%s}", s.sessionToken(), jerrors.ErrorStack(err))
-			s.listener.OnError(s, err)
+			if s != nil || s.listener != nil {
+				s.listener.OnError(s, err)
+			}
 		}
 	}()
 
@@ -686,6 +692,7 @@ func (s *session) handlePackage() {
 	} else if _, ok := s.Connection.(*gettyUDPConn); ok {
 		err = s.handleUDPPackage()
 	} else {
+		fmt.Printf("session Type %T\n", s.Connection)
 		panic(fmt.Sprintf("unknown type session{%#v}", s))
 	}
 }
