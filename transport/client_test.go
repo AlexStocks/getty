@@ -236,6 +236,19 @@ func TestNewWSClient(t *testing.T) {
 	time.Sleep(1e9)
 
 	assert.Equal(t, 1, msgHandler.SessionNumber())
+	ss := msgHandler.array[0]
+	ss.SetCompressType(CompressNone)
+	conn := ss.(*session).Connection.(*gettyWSConn)
+	assert.True(t, conn.compress == CompressNone)
+	err := conn.handlePing("hello")
+	assert.Nil(t, err)
+	_, err = conn.send("hello")
+	assert.NotNil(t, err)
+	_, err = conn.send([]byte("hello"))
+	assert.Nil(t, err)
+	err = conn.writePing()
+	assert.Nil(t, err)
+
 	client.Close()
 	assert.True(t, client.IsClosed())
 	server.Close()
