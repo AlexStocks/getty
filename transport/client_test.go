@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -120,6 +121,15 @@ func TestTCPClient(t *testing.T) {
 	time.Sleep(1e9)
 
 	assert.Equal(t, 1, msgHandler.SessionNumber())
+	ss := msgHandler.array[0]
+	ss.SetCompressType(CompressNone)
+	conn := ss.(*session).Connection.(*gettyTCPConn)
+	assert.True(t, conn.compress == CompressNone)
+	err = ss.WriteBytes([]byte("hello"))
+	assert.Nil(t, err)
+	ss.SetCompressType(CompressSnappy)
+	assert.True(t, conn.compress == CompressSnappy)
+
 	clt.Close()
 	assert.True(t, clt.IsClosed())
 }
@@ -164,16 +174,24 @@ func TestUDPClient(t *testing.T) {
 	assert.NotNil(t, err)
 	err = ss.WritePkg([]byte("hello"), 0)
 	assert.NotNil(t, jerrors.Cause(err))
-	//host, port, _ := net.SplitHostPort(addr.String())
-	//if len(host) < 8 {
-	//	host = "127.0.0.1"
-	//}
-	//remotePort, _ := strconv.Atoi(port)
-	//serverAddr := net.UDPAddr{IP: net.ParseIP(host), Port: remotePort}
-	//udpCtx := UDPContext{
-	//	Pkg:      []byte("hello"),
-	//	PeerAddr: &serverAddr,
-	//}
+	err = ss.WriteBytes([]byte("hello"))
+	assert.NotNil(t, err)
+	err = ss.WriteBytesArray([]byte("hello"))
+	assert.NotNil(t, err)
+	err = ss.WriteBytesArray([]byte("hello"), []byte("world"))
+	assert.NotNil(t, err)
+	ss.SetCompressType(CompressNone)
+	host, port, _ := net.SplitHostPort(addr.String())
+	if len(host) < 8 {
+		host = "127.0.0.1"
+	}
+	remotePort, _ := strconv.Atoi(port)
+	serverAddr := net.UDPAddr{IP: net.ParseIP(host), Port: remotePort}
+	udpCtx := UDPContext{
+		Pkg:      []byte("hello"),
+		PeerAddr: &serverAddr,
+	}
+	t.Logf("udp context:%s", udpCtx)
 	//ss.WritePkg(udpCtx, 1e9)
 
 	clt.Close()

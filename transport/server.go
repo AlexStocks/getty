@@ -189,9 +189,6 @@ func (s *server) listenUDP() error {
 	if err != nil {
 		return jerrors.Annotatef(err, "net.ListenUDP((udp, localAddr:%#v)", localAddr)
 	}
-	// if err = setUDPSocketOptions(pktListener); err != nil {
-	//  	return errors.Wrapf(err, "setUDPSocketOptions(pktListener:%#v)", pktListener)
-	// }
 
 	s.pktListener = pktListener
 
