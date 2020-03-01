@@ -189,11 +189,16 @@ func TestUDPClient(t *testing.T) {
 	remotePort, _ := strconv.Atoi(port)
 	serverAddr := net.UDPAddr{IP: net.ParseIP(host), Port: remotePort}
 	udpCtx := UDPContext{
-		Pkg:      []byte("hello"),
+		Pkg:      "hello",
 		PeerAddr: &serverAddr,
 	}
 	t.Logf("udp context:%s", udpCtx)
-	//ss.WritePkg(udpCtx, 1e9)
+	udpConn := ss.(*session).Connection.(*gettyUDPConn)
+	_, err = udpConn.send(udpCtx)
+	assert.NotNil(t, err)
+	udpCtx.Pkg = []byte("hello")
+	_, err = udpConn.send(udpCtx)
+	assert.Nil(t, err)
 
 	clt.Close()
 	assert.True(t, clt.IsClosed())
