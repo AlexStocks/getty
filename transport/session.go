@@ -937,16 +937,28 @@ func (s *session) stop() {
 }
 
 func (s *session) gc() {
+	var (
+		wQ   chan interface{}
+		conn Connection
+	)
+
 	s.lock.Lock()
 	if s.attrs != nil {
 		s.attrs = nil
 		if s.wQ != nil {
-			close(s.wQ)
+			wQ = s.wQ
 			s.wQ = nil
 		}
-		s.Connection.close((int)((int64)(s.wait)))
+		conn = s.Connection
 	}
 	s.lock.Unlock()
+
+	go func() {
+		if wQ != nil {
+			conn.close((int)((int64)(s.wait)))
+			close(wQ)
+		}
+	}()
 }
 
 // Close will be invoked by NewSessionCallback(if return error is not nil)
