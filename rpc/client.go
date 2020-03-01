@@ -172,7 +172,13 @@ func (c *Client) call(ct CallType, typ CodecType, addr, service, method string,
 	if err != nil || session == nil {
 		return errSessionNotExist
 	}
-	defer c.pool.release(conn, err)
+	defer func() {
+		if err == nil {
+			c.pool.put(conn)
+			return
+		}
+		conn.close()
+	}()
 
 	if err = c.transfer(session, typ, b, rsp, opts); err != nil {
 		return jerrors.Trace(err)
@@ -203,7 +209,7 @@ func (c *Client) Close() {
 }
 
 func (c *Client) selectSession(typ CodecType, addr string) (*gettyRPCClient, getty.Session, error) {
-	rpcConn, err := c.pool.getConn(typ.String(), addr)
+	rpcConn, err := c.pool.get(typ.String(), addr)
 	if err != nil {
 		return nil, nil, jerrors.Trace(err)
 	}

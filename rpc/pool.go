@@ -385,7 +385,7 @@ func (p *gettyRPCClientPool) close() {
 	})
 }
 
-func (p *gettyRPCClientPool) getConn(protocol, addr string) (*gettyRPCClient, error) {
+func (p *gettyRPCClientPool) get(protocol, addr string) (*gettyRPCClient, error) {
 	var builder strings.Builder
 
 	builder.WriteString(addr)
@@ -405,12 +405,8 @@ func (p *gettyRPCClientPool) getConn(protocol, addr string) (*gettyRPCClient, er
 	return newGettyRPCClient(p, protocol, addr)
 }
 
-func (p *gettyRPCClientPool) release(conn *gettyRPCClient, err error) {
+func (p *gettyRPCClientPool) put(conn *gettyRPCClient) {
 	if conn == nil || conn.getActive() == 0 {
-		return
-	}
-	if err != nil {
-		conn.close()
 		return
 	}
 
