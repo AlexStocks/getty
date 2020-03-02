@@ -169,7 +169,10 @@ func (c *Client) call(ct CallType, typ CodecType, addr, service, method string,
 		conn    *gettyRPCClient
 	)
 	conn, session, err = c.selectSession(typ, addr)
-	if err != nil || session == nil {
+	if err != nil {
+		return jerrors.Trace(err)
+	}
+	if session == nil {
 		return errSessionNotExist
 	}
 	defer func() {

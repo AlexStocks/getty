@@ -46,7 +46,7 @@ func newGettyRPCClient(pool *gettyRPCClientPool, protocol, addr string) (*gettyR
 			getty.WithConnectionNumber(pool.rpcClient.conf.ConnectionNum),
 		),
 	}
-	c.gettyClient.RunEventLoop(c.newSession)
+	go c.gettyClient.RunEventLoop(c.newSession)
 	idx := 1
 	for {
 		idx++
@@ -54,8 +54,9 @@ func newGettyRPCClient(pool *gettyRPCClientPool, protocol, addr string) (*gettyR
 			break
 		}
 
-		if idx > 5000 {
-			return nil, jerrors.New(fmt.Sprintf("failed to create client connection to %s in 5 seconds", addr))
+		if idx > 2000 {
+			c.gettyClient.Close()
+			return nil, jerrors.New(fmt.Sprintf("failed to create client connection to %s in 3 seconds", addr))
 		}
 		time.Sleep(1e6)
 	}
@@ -402,7 +403,8 @@ func (p *gettyRPCClientPool) get(protocol, addr string) (*gettyRPCClient, error)
 	}
 
 	// create new conn
-	return newGettyRPCClient(p, protocol, addr)
+	rpcClient, err :=newGettyRPCClient(p, protocol, addr)
+	return rpcClient, jerrors.Trace(err)
 }
 
 func (p *gettyRPCClientPool) put(conn *gettyRPCClient) {
