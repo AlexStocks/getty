@@ -403,7 +403,7 @@ func (p *gettyRPCClientPool) get(protocol, addr string) (*gettyRPCClient, error)
 	}
 
 	// create new conn
-	rpcClient, err :=newGettyRPCClient(p, protocol, addr)
+	rpcClient, err := newGettyRPCClient(p, protocol, addr)
 	return rpcClient, jerrors.Trace(err)
 }
 

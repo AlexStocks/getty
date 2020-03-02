@@ -25,8 +25,8 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/getty/transport"
 	"github.com/AlexStocks/getty/micro"
+	"github.com/AlexStocks/getty/transport"
 )
 
 const (
