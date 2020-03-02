@@ -164,6 +164,9 @@ func (s *session) Reset() {
 		attrs:  gxcontext.NewValuesContext(nil),
 		rDone:  make(chan struct{}),
 	}
+
+	s.SetWriteTimeout(netIOTimeout)
+	s.SetReadTimeout(netIOTimeout)
 }
 
 // func (s *session) SetConn(conn net.Conn) { s.gettyConn = newGettyConn(conn) }
