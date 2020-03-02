@@ -328,17 +328,6 @@ type gettyUDPConn struct {
 	conn         *net.UDPConn // for server
 }
 
-func setUDPSocketOptions(conn *net.UDPConn) error {
-	// Try setting the flags for both families and ignore the errors unless they
-	// both error.
-	err6 := ipv6.NewPacketConn(conn).SetControlMessage(ipv6.FlagDst|ipv6.FlagInterface, true)
-	err4 := ipv4.NewPacketConn(conn).SetControlMessage(ipv4.FlagDst|ipv4.FlagInterface, true)
-	if err6 != nil && err4 != nil {
-		return perrors.WithStack(err4)
-	}
-	return nil
-}
-
 // create gettyUDPConn
 func newGettyUDPConn(conn *net.UDPConn) *gettyUDPConn {
 	if conn == nil {
