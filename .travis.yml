@@ -1,8 +1,6 @@
 language: go
 
 go:
-  - "1.11"
-  - "1.12"
   - "1.13"
 
 env:
@@ -10,4 +8,4 @@ env:
 
 script:
   - go fmt ./... && [[ -z `git status -s` ]]
-  - go mod vendor && go test ./... -bench . -race -v
+  - go mod vendor && go test -v client_test.go server_test.go session.go client.go connection.go const.go getty.go server.go options.go logger.go
