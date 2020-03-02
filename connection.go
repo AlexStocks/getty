@@ -24,8 +24,6 @@ import (
 	"github.com/golang/snappy"
 	"github.com/gorilla/websocket"
 	perrors "github.com/pkg/errors"
-	"golang.org/x/net/ipv4"
-	"golang.org/x/net/ipv6"
 )
 
 var (
