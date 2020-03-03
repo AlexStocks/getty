@@ -9,10 +9,7 @@ import (
     "github.com/stretchr/testify/assert"
 )
 
-var (
-    serverConf      *ServerConfig
-    clientConf      *ClientConfig
-)
+var serverConf      *ServerConfig
 
 type (
     TestReq struct {}
@@ -48,7 +45,7 @@ func (r *TestService) Event(req *TestReq) error {
     return nil
 }
 
-func initConf() {
+func initServerConf() {
     serverConf = &ServerConfig{}
     serverConf.AppName = "RPC-SERVER"
     serverConf.Host = "127.0.0.1"
@@ -67,30 +64,12 @@ func initConf() {
     serverConf.GettySessionParam.TcpKeepAlive = true
     serverConf.GettySessionParam.KeepAlivePeriod = "120s"
     serverConf.GettySessionParam.MaxMsgLen = 1024
-
-    clientConf = &ClientConfig{}
-    clientConf.AppName = "RPC-SERVER"
-    clientConf.Host = "127.0.0.1"
-    clientConf.ConnectionNum = 2
-    clientConf.HeartbeatPeriod = "10s"
-
-    clientConf.SessionTimeout = "20s"
-    clientConf.FailFastTimeout = "3s"
-
-    clientConf.GettySessionParam.CompressEncoding = true
-    clientConf.GettySessionParam.TcpNoDelay = true
-    clientConf.GettySessionParam.TcpReadTimeout = "2s"
-    clientConf.GettySessionParam.TcpWriteTimeout = "5s"
-    clientConf.GettySessionParam.PkgWQSize = 10
-    clientConf.GettySessionParam.WaitTimeout = "1s"
-    clientConf.GettySessionParam.TcpKeepAlive = true
-    clientConf.GettySessionParam.KeepAlivePeriod = "120s"
-    clientConf.GettySessionParam.MaxMsgLen = 1024
     return
 }
 
 func TestNewServer(t *testing.T) {
-    initConf()
+    initServerConf()
+    initClientConf()
     server, err := NewServer(serverConf)
     assert.Nil(t, err)
     err = server.Register(&TestService{})

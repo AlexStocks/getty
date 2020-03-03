@@ -10,14 +10,14 @@ import (
 
 func TestClientConfig_CheckValidity(t *testing.T) {
     var err error
-    initConf()
+    initClientConf()
     err = clientConf.CheckValidity()
     assert.Nil(t, err)
 }
 
 func TestServerConfig_CheckValidity(t *testing.T) {
     var err error
-    initConf()
+    initServerConf()
     err = serverConf.CheckValidity()
     assert.Nil(t, err)
 }

@@ -12,6 +12,29 @@ import (
     "github.com/stretchr/testify/suite"
 )
 
+var clientConf *ClientConfig
+
+func initClientConf(){
+    clientConf = &ClientConfig{}
+    clientConf.AppName = "RPC-SERVER"
+    clientConf.Host = "127.0.0.1"
+    clientConf.ConnectionNum = 2
+    clientConf.HeartbeatPeriod = "10s"
+
+    clientConf.SessionTimeout = "20s"
+    clientConf.FailFastTimeout = "3s"
+
+    clientConf.GettySessionParam.CompressEncoding = true
+    clientConf.GettySessionParam.TcpNoDelay = true
+    clientConf.GettySessionParam.TcpReadTimeout = "2s"
+    clientConf.GettySessionParam.TcpWriteTimeout = "5s"
+    clientConf.GettySessionParam.PkgWQSize = 10
+    clientConf.GettySessionParam.WaitTimeout = "1s"
+    clientConf.GettySessionParam.TcpKeepAlive = true
+    clientConf.GettySessionParam.KeepAlivePeriod = "120s"
+    clientConf.GettySessionParam.MaxMsgLen = 1024
+}
+
 type ClientTestSuite struct {
     suite.Suite
     client  *Client
@@ -20,7 +43,8 @@ type ClientTestSuite struct {
 
 func (suite *ClientTestSuite) SetupTest() {
     var err error
-    initConf()
+    initServerConf()
+    initClientConf()
     suite.server, err = NewServer(serverConf)
     suite.Nil(err)
     err = suite.server.Register(&TestService{})
