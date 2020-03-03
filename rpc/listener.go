@@ -230,6 +230,7 @@ func (h *RpcClientHandler) OnMessage(session getty.Session, pkg interface{}) {
 
 	pendingResponse := h.conn.pool.rpcClient.removePendingResponse(p.H.Sequence)
 	if pendingResponse == nil {
+		log.Error("failed to get pending response context for response package %s", *p)
 		return
 	}
 	if p.H.Command == gettyCmdHbResponse {
