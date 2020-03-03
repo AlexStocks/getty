@@ -59,7 +59,6 @@ func (suite *ClientTestSuite) TestClient_Json_Call() {
     suite.Nil(err)
 }
 
-
 func (suite *ClientTestSuite) TestClient_Json_AsyncCall() {
     var err error
     ts := TestService{}
