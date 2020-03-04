@@ -9,8 +9,6 @@ import (
     "github.com/stretchr/testify/assert"
 )
 
-var serverConf      *ServerConfig
-
 type (
     TestReq struct {}
     TestRsp struct {}
@@ -45,31 +43,35 @@ func (r *TestService) Event(req *TestReq) error {
     return nil
 }
 
-func initServerConf() {
-    serverConf = &ServerConfig{}
-    serverConf.AppName = "RPC-SERVER"
-    serverConf.Host = "127.0.0.1"
-    serverConf.Ports = []string{"10001", "20002"}
-
-    serverConf.SessionTimeout = "20s"
-    serverConf.SessionNumber = 700
-    serverConf.FailFastTimeout = "3s"
-
-    serverConf.GettySessionParam.CompressEncoding = true
-    serverConf.GettySessionParam.TcpNoDelay = true
-    serverConf.GettySessionParam.PkgWQSize = 10
-    serverConf.GettySessionParam.TcpReadTimeout = "2s"
-    serverConf.GettySessionParam.TcpWriteTimeout = "5s"
-    serverConf.GettySessionParam.WaitTimeout = "1s"
-    serverConf.GettySessionParam.TcpKeepAlive = true
-    serverConf.GettySessionParam.KeepAlivePeriod = "120s"
-    serverConf.GettySessionParam.MaxMsgLen = 1024
-    return
+func buildServerConf() *ServerConfig{
+    return &ServerConfig{
+        AppName:         "RPC-SERVER",
+        Host:            "127.0.0.1",
+        Ports:           []string{"10001", "20002"},
+        SessionTimeout:  "20s",
+        SessionNumber:   700,
+        FailFastTimeout: "3s",
+        GettySessionParam: GettySessionParam{
+            CompressEncoding: true,
+            TcpNoDelay:       true,
+            PkgWQSize:        10,
+            TcpReadTimeout:   "2s",
+            TcpWriteTimeout:  "5s",
+            WaitTimeout:      "1s",
+            TcpKeepAlive:     true,
+            KeepAlivePeriod:  "120s",
+            MaxMsgLen:        1024,
+        },
+    }
 }
 
 func TestNewServer(t *testing.T) {
-    initServerConf()
-    initClientConf()
+    var (
+        clientConf *ClientConfig
+        serverConf *ServerConfig
+    )
+    serverConf = buildServerConf()
+    clientConf = buildClientConf()
     server, err := NewServer(serverConf)
     assert.Nil(t, err)
     err = server.Register(&TestService{})

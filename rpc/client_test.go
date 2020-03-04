@@ -12,45 +12,47 @@ import (
     "github.com/stretchr/testify/suite"
 )
 
-var clientConf *ClientConfig
+func buildClientConf() *ClientConfig{
+    return &ClientConfig{
+        AppName:         "RPC-SERVER",
+        Host:            "127.0.0.1",
+        ConnectionNum:   2,
+        HeartbeatPeriod: "10s",
 
-func initClientConf(){
-    clientConf = &ClientConfig{}
-    clientConf.AppName = "RPC-SERVER"
-    clientConf.Host = "127.0.0.1"
-    clientConf.ConnectionNum = 2
-    clientConf.HeartbeatPeriod = "10s"
-
-    clientConf.SessionTimeout = "20s"
-    clientConf.FailFastTimeout = "3s"
-
-    clientConf.GettySessionParam.CompressEncoding = true
-    clientConf.GettySessionParam.TcpNoDelay = true
-    clientConf.GettySessionParam.TcpReadTimeout = "2s"
-    clientConf.GettySessionParam.TcpWriteTimeout = "5s"
-    clientConf.GettySessionParam.PkgWQSize = 10
-    clientConf.GettySessionParam.WaitTimeout = "1s"
-    clientConf.GettySessionParam.TcpKeepAlive = true
-    clientConf.GettySessionParam.KeepAlivePeriod = "120s"
-    clientConf.GettySessionParam.MaxMsgLen = 1024
+        SessionTimeout:  "20s",
+        FailFastTimeout: "3s",
+        GettySessionParam: GettySessionParam{
+            CompressEncoding: true,
+            TcpNoDelay:       true,
+            TcpReadTimeout:   "2s",
+            TcpWriteTimeout:  "5s",
+            PkgWQSize:        10,
+            WaitTimeout:      "1s",
+            TcpKeepAlive:     true,
+            KeepAlivePeriod:  "120s",
+            MaxMsgLen:        1024,
+        },
+    }
 }
 
 type ClientTestSuite struct {
     suite.Suite
     client  *Client
     server  *Server
+    clientConf *ClientConfig
+    serverConf *ServerConfig
 }
 
 func (suite *ClientTestSuite) SetupTest() {
     var err error
-    initServerConf()
-    initClientConf()
-    suite.server, err = NewServer(serverConf)
+    suite.serverConf = buildServerConf()
+    suite.clientConf = buildClientConf()
+    suite.server, err = NewServer(suite.serverConf)
     suite.Nil(err)
     err = suite.server.Register(&TestService{})
     suite.Nil(err)
     suite.server.Start()
-    suite.client, err = NewClient(clientConf)
+    suite.client, err = NewClient(suite.clientConf)
     suite.Nil(err)
 }
 
@@ -64,7 +66,7 @@ func (suite *ClientTestSuite) TearDownTest() {
 func (suite *ClientTestSuite) TestClient_Json_CallOneway() {
     var err error
     ts := TestService{}
-    addr := net.JoinHostPort(serverConf.Host, serverConf.Ports[0])
+    addr := net.JoinHostPort(suite.serverConf.Host, suite.serverConf.Ports[0])
 
     eventReq := EventReq{}
     err = suite.client.CallOneway(CodecJson, addr, ts.Service(), "Event", &eventReq,
@@ -75,7 +77,7 @@ func (suite *ClientTestSuite) TestClient_Json_CallOneway() {
 func (suite *ClientTestSuite) TestClient_Json_Call() {
     var err error
     ts := TestService{}
-    addr := net.JoinHostPort(serverConf.Host, serverConf.Ports[0])
+    addr := net.JoinHostPort(suite.serverConf.Host, suite.serverConf.Ports[0])
 
     testReq := TestReq{}
     testRsp := TestRsp{}
@@ -87,7 +89,7 @@ func (suite *ClientTestSuite) TestClient_Json_Call() {
 func (suite *ClientTestSuite) TestClient_Json_AsyncCall() {
     var err error
     ts := TestService{}
-    addr := net.JoinHostPort(serverConf.Host, serverConf.Ports[0])
+    addr := net.JoinHostPort(suite.serverConf.Host, suite.serverConf.Ports[0])
 
     testReq := TestReq{}
     testRsp := TestRsp{}
