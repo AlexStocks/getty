@@ -9,44 +9,51 @@ import (
     "github.com/stretchr/testify/assert"
 )
 
-var (
-    client *Client
-    ClientConfig *rpc.ClientConfig
-    ConsumerConfig *ConsumerRegistryConfig
-)
+func buildClientConf() *rpc.ClientConfig{
+    return &rpc.ClientConfig{
+        AppName:         "MICRO-CLIENT",
+        Host:            "127.0.0.1",
+        SessionTimeout:  "20s",
+        FailFastTimeout: "3s",
+        HeartbeatPeriod: "10s",
 
-func initClientConf() {
-    ClientConfig = &rpc.ClientConfig{}
-    ClientConfig.AppName = "MICRO-CLIENT"
-    ClientConfig.Host = "127.0.0.1"
-    ClientConfig.SessionTimeout = "20s"
-    ClientConfig.FailFastTimeout = "3s"
-    ClientConfig.HeartbeatPeriod = "10s"
+        GettySessionParam: rpc.GettySessionParam{
+            CompressEncoding: true,
+            TcpNoDelay:       true,
+            TcpRBufSize:      262144,
+            TcpWBufSize:      524288,
+            SessionName:      "getty-micro-server",
+            TcpReadTimeout:   "2s",
+            TcpWriteTimeout:  "5s",
+            PkgWQSize:        512,
+            WaitTimeout:      "1s",
+            TcpKeepAlive:     true,
+            KeepAlivePeriod:  "120s",
+            MaxMsgLen:        1024,
+        },
+    }
+}
 
-    ClientConfig.GettySessionParam.CompressEncoding = true
-    ClientConfig.GettySessionParam.TcpNoDelay = true
-    ClientConfig.GettySessionParam.TcpRBufSize = 262144
-    ClientConfig.GettySessionParam.TcpWBufSize = 524288
-    ClientConfig.GettySessionParam.SessionName = "getty-micro-server"
-    ClientConfig.GettySessionParam.TcpReadTimeout = "2s"
-    ClientConfig.GettySessionParam.TcpWriteTimeout = "5s"
-    ClientConfig.GettySessionParam.PkgWQSize = 512
-    ClientConfig.GettySessionParam.WaitTimeout = "1s"
-    ClientConfig.GettySessionParam.TcpKeepAlive = true
-    ClientConfig.GettySessionParam.KeepAlivePeriod = "120s"
-    ClientConfig.GettySessionParam.MaxMsgLen = 1024
-
-    ConsumerConfig = &ConsumerRegistryConfig{}
-    ConsumerConfig.RegistryConfig.Root = "/getty-micro"
-    ConsumerConfig.RegistryConfig.KeepaliveTimeout = 10
-    ConsumerConfig.RegistryConfig.RegAddr = "127.0.0.1:2181"
-    ConsumerConfig.RegistryConfig.Type = "zookeeper"
-    ConsumerConfig.Group = "bj-yizhuang"
+func buildConsumerRegistryConfig() *ConsumerRegistryConfig{
+    return &ConsumerRegistryConfig{
+        Group: "bj-yizhuang",
+        RegistryConfig: RegistryConfig {
+            Root:             "/getty-micro",
+            KeepaliveTimeout: 10,
+            RegAddr:          "127.0.0.1:2181",
+            Type:             "zookeeper",
+        },
+    }
 }
 
 func TestNewClient(t *testing.T) {
-    var err error
-    initClientConf()
-    client, err = NewClient(ClientConfig, ConsumerConfig)
+    var (
+        err error
+        clientConf *rpc.ClientConfig
+        consumerReistryConfig *ConsumerRegistryConfig
+    )
+    clientConf = buildClientConf()
+    consumerReistryConfig = buildConsumerRegistryConfig()
+    _, err = NewClient(clientConf, consumerReistryConfig)
     assert.Nil(t, err)
 }

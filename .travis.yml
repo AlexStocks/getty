@@ -9,5 +9,5 @@ env:
 script:
   - go fmt ./... && [[ -z `git status -s` ]]
   - go mod vendor && cd transport && go test -v options_test.go client_test.go server_test.go session.go client.go connection.go const.go getty.go server.go options.go
-  - cd .. && cd rpc && go test -v config_test.go rpc_test.go server_test.go client_test.go server.go client.go listener.go rpc.go codec.go config.go readwriter.go util.go pool.go rpcclientmap.go codec.pb.go
-  - cd .. && cd micro && go test -v client_test.go server_test.go server.go client.go config.go
+  - cd ../rpc && go test -v config_test.go rpc_test.go server_test.go client_test.go server.go client.go listener.go rpc.go codec.go config.go readwriter.go util.go pool.go rpcclientmap.go codec.pb.go
+  - cd ../micro && go test -v client_test.go server_test.go server.go client.go config.go

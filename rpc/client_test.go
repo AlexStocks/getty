@@ -56,6 +56,7 @@ func (suite *ClientTestSuite) SetupTest() {
 
 func (suite *ClientTestSuite) TearDownTest() {
     suite.server.Stop()
+    suite.Nil(suite.server.tcpServerList)
     suite.client.Close()
     suite.Nil(suite.client.pool)
 }

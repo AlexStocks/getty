@@ -9,46 +9,7 @@ import (
     "github.com/stretchr/testify/assert"
 )
 
-var (
-    server *Server
-)
-
-type microConfig struct {
-    rpc.ServerConfig   `yaml:"core" json:"core, omitempty"`
-    Registry ProviderRegistryConfig `yaml:"registry" json:"registry, omitempty"`
-}
-
-var (
-    conf *microConfig
-)
-
-func initServerConf() {
-    conf = &microConfig{}
-    conf.AppName = "MICRO-SERVER"
-    conf.Host = "127.0.0.1"
-    conf.Ports = []string{"10000", "20000"}
-    conf.SessionNumber = 700
-    conf.SessionTimeout = "20s"
-    conf.FailFastTimeout = "3s"
-
-    conf.GettySessionParam.CompressEncoding = true
-    conf.GettySessionParam.TcpNoDelay = true
-    conf.GettySessionParam.TcpRBufSize = 262144
-    conf.GettySessionParam.TcpWBufSize = 524288
-    conf.GettySessionParam.SessionName = "getty-micro-server"
-    conf.GettySessionParam.TcpReadTimeout = "2s"
-    conf.GettySessionParam.TcpWriteTimeout = "5s"
-    conf.GettySessionParam.PkgWQSize = 512
-    conf.GettySessionParam.WaitTimeout = "1s"
-    conf.GettySessionParam.TcpKeepAlive = true
-    conf.GettySessionParam.KeepAlivePeriod = "120s"
-    conf.GettySessionParam.MaxMsgLen = 1024
-
-    conf.Registry.RegistryConfig.Type = "zookeeper"
-    conf.Registry.RegistryConfig.RegAddr = "127.0.0.1:2181"
-    conf.Registry.RegistryConfig.KeepaliveTimeout = 10
-    conf.Registry.RegistryConfig.Root = "/getty-micro"
-
+func buildProviderRegistryConfig() *ProviderRegistryConfig {
     serviceArray := []ServiceConfig{
         {
             "127.0.0.1",
@@ -91,14 +52,51 @@ func initServerConf() {
             "{\"group_id\":2, \"node_id\":0}",
         },
     }
-    conf.Registry.ServiceArray = serviceArray
-    return
+    return &ProviderRegistryConfig{
+        RegistryConfig: RegistryConfig{
+            Type:             "zookeeper",
+            RegAddr:          "127.0.0.1:2181",
+            KeepaliveTimeout: 10,
+            Root:             "/getty-micro",
+        },
+        ServiceArray: serviceArray,
+    }
+}
+
+func buildServerConf() *rpc.ServerConfig {
+    return &rpc.ServerConfig{
+        AppName:         "MICRO-SERVER",
+        Host:            "127.0.0.1",
+        Ports:           []string{"10000", "20000"},
+        SessionNumber:   700,
+        SessionTimeout:  "20s",
+        FailFastTimeout: "3s",
+        GettySessionParam: rpc.GettySessionParam{
+            CompressEncoding: true,
+            TcpNoDelay:       true,
+            TcpRBufSize:      262144,
+            TcpWBufSize:      524288,
+            SessionName:      "getty-micro-server",
+            TcpReadTimeout:   "2s",
+            TcpWriteTimeout:  "5s",
+            PkgWQSize:        512,
+            WaitTimeout:      "1s",
+            TcpKeepAlive:     true,
+            KeepAlivePeriod:  "120s",
+            MaxMsgLen:        1024,
+        },
+    }
 }
 
 func TestNewServer(t *testing.T) {
-    var err error
-    initServerConf()
-    server, err = NewServer(&conf.ServerConfig, &conf.Registry)
+    var (
+        err error
+        providerRegistryConfig *ProviderRegistryConfig
+        serverConfig *rpc.ServerConfig
+    )
+    providerRegistryConfig = buildProviderRegistryConfig()
+    serverConfig = buildServerConf()
+    server, err := NewServer(serverConfig, providerRegistryConfig)
     assert.Nil(t, err)
 
     server.Start()
