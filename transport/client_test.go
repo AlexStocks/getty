@@ -137,7 +137,7 @@ func TestUDPClient(t *testing.T) {
 		conn *net.UDPConn
 	)
 	func() {
-		srcAddr := &net.UDPAddr{IP: net.IPv4zero, Port: 3333}
+		srcAddr := &net.UDPAddr{IP: net.IPv4zero, Port: 0}
 		conn, err = net.ListenUDP("udp", srcAddr)
 		assert.Nil(t, err)
 		assert.NotNil(t, conn)
