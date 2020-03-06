@@ -132,9 +132,9 @@ func TestTCPClient(t *testing.T) {
 }
 
 func TestUDPIpNotBeAssigned(t *testing.T) {
-	ip := net.ParseIP("127.0.0.1")
+	//ip := net.ParseIP("127.0.0.1")
 	srcAddr := &net.UDPAddr{IP: net.IPv4zero, Port: 0}
-	dstAddr := &net.UDPAddr{IP: ip, Port: 9999}
+	dstAddr := &net.UDPAddr{IP: net.IPv4zero, Port: 9999}
 	conn, err := net.DialUDP("udp", srcAddr, dstAddr)
 	if err != nil {
 		t.Logf("======udp test error info: %v", err)
@@ -150,7 +150,8 @@ func TestUDPClient(t *testing.T) {
 		conn *net.UDPConn
 	)
 	func() {
-		srcAddr := &net.UDPAddr{IP: net.IPv4zero, Port: 0}
+		ip := net.ParseIP("127.0.0.1")
+		srcAddr := &net.UDPAddr{IP: ip, Port: 0}
 		conn, err = net.ListenUDP("udp", srcAddr)
 		assert.Nil(t, err)
 		assert.NotNil(t, conn)
