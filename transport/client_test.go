@@ -63,12 +63,8 @@ func (p Package) String() string {
 func (p Package) Marshal() (*bytes.Buffer, error)           { return nil, nil }
 func (p *Package) Unmarshal(buf *bytes.Buffer) (int, error) { return 0, nil }
 
-var (
-	pkg        Package
-	pkgHandler PackageHandler
-)
-
 func newSessionCallback(session Session, handler *MessageHandler) error {
+	var pkgHandler PackageHandler
 	session.SetName("hello-client-session")
 	session.SetMaxMsgLen(1024)
 	session.SetPkgHandler(&pkgHandler)
@@ -141,7 +137,8 @@ func TestUDPClient(t *testing.T) {
 		conn *net.UDPConn
 	)
 	func() {
-		srcAddr := &net.UDPAddr{IP: net.IPv4zero, Port: 0}
+		ip := net.ParseIP("127.0.0.1")
+		srcAddr := &net.UDPAddr{IP: ip, Port: 0}
 		conn, err = net.ListenUDP("udp", srcAddr)
 		assert.Nil(t, err)
 		assert.NotNil(t, conn)
