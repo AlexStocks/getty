@@ -176,8 +176,7 @@ func (c *client) dialUDP() Session {
 	defer gxbytes.PutBytes(bufp)
 	buf = *bufp
 
-	//localAddr = &net.UDPAddr{IP: net.IPv4zero, Port: 0}
-	localAddr = nil
+	localAddr = &net.UDPAddr{IP: net.IPv4zero, Port: 0}
 	peerAddr, _ = net.ResolveUDPAddr("udp", c.addr)
 	for {
 		if c.IsClosed() {
