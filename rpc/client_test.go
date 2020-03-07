@@ -4,12 +4,19 @@ import (
 	"net"
 	"testing"
 	"time"
+	"encoding/json"
 )
 
 import (
 	log "github.com/AlexStocks/log4go"
 	jerrors "github.com/juju/errors"
 	"github.com/stretchr/testify/suite"
+	gxbytes "github.com/dubbogo/gost/bytes"
+	"github.com/stretchr/testify/assert"
+)
+
+import (
+	"github.com/AlexStocks/getty/transport"
 )
 
 func buildClientConf() *ClientConfig {
