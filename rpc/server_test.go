@@ -15,52 +15,64 @@ type (
 	EventReq struct{}
 )
 
-type TestService struct {
+type MockService struct {
 	i int
 }
 
-func (r *TestService) Service() string {
-	return "TestService"
+func (r *MockService) Service() string {
+	return "MockService"
 }
 
-func (r *TestService) Version() string {
+func (r *MockService) Version() string {
 	return "v1.0"
 }
 
-func (r *TestService) Test(req *TestReq, rsp *TestRsp) error {
+func (r *MockService) Test(req *TestReq, rsp *TestRsp) error {
 	return nil
 }
 
-func (r *TestService) Add(req *TestReq, rsp *TestRsp) error {
+func (r *MockService) Add(req *TestReq, rsp *TestRsp) error {
 	return nil
 }
 
-func (r *TestService) Err(req *TestReq, rsp *TestRsp) error {
+func (r *MockService) Err(req *TestReq, rsp *TestRsp) error {
 	return nil
 }
 
-func (r *TestService) Event(req *TestReq) error {
+func (r *MockService) Event(req *TestReq) error {
 	return nil
 }
 
-func buildServerConf() *ServerConfig {
+const (
+	ServerHost = "127.0.0.1"
+	ServerPort = "65432"
+)
+
+func buildServerConfig() *ServerConfig {
 	return &ServerConfig{
 		AppName:         "RPC-SERVER",
-		Host:            "127.0.0.1",
-		Ports:           []string{"10001", "20002"},
-		SessionTimeout:  "20s",
-		SessionNumber:   700,
+		Host:            ServerHost,
+		Ports:           []string{ServerPort},
+		SessionTimeout:  "180s",
+		sessionTimeout:  time.Second * 180,
+		SessionNumber:   1,
 		FailFastTimeout: "3s",
+		failFastTimeout: time.Second * 3,
 		GettySessionParam: GettySessionParam{
-			CompressEncoding: true,
+			CompressEncoding: false,
 			TcpNoDelay:       true,
-			PkgWQSize:        10,
-			TcpReadTimeout:   "2s",
-			TcpWriteTimeout:  "5s",
-			WaitTimeout:      "1s",
 			TcpKeepAlive:     true,
 			KeepAlivePeriod:  "120s",
-			MaxMsgLen:        1024,
+			keepAlivePeriod:  time.Second * 120,
+			TcpRBufSize:      262144,
+			TcpWBufSize:      524288,
+			PkgRQSize:        1024,
+			PkgWQSize:        512,
+			TcpReadTimeout:   "1s",
+			TcpWriteTimeout:  "3s",
+			WaitTimeout:      "1s",
+			MaxMsgLen:        102400,
+			SessionName:      "getty-rpc-server",
 		},
 	}
 }
@@ -70,11 +82,11 @@ func TestNewServer(t *testing.T) {
 		clientConf *ClientConfig
 		serverConf *ServerConfig
 	)
-	serverConf = buildServerConf()
-	clientConf = buildClientConf()
+	serverConf = buildServerConfig()
+	clientConf = buildClientConfig()
 	server, err := NewServer(serverConf)
 	assert.Nil(t, err)
-	err = server.Register(&TestService{})
+	err = server.Register(&MockService{})
 	assert.Nil(t, err)
 	assert.NotNil(t, server.serviceMap)
 	assert.NotNil(t, server.rpcHandler)

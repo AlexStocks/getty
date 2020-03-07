@@ -27,6 +27,7 @@ import (
 import (
 	"github.com/AlexStocks/getty/rpc"
 	"github.com/AlexStocks/getty/transport"
+	rpcservice "github.com/AlexStocks/getty/examples/rpc/service"
 )
 
 const (
@@ -69,7 +70,7 @@ func initServer() {
 		panic(jerrors.ErrorStack(err))
 		return
 	}
-	err = server.Register(&TestService{})
+	err = server.Register(&rpcservice.TestService{})
 	if err != nil {
 		panic(jerrors.ErrorStack(err))
 		return

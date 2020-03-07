@@ -10,12 +10,12 @@ import (
 
 func TestClientConfig_CheckValidity(t *testing.T) {
 	var err error
-	err = buildClientConf().CheckValidity()
+	err = buildClientConfig().CheckValidity()
 	assert.Nil(t, err)
 }
 
 func TestServerConfig_CheckValidity(t *testing.T) {
 	var err error
-	err = buildServerConf().CheckValidity()
+	err = buildServerConfig().CheckValidity()
 	assert.Nil(t, err)
 }

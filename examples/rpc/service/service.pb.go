@@ -16,7 +16,7 @@
 		ErrRsp
 		EventReq
 */
-package main
+package service
 
 import proto "github.com/gogo/protobuf/proto"
 import fmt "fmt"
