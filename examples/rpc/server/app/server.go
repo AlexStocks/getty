@@ -25,9 +25,9 @@ import (
 )
 
 import (
+	rpcservice "github.com/AlexStocks/getty/examples/rpc/service"
 	"github.com/AlexStocks/getty/rpc"
 	"github.com/AlexStocks/getty/transport"
-	rpcservice "github.com/AlexStocks/getty/examples/rpc/service"
 )
 
 const (

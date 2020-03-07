@@ -41,7 +41,6 @@ func buildClientConfig() *ClientConfig {
 			WaitTimeout:      "1s",
 			MaxMsgLen:        8388608,
 			SessionName:      "getty-rpc-client",
-
 		},
 	}
 }
@@ -145,7 +144,6 @@ func buildServer(t *testing.T) *Server {
 
 	return server
 }
-
 
 func testProtobuf(t *testing.T, client *Client) {
 	ts := rpcservice.TestService{}
