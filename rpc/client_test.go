@@ -1,7 +1,6 @@
 package rpc
 
 import (
-	"encoding/json"
 	"net"
 	"testing"
 	"time"
@@ -9,14 +8,8 @@ import (
 
 import (
 	log "github.com/AlexStocks/log4go"
-	gxbytes "github.com/dubbogo/gost/bytes"
 	jerrors "github.com/juju/errors"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
-)
-
-import (
-	"github.com/AlexStocks/getty/transport"
 )
 
 func buildClientConf() *ClientConfig {
