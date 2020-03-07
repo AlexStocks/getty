@@ -1,18 +1,18 @@
 package rpc
 
 import (
+	"encoding/json"
 	"net"
 	"testing"
 	"time"
-	"encoding/json"
 )
 
 import (
 	log "github.com/AlexStocks/log4go"
-	jerrors "github.com/juju/errors"
-	"github.com/stretchr/testify/suite"
 	gxbytes "github.com/dubbogo/gost/bytes"
+	jerrors "github.com/juju/errors"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 )
 
 import (
