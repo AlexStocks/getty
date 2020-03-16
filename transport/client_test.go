@@ -126,10 +126,10 @@ func TestTCPClient(t *testing.T) {
 	beforeWritePkgNum := conn.writePkgNum
 	_, err = conn.send([]byte("hello"))
 	assert.Nil(t, err)
-	assert.Equal(t, beforeWriteBytes + 5, conn.writeBytes)
+	assert.Equal(t, beforeWriteBytes+5, conn.writeBytes)
 	err = ss.WriteBytes([]byte("hello"))
-	assert.Equal(t, beforeWriteBytes + 10, conn.writeBytes)
-	assert.Equal(t, beforeWritePkgNum + 1, conn.writePkgNum)
+	assert.Equal(t, beforeWriteBytes+10, conn.writeBytes)
+	assert.Equal(t, beforeWritePkgNum+1, conn.writePkgNum)
 	assert.Nil(t, err)
 	ss.SetCompressType(CompressSnappy)
 	assert.True(t, conn.compress == CompressSnappy)
@@ -204,8 +204,8 @@ func TestUDPClient(t *testing.T) {
 	beforeWriteBytes := udpConn.writeBytes
 	beforeWritePkgNum := udpConn.writePkgNum
 	_, err = udpConn.send(udpCtx)
-	assert.Equal(t, beforeWriteBytes + 5, udpConn.writeBytes)
-	assert.Equal(t, beforeWritePkgNum + 1, udpConn.writePkgNum)
+	assert.Equal(t, beforeWriteBytes+5, udpConn.writeBytes)
+	assert.Equal(t, beforeWritePkgNum+1, udpConn.writePkgNum)
 	assert.Nil(t, err)
 
 	clt.Close()
@@ -261,12 +261,12 @@ func TestNewWSClient(t *testing.T) {
 	beforeWriteBytes := conn.writeBytes
 	_, err = conn.send([]byte("hello"))
 	assert.Nil(t, err)
-	assert.Equal(t, beforeWriteBytes + 5, conn.writeBytes)
+	assert.Equal(t, beforeWriteBytes+5, conn.writeBytes)
 	beforeWritePkgNum := conn.writePkgNum
 	err = ss.WriteBytes([]byte("hello"))
-	assert.Equal(t, beforeWritePkgNum + 1, conn.writePkgNum)
+	assert.Equal(t, beforeWritePkgNum+1, conn.writePkgNum)
 	err = ss.WriteBytesArray([]byte("hello"), []byte("hello"))
-	assert.Equal(t, beforeWritePkgNum + 3, conn.writePkgNum)
+	assert.Equal(t, beforeWritePkgNum+3, conn.writePkgNum)
 	err = conn.writePing()
 	assert.Nil(t, err)
 
