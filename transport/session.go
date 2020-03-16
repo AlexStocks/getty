@@ -451,6 +451,13 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 		return s.WriteBytes(pkgs[0])
 	}
 
+	// reduce syscall and memcopy for multiple packages
+	if _, ok := s.Connection.(*gettyTCPConn); ok {
+		if _, err := s.Connection.send(pkgs); err != nil {
+			return jerrors.Annotatef(err, "s.Connection.Write(pkgs num:%d)", len(pkgs))
+		}
+	}
+
 	// get len
 	var (
 		l      int
@@ -743,12 +750,13 @@ func (s *session) handleTCPPackage() error {
 				if netError, ok = jerrors.Cause(err).(net.Error); ok && netError.Timeout() {
 					break
 				}
-				log.Error("%s, [session.conn.read] = error{%s}", s.sessionToken(), jerrors.ErrorStack(err))
 				if jerrors.Cause(err) == io.EOF {
+					log.Info("%s, [session.conn.read] = error{%s}", s.sessionToken(), jerrors.ErrorStack(err))
 					err = nil
 					exit = true
 					break
 				}
+				log.Error("%s, [session.conn.read] = error{%s}", s.sessionToken(), jerrors.ErrorStack(err))
 				exit = true
 			}
 			break
