@@ -437,8 +437,8 @@ func (u *gettyUDPConn) send(udpCtx interface{}) (int, error) {
 	}
 
 	if length, _, err = u.conn.WriteMsgUDP(buf, nil, peerAddr); err == nil {
+		u.incWritePkgNum()
 		atomic.AddUint32(&u.writeBytes, (uint32)(len(buf)))
-		u.incReadPkgNum()
 	}
 	log.Debug("WriteMsgUDP(peerAddr:%s) = {length:%d, error:%s}", peerAddr, length, err)
 
