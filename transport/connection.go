@@ -437,7 +437,6 @@ func (u *gettyUDPConn) send(udpCtx interface{}) (int, error) {
 	}
 
 	if length, _, err = u.conn.WriteMsgUDP(buf, nil, peerAddr); err == nil {
-		u.incWritePkgNum()
 		atomic.AddUint32(&u.writeBytes, (uint32)(len(buf)))
 	}
 	log.Debug("WriteMsgUDP(peerAddr:%s) = {length:%d, error:%s}", peerAddr, length, err)
@@ -533,7 +532,6 @@ func (w *gettyWSConn) recv() ([]byte, error) {
 	// gorilla/websocket/conn.go:NextReader will always fail when got a timeout error.
 	_, b, e := w.conn.ReadMessage() // the first return value is message type.
 	if e == nil {
-		w.incReadPkgNum()
 		atomic.AddUint32(&w.readBytes, (uint32)(len(b)))
 	} else {
 		if websocket.IsUnexpectedCloseError(e, websocket.CloseGoingAway) {

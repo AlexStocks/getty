@@ -203,9 +203,12 @@ func TestUDPClient(t *testing.T) {
 	assert.NotNil(t, err)
 	udpCtx.Pkg = []byte("hello")
 	beforeWriteBytes := atomic.LoadUint32(&udpConn.writeBytes)
-	beforeWritePkgNum := atomic.LoadUint32(&udpConn.writePkgNum)
 	_, err = udpConn.send(udpCtx)
 	assert.Equal(t, beforeWriteBytes+5, atomic.LoadUint32(&udpConn.writeBytes))
+	assert.Nil(t, err)
+
+	beforeWritePkgNum := atomic.LoadUint32(&udpConn.writePkgNum)
+	err = ss.WritePkg(udpCtx, 0)
 	assert.Equal(t, beforeWritePkgNum+1, atomic.LoadUint32(&udpConn.writePkgNum))
 	assert.Nil(t, err)
 
