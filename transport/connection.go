@@ -532,7 +532,7 @@ func (w *gettyWSConn) recv() ([]byte, error) {
 	// gorilla/websocket/conn.go:NextReader will always fail when got a timeout error.
 	_, b, e := w.conn.ReadMessage() // the first return value is message type.
 	if e == nil {
-		w.incReadPkgNum()
+		atomic.AddUint32(&w.readBytes, (uint32)(len(b)))
 	} else {
 		if websocket.IsUnexpectedCloseError(e, websocket.CloseGoingAway) {
 			log.Warn("websocket unexpected close error: %v", e)
