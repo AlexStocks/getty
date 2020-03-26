@@ -266,9 +266,6 @@ func (t *gettyTCPConn) send(pkg interface{}) (int, error) {
 		length      int
 	)
 
-	if p, ok = pkg.([]byte); !ok {
-		return 0, jerrors.Errorf("illegal @pkg{%#v} type", pkg)
-	}
 	if t.compress == CompressNone && t.wTimeout > 0 {
 		// Optimization: update write deadline only if more than 25%
 		// of the last write deadline exceeded.
@@ -281,12 +278,28 @@ func (t *gettyTCPConn) send(pkg interface{}) (int, error) {
 			t.wLastDeadline = currentTime
 		}
 	}
-
-	if length, err = t.writer.Write(p); err == nil {
-		atomic.AddUint32(&t.writeBytes, (uint32)(len(p)))
+	if buffers, ok := pkg.([][]byte); ok {
+		netBuf := net.Buffers(buffers)
+		if length, err := netBuf.WriteTo(t.conn); err == nil {
+			var writeBytes int
+			for _, b := range buffers {
+				writeBytes += len(b)
+			}
+			atomic.AddUint32(&t.writeBytes, (uint32)(writeBytes))
+			atomic.AddUint32(&t.writePkgNum, (uint32)(len(buffers)))
+			log.Debug("now:%s, length:%d, err:%s", currentTime, length, err)
+			return int(length), jerrors.Trace(err)
+		}
 	}
-	log.Debug("now:%s, length:%d, err:%s", currentTime, length, err)
-	return length, jerrors.Trace(err)
+
+	if p, ok = pkg.([]byte); ok {
+		if length, err = t.writer.Write(p); err == nil {
+			atomic.AddUint32(&t.writeBytes, (uint32)(len(p)))
+		}
+		log.Debug("now:%s, length:%d, err:%s", currentTime, length, err)
+		return length, jerrors.Trace(err)
+	}
+	return 0, jerrors.Errorf("illegal @pkg{%#v} type", pkg)
 	//return length, err
 }
 

@@ -451,6 +451,13 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 		return s.WriteBytes(pkgs[0])
 	}
 
+	// reduce syscall and memcopy for multiple tcp packages
+	if _, ok := s.Connection.(*gettyTCPConn); ok {
+		if _, err := s.Connection.send(pkgs); err != nil {
+			return jerrors.Annotatef(err, "s.Connection.Write(pkgs num:%d)", len(pkgs))
+		}
+	}
+
 	// get len
 	var (
 		l      int
