@@ -283,9 +283,9 @@ func (t *gettyTCPConn) send(pkg interface{}) (int, error) {
 		if length, err := netBuf.WriteTo(t.conn); err == nil {
 			atomic.AddUint32(&t.writeBytes, (uint32)(length))
 			atomic.AddUint32(&t.writePkgNum, (uint32)(len(buffers)))
-			log.Debug("now:%s, length:%d, err:%s", currentTime, length, err)
-			return int(length), jerrors.Trace(err)
 		}
+		log.Debug("now:%s, length:%d, err:%s", currentTime, length, err)
+		return int(length), jerrors.Trace(err)
 	}
 
 	if p, ok = pkg.([]byte); ok {
