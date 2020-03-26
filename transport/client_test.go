@@ -136,6 +136,7 @@ func TestTCPClient(t *testing.T) {
 	pkgs = append(pkgs, []byte("hello"), []byte("hello"))
 	_, err = conn.send(pkgs)
 	assert.Equal(t, beforeWritePkgNum+3, atomic.LoadUint32(&conn.writePkgNum))
+	assert.Equal(t, beforeWriteBytes+20, atomic.LoadUint32(&conn.writeBytes))
 	assert.Nil(t, err)
 	ss.SetCompressType(CompressSnappy)
 	assert.True(t, conn.compress == CompressSnappy)
