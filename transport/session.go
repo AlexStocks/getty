@@ -743,12 +743,13 @@ func (s *session) handleTCPPackage() error {
 				if netError, ok = jerrors.Cause(err).(net.Error); ok && netError.Timeout() {
 					break
 				}
-				log.Error("%s, [session.conn.read] = error{%s}", s.sessionToken(), jerrors.ErrorStack(err))
 				if jerrors.Cause(err) == io.EOF {
+					log.Info("%s, [session.conn.read] = error{%s}", s.sessionToken(), jerrors.ErrorStack(err))
 					err = nil
 					exit = true
 					break
 				}
+				log.Error("%s, [session.conn.read] = error{%s}", s.sessionToken(), jerrors.ErrorStack(err))
 				exit = true
 			}
 			break
