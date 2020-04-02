@@ -265,9 +265,6 @@ func (t *gettyTCPConn) send(pkg interface{}) (int, error) {
 		length      int
 	)
 
-	if p, ok = pkg.([]byte); !ok {
-		return 0, perrors.Errorf("illegal @pkg{%#v} type", pkg)
-	}
 	if t.compress == CompressNone && t.wTimeout > 0 {
 		// Optimization: update write deadline only if more than 25%
 		// of the last write deadline exceeded.
@@ -281,11 +278,27 @@ func (t *gettyTCPConn) send(pkg interface{}) (int, error) {
 		}
 	}
 
-	if length, err = t.writer.Write(p); err == nil {
-		atomic.AddUint32(&t.writeBytes, (uint32)(len(p)))
+	if buffers, ok := pkg.([][]byte); ok {
+		netBuf := net.Buffers(buffers)
+		if length, err := netBuf.WriteTo(t.conn); err == nil {
+			atomic.AddUint32(&t.writeBytes, (uint32)(length))
+			atomic.AddUint32(&t.writePkgNum, (uint32)(len(buffers)))
+		}
+		log.Debug("localAddr: %s, remoteAddr:%s, now:%s, length:%d, err:%s",
+			t.conn.LocalAddr(), t.conn.RemoteAddr(), currentTime, length, err)
+		return int(length), perrors.WithStack(err)
 	}
-	log.Debugf("now:%s, length:%d, err:%v", currentTime, length, err)
-	return length, perrors.WithStack(err)
+
+	if p, ok = pkg.([]byte); ok {
+		if length, err = t.writer.Write(p); err == nil {
+			atomic.AddUint32(&t.writeBytes, (uint32)(len(p)))
+		}
+		log.Debug("localAddr: %s, remoteAddr:%s, now:%s, length:%d, err:%s",
+			t.conn.LocalAddr(), t.conn.RemoteAddr(), currentTime, length, err)
+		return length, perrors.WithStack(err)
+	}
+
+	return 0, perrors.Errorf("illegal @pkg{%#v} type", pkg)
 	//return length, err
 }
 
@@ -531,7 +544,7 @@ func (w *gettyWSConn) recv() ([]byte, error) {
 	// gorilla/websocket/conn.go:NextReader will always fail when got a timeout error.
 	_, b, e := w.conn.ReadMessage() // the first return value is message type.
 	if e == nil {
-		w.incReadPkgNum()
+		atomic.AddUint32(&w.readBytes, (uint32)(len(b)))
 	} else {
 		if websocket.IsUnexpectedCloseError(e, websocket.CloseGoingAway) {
 			log.Warnf("websocket unexpected close error: %v", e)
