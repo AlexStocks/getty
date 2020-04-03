@@ -275,8 +275,6 @@ func TestNewWSClient(t *testing.T) {
 	beforeWritePkgNum := atomic.LoadUint32(&conn.writePkgNum)
 	err = ss.WriteBytes([]byte("hello"))
 	assert.Equal(t, beforeWritePkgNum+1, atomic.LoadUint32(&conn.writePkgNum))
-	err = ss.WriteBytesArray([]byte("hello"), []byte("hello"))
-	assert.Equal(t, beforeWritePkgNum+3, atomic.LoadUint32(&conn.writePkgNum))
 	err = conn.writePing()
 	assert.Nil(t, err)
 

@@ -301,7 +301,7 @@ func (s *session) SetWQLen(writeQLen int) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	s.wQ = make(chan interface{}, writeQLen)
-	log.Debug("%s, [session.SetWQLen] wQ{len:%d, cap:%d}", s.Stat(), len(s.wQ), cap(s.wQ))
+	log.Debugf("%s, [session.SetWQLen] wQ{len:%d, cap:%d}", s.Stat(), len(s.wQ), cap(s.wQ))
 }
 
 // set maximum wait time when session got error or got exit signal
@@ -404,7 +404,7 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 		}
 		_, err = s.Connection.send(pkg)
 		if err != nil {
-			log.Warn("%s, [session.WritePkg] @s.Connection.Write(pkg:%#v) = err:%v", s.Stat(), pkg, err)
+			log.Warnf("%s, [session.WritePkg] @s.Connection.Write(pkg:%#v) = err:%v", s.Stat(), pkg, err)
 			return perrors.WithStack(err)
 		}
 		s.incWritePkgNum()
@@ -449,46 +449,10 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 		return s.WriteBytes(pkgs[0])
 	}
 
-	// reduce syscall and memcopy for multiple packages
-	if _, ok := s.Connection.(*gettyTCPConn); ok {
-		if _, err := s.Connection.send(pkgs); err != nil {
-			return perrors.Wrapf(err, "s.Connection.Write(pkgs num:%d)", len(pkgs))
-		}
+	// TODO Currently, only TCP is supported.
+	if _, err := s.Connection.send(pkgs); err != nil {
+		return perrors.Wrapf(err, "s.Connection.Write(pkgs num:%d)", len(pkgs))
 	}
-
-	// get len
-	var (
-		l      int
-		err    error
-		length int
-		arrp   *[]byte
-		arr    []byte
-	)
-	length = 0
-	for i := 0; i < len(pkgs); i++ {
-		length += len(pkgs[i])
-	}
-
-	// merge the pkgs
-	// arr = make([]byte, length)
-	arrp = gxbytes.GetBytes(length)
-	defer gxbytes.PutBytes(arrp)
-	arr = *arrp
-	l = 0
-	for i := 0; i < len(pkgs); i++ {
-		copy(arr[l:], pkgs[i])
-		l += len(pkgs[i])
-	}
-
-	if err = s.WriteBytes(arr); err != nil {
-		return perrors.WithStack(err)
-	}
-
-	num := len(pkgs) - 1
-	for i := 0; i < num; i++ {
-		s.incWritePkgNum()
-	}
-
 	return nil
 }
 
@@ -574,7 +538,7 @@ LOOP:
 				continue
 			}
 			if !flag {
-				log.Warn("[session.handleLoop] drop write out package %#v", outPkg)
+				log.Warnf("[session.handleLoop] drop write out package %#v", outPkg)
 				continue
 			}
 
@@ -965,6 +929,6 @@ func (s *session) gc() {
 // or (session)handleLoop automatically. It's thread safe.
 func (s *session) Close() {
 	s.stop()
-	log.Info("%s closed now. its current gr num is %d",
+	log.Infof("%s closed now. its current gr num is %d",
 		s.sessionToken(), atomic.LoadInt32(&(s.grNum)))
 }
