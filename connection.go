@@ -284,7 +284,7 @@ func (t *gettyTCPConn) send(pkg interface{}) (int, error) {
 			atomic.AddUint32(&t.writeBytes, (uint32)(length))
 			atomic.AddUint32(&t.writePkgNum, (uint32)(len(buffers)))
 		}
-		log.Debug("localAddr: %s, remoteAddr:%s, now:%s, length:%d, err:%s",
+		log.Debugf("localAddr: %s, remoteAddr:%s, now:%s, length:%d, err:%s",
 			t.conn.LocalAddr(), t.conn.RemoteAddr(), currentTime, length, err)
 		return int(length), perrors.WithStack(err)
 	}
@@ -293,13 +293,12 @@ func (t *gettyTCPConn) send(pkg interface{}) (int, error) {
 		if length, err = t.writer.Write(p); err == nil {
 			atomic.AddUint32(&t.writeBytes, (uint32)(len(p)))
 		}
-		log.Debug("localAddr: %s, remoteAddr:%s, now:%s, length:%d, err:%s",
+		log.Debugf("localAddr: %s, remoteAddr:%s, now:%s, length:%d, err:%s",
 			t.conn.LocalAddr(), t.conn.RemoteAddr(), currentTime, length, err)
 		return length, perrors.WithStack(err)
 	}
 
 	return 0, perrors.Errorf("illegal @pkg{%#v} type", pkg)
-	//return length, err
 }
 
 // close tcp connection
