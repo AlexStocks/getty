@@ -292,6 +292,7 @@ func (t *gettyTCPConn) send(pkg interface{}) (int, error) {
 	if p, ok = pkg.([]byte); ok {
 		if length, err = t.writer.Write(p); err == nil {
 			atomic.AddUint32(&t.writeBytes, (uint32)(len(p)))
+			atomic.AddUint32(&t.writePkgNum, 1)
 		}
 		log.Debugf("localAddr: %s, remoteAddr:%s, now:%s, length:%d, err:%s",
 			t.conn.LocalAddr(), t.conn.RemoteAddr(), currentTime, length, err)
@@ -449,11 +450,11 @@ func (u *gettyUDPConn) send(udpCtx interface{}) (int, error) {
 
 	if length, _, err = u.conn.WriteMsgUDP(buf, nil, peerAddr); err == nil {
 		atomic.AddUint32(&u.writeBytes, (uint32)(len(buf)))
+		atomic.AddUint32(&u.writePkgNum, 1)
 	}
 	log.Debugf("WriteMsgUDP(peerAddr:%s) = {length:%d, error:%v}", peerAddr, length, err)
 
 	return length, perrors.WithStack(err)
-	//return length, err
 }
 
 // close udp connection
@@ -591,9 +592,9 @@ func (w *gettyWSConn) send(pkg interface{}) (int, error) {
 	w.updateWriteDeadline()
 	if err = w.conn.WriteMessage(websocket.BinaryMessage, p); err == nil {
 		atomic.AddUint32(&w.writeBytes, (uint32)(len(p)))
+		atomic.AddUint32(&w.writePkgNum, 1)
 	}
 	return len(p), perrors.WithStack(err)
-	//return len(p), err
 }
 
 func (w *gettyWSConn) writePing() error {
