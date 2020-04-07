@@ -407,7 +407,6 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 			log.Warnf("%s, [session.WritePkg] @s.Connection.Write(pkg:%#v) = err:%v", s.Stat(), pkg, err)
 			return perrors.WithStack(err)
 		}
-		s.incWritePkgNum()
 		return nil
 	}
 	select {
@@ -432,9 +431,6 @@ func (s *session) WriteBytes(pkg []byte) error {
 	if _, err := s.Connection.send(pkg); err != nil {
 		return perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
 	}
-
-	s.incWritePkgNum()
-
 	return nil
 }
 
