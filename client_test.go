@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -122,7 +123,21 @@ func TestTCPClient(t *testing.T) {
 	ss.SetCompressType(CompressNone)
 	conn := ss.(*session).Connection.(*gettyTCPConn)
 	assert.True(t, conn.compress == CompressNone)
+	beforeWriteBytes := atomic.LoadUint32(&conn.writeBytes)
+	beforeWritePkgNum := atomic.LoadUint32(&conn.writePkgNum)
+	_, err = conn.send([]byte("hello"))
+	assert.Equal(t, beforeWritePkgNum+1, atomic.LoadUint32(&conn.writePkgNum))
+	assert.Nil(t, err)
+	assert.Equal(t, beforeWriteBytes+5, atomic.LoadUint32(&conn.writeBytes))
 	err = ss.WriteBytes([]byte("hello"))
+	assert.Equal(t, beforeWriteBytes+10, atomic.LoadUint32(&conn.writeBytes))
+	assert.Equal(t, beforeWritePkgNum+2, atomic.LoadUint32(&conn.writePkgNum))
+	assert.Nil(t, err)
+	var pkgs [][]byte
+	pkgs = append(pkgs, []byte("hello"), []byte("hello"))
+	_, err = conn.send(pkgs)
+	assert.Equal(t, beforeWritePkgNum+4, atomic.LoadUint32(&conn.writePkgNum))
+	assert.Equal(t, beforeWriteBytes+20, atomic.LoadUint32(&conn.writeBytes))
 	assert.Nil(t, err)
 	ss.SetCompressType(CompressSnappy)
 	assert.True(t, conn.compress == CompressSnappy)
@@ -194,7 +209,14 @@ func TestUDPClient(t *testing.T) {
 	_, err = udpConn.send(udpCtx)
 	assert.NotNil(t, err)
 	udpCtx.Pkg = []byte("hello")
+	beforeWriteBytes := atomic.LoadUint32(&udpConn.writeBytes)
 	_, err = udpConn.send(udpCtx)
+	assert.Equal(t, beforeWriteBytes+5, atomic.LoadUint32(&udpConn.writeBytes))
+	assert.Nil(t, err)
+
+	beforeWritePkgNum := atomic.LoadUint32(&udpConn.writePkgNum)
+	err = ss.WritePkg(udpCtx, 0)
+	assert.Equal(t, beforeWritePkgNum+1, atomic.LoadUint32(&udpConn.writePkgNum))
 	assert.Nil(t, err)
 
 	clt.Close()
@@ -247,8 +269,13 @@ func TestNewWSClient(t *testing.T) {
 	assert.Nil(t, err)
 	_, err = conn.send("hello")
 	assert.NotNil(t, err)
+	beforeWriteBytes := atomic.LoadUint32(&conn.writeBytes)
 	_, err = conn.send([]byte("hello"))
 	assert.Nil(t, err)
+	assert.Equal(t, beforeWriteBytes+5, atomic.LoadUint32(&conn.writeBytes))
+	beforeWritePkgNum := atomic.LoadUint32(&conn.writePkgNum)
+	err = ss.WriteBytes([]byte("hello"))
+	assert.Equal(t, beforeWritePkgNum+1, atomic.LoadUint32(&conn.writePkgNum))
 	err = conn.writePing()
 	assert.Nil(t, err)
 
