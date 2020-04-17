@@ -268,15 +268,23 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 }
 
 func (s *server) runUDPEventLoop(newSession NewSessionCallback) {
-	var (
-		ss Session
-	)
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		var (
+			err  error
+			conn *net.UDPConn
+			ss   Session
+		)
 
-	ss = newUDPSession(s.pktListener.(*net.UDPConn), s)
-	if err := newSession(ss); err != nil {
-		panic(err.Error())
-	}
-	ss.(*session).run()
+		conn = s.pktListener.(*net.UDPConn)
+		ss = newUDPSession(conn, s)
+		if err = newSession(ss); err != nil {
+			conn.Close()
+			panic(err.Error())
+		}
+		ss.(*session).run()
+	}()
 }
 
 type wsHandler struct {
@@ -384,7 +392,6 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 		if certificate, err = tls.LoadX509KeyPair(s.cert, s.privateKey); err != nil {
 			panic(fmt.Sprintf("tls.LoadX509KeyPair(cert{%s}, privateKey{%s}) = err{%s}",
 				s.cert, s.privateKey, jerrors.ErrorStack(err)))
-			return
 		}
 		config = &tls.Config{
 			InsecureSkipVerify: true, // do not verify peer cert
