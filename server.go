@@ -23,9 +23,9 @@ import (
 )
 
 import (
+	"github.com/dubbogo/gost/net"
 	"github.com/gorilla/websocket"
 	perrors "github.com/pkg/errors"
-	"github.com/dubbogo/gost/net"
 )
 
 var (
@@ -188,9 +188,6 @@ func (s *server) listenUDP() error {
 	if err != nil {
 		return perrors.Wrapf(err, "net.ListenUDP((udp, localAddr:%#v)", localAddr)
 	}
-	// if err = setUDPSocketOptions(pktListener); err != nil {
-	//  	return perrors.Wrapf(err, "setUDPSocketOptions(pktListener:%#v)", pktListener)
-	// }
 
 	s.pktListener = pktListener
 
