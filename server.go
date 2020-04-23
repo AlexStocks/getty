@@ -68,10 +68,6 @@ func newServer(t EndPointType, opts ...ServerOption) *server {
 
 	s.init(opts...)
 
-	//if len(s.addr) == 0 {
-	//	panic(fmt.Sprintf("@addr:%s", s.addr))
-	//}
-
 	return s
 }
 
@@ -373,7 +369,6 @@ func (s *server) runWSEventLoop(newSession NewSessionCallback) {
 		err = server.Serve(s.streamListener)
 		if err != nil {
 			log.Errorf("http.server.Serve(addr{%s}) = err{%+v}", s.addr, perrors.WithStack(err))
-			// panic(err)
 		}
 	}()
 }
