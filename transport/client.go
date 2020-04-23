@@ -433,7 +433,7 @@ func (c *client) reConnect() {
 		if maxTimes < times {
 			times = maxTimes
 		}
-		time.Sleep(time.Duration(int64(times) * int64(interval)))
+		<-wheel.After(time.Duration(int64(times) * int64(interval)))
 	}
 }
 

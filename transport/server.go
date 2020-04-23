@@ -69,6 +69,7 @@ func newServer(t EndPointType, opts ...ServerOption) *server {
 
 	s.init(opts...)
 
+        // ramark by AlexStocks on 20200423 to support listen on random local port
 	//if len(s.addr) == 0 {
 	//	panic(fmt.Sprintf("@addr:%s", s.addr))
 	//}
@@ -129,7 +130,7 @@ func (s *server) stop() {
 				if err = s.server.Shutdown(ctx); err != nil {
 					// if the log output is "shutdown ctx: context deadline exceeded"， it means that
 					// there are still some active connections.
-					log.Error("server shutdown ctx:%s error:%s", ctx, err)
+					log.Error("server shutdown ctx:%s error:%v", ctx, err)
 				}
 			}
 			s.server = nil

@@ -79,7 +79,7 @@ type session struct {
 	reader Reader // @reader should be nil when @conn is a gettyWSConn object.
 	writer Writer
 
-	// read & write
+	// write
 	wQ chan interface{}
 
 	// handle logic
