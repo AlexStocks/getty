@@ -83,7 +83,7 @@ func testUDPServer(t *testing.T, address string) {
 	t.Logf("@address:%s, udp server addr: %v", address, addr)
 }
 
-func TestTcpServer(t *testing.T) {
+func TestServer(t *testing.T) {
 	var addr string
 
 	testTCPServer(t, addr)
