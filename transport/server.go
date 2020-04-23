@@ -17,6 +17,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -68,9 +69,9 @@ func newServer(t EndPointType, opts ...ServerOption) *server {
 
 	s.init(opts...)
 
-	if s.addr == "" {
-		panic(fmt.Sprintf("@addr:%s", s.addr))
-	}
+	//if len(s.addr) == 0 {
+	//	panic(fmt.Sprintf("@addr:%s", s.addr))
+	//}
 
 	return s
 }
@@ -164,9 +165,16 @@ func (s *server) listenTCP() error {
 		streamListener net.Listener
 	)
 
-	streamListener, err = net.Listen("tcp", s.addr)
-	if err != nil {
-		return jerrors.Annotatef(err, "net.Listen(tcp, addr:%s))", s.addr)
+	if len(s.addr) == 0 || !strings.Contains(s.addr, ":") {
+		streamListener, err = gxnet.ListenOnTCPRandomPort(s.addr)
+		if err != nil {
+			return jerrors.Annotatef(err, "gxnet.ListenOnTCPRandomPort(addr:%s)", s.addr)
+		}
+	} else {
+		streamListener, err = net.Listen("tcp", s.addr)
+		if err != nil {
+			return jerrors.Annotatef(err, "net.Listen(tcp, addr:%s)", s.addr)
+		}
 	}
 
 	s.streamListener = streamListener
@@ -181,13 +189,20 @@ func (s *server) listenUDP() error {
 		pktListener *net.UDPConn
 	)
 
-	localAddr, err = net.ResolveUDPAddr("udp", s.addr)
-	if err != nil {
-		return jerrors.Annotatef(err, "net.ResolveUDPAddr(udp, addr:%s)", s.addr)
-	}
-	pktListener, err = net.ListenUDP("udp", localAddr)
-	if err != nil {
-		return jerrors.Annotatef(err, "net.ListenUDP((udp, localAddr:%#v)", localAddr)
+	if len(s.addr) == 0 || !strings.Contains(s.addr, ":") {
+		pktListener, err = gxnet.ListenOnUDPRandomPort(s.addr)
+		if err != nil {
+			return jerrors.Annotatef(err, "gxnet.ListenOnUDPRandomPort(addr:%s)", s.addr)
+		}
+	} else {
+		localAddr, err = net.ResolveUDPAddr("udp", s.addr)
+		if err != nil {
+			return jerrors.Annotatef(err, "net.ResolveUDPAddr(udp, addr:%s)", s.addr)
+		}
+		pktListener, err = net.ListenUDP("udp", localAddr)
+		if err != nil {
+			return jerrors.Annotatef(err, "net.ListenUDP((udp, localAddr:%#v)", localAddr)
+		}
 	}
 
 	s.pktListener = pktListener
