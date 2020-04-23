@@ -69,11 +69,6 @@ func newServer(t EndPointType, opts ...ServerOption) *server {
 
 	s.init(opts...)
 
-        // ramark by AlexStocks on 20200423 to support listen on random local port
-	//if len(s.addr) == 0 {
-	//	panic(fmt.Sprintf("@addr:%s", s.addr))
-	//}
-
 	return s
 }
 
@@ -274,7 +269,7 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 					}
 					continue
 				}
-				log.Warn("server{%s}.Accept() = err {%#v}", s.addr, jerrors.ErrorStack(err))
+				log.Warn("server{%s}.Accept() = err {%+v}", s.addr, jerrors.ErrorStack(err))
 				continue
 			}
 			delay = 0
@@ -338,7 +333,7 @@ func (s *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Warn("upgrader.Upgrader(http.Request{%#v}) = error{%s}", r, err)
+		log.Warn("upgrader.Upgrader(http.Request{%#v}) = error:%+v", r, err)
 		return
 	}
 	if conn.RemoteAddr().String() == conn.LocalAddr().String() {
@@ -383,8 +378,7 @@ func (s *server) runWSEventLoop(newSession NewSessionCallback) {
 		s.lock.Unlock()
 		err = server.Serve(s.streamListener)
 		if err != nil {
-			log.Error("http.server.Serve(addr{%s}) = err{%s}", s.addr, jerrors.ErrorStack(err))
-			// panic(err)
+			log.Error("http.server.Serve(addr{%s}) = err:%+v", s.addr, jerrors.ErrorStack(err))
 		}
 	}()
 }
@@ -406,7 +400,7 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 		defer s.wg.Done()
 
 		if certificate, err = tls.LoadX509KeyPair(s.cert, s.privateKey); err != nil {
-			panic(fmt.Sprintf("tls.LoadX509KeyPair(cert{%s}, privateKey{%s}) = err{%s}",
+			panic(fmt.Sprintf("tls.LoadX509KeyPair(cert{%s}, privateKey{%s}) = err:%+v",
 				s.cert, s.privateKey, jerrors.ErrorStack(err)))
 		}
 		config = &tls.Config{
@@ -419,7 +413,7 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 		if s.caCert != "" {
 			certPem, err = ioutil.ReadFile(s.caCert)
 			if err != nil {
-				panic(fmt.Errorf("ioutil.ReadFile(certFile{%s}) = err{%s}", s.caCert, jerrors.ErrorStack(err)))
+				panic(fmt.Errorf("ioutil.ReadFile(certFile{%s}) = err:%+v", s.caCert, jerrors.ErrorStack(err)))
 			}
 			certPool = x509.NewCertPool()
 			if ok := certPool.AppendCertsFromPEM(certPem); !ok {
@@ -444,7 +438,7 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 		s.lock.Unlock()
 		err = server.Serve(tls.NewListener(s.streamListener, config))
 		if err != nil {
-			log.Error("http.server.Serve(addr{%s}) = err{%s}", s.addr, jerrors.ErrorStack(err))
+			log.Error("http.server.Serve(addr{%s}) = err:%+v", s.addr, jerrors.ErrorStack(err))
 			panic(err)
 		}
 	}()
@@ -454,7 +448,7 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 // @newSession: new connection callback
 func (s *server) RunEventLoop(newSession NewSessionCallback) {
 	if err := s.listen(); err != nil {
-		panic(fmt.Errorf("server.listen() = error:%s", jerrors.ErrorStack(err)))
+		panic(fmt.Errorf("server.listen() = error:%+v", jerrors.ErrorStack(err)))
 	}
 
 	switch s.endPointType {
