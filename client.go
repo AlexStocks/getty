@@ -153,7 +153,7 @@ func (c *client) dialTCP() Session {
 			return newTCPSession(conn, c)
 		}
 
-		log.Infof("net.DialTimeout(addr:%s, timeout:%v) = error:%+v", c.addr, connectTimeout, err)
+		log.Infof("net.DialTimeout(addr:%s, timeout:%v) = error:%+v", c.addr, connectTimeout, perrors.WithStack(err))
 		<-wheel.After(connectInterval)
 	}
 }
@@ -185,7 +185,7 @@ func (c *client) dialUDP() Session {
 			err = errSelfConnect
 		}
 		if err != nil {
-			log.Warnf("net.DialTimeout(addr:%s, timeout:%v) = error:%+v", c.addr, err)
+			log.Warnf("net.DialTimeout(addr:%s, timeout:%v) = error:%+v", c.addr, perrors.WithStack(err))
 			<-wheel.After(connectInterval)
 			continue
 		}
@@ -194,7 +194,7 @@ func (c *client) dialUDP() Session {
 		conn.SetWriteDeadline(time.Now().Add(1e9))
 		if length, err = conn.Write(connectPingPackage[:]); err != nil {
 			conn.Close()
-			log.Warnf("conn.Write(%s) = {length:%d, err:%+v}", string(connectPingPackage), length, err)
+			log.Warnf("conn.Write(%s) = {length:%d, err:%+v}", string(connectPingPackage), length, perrors.WithStack(err))
 			<-wheel.After(connectInterval)
 			continue
 		}
@@ -204,7 +204,7 @@ func (c *client) dialUDP() Session {
 			err = nil
 		}
 		if err != nil {
-			log.Infof("conn{%#v}.Read() = {length:%d, err:%+v}", conn, length, err)
+			log.Infof("conn{%#v}.Read() = {length:%d, err:%+v}", conn, length, perrors.WithStack(err))
 			conn.Close()
 			<-wheel.After(connectInterval)
 			continue
@@ -229,7 +229,7 @@ func (c *client) dialWS() Session {
 			return nil
 		}
 		conn, _, err = dialer.Dial(c.addr, nil)
-		log.Infof("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, err)
+		log.Infof("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, perrors.WithStack(err))
 		if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 			conn.Close()
 			err = errSelfConnect
@@ -243,7 +243,7 @@ func (c *client) dialWS() Session {
 			return ss
 		}
 
-		log.Infof("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, err)
+		log.Infof("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, perrors.WithStack(err))
 		<-wheel.After(connectInterval)
 	}
 }
@@ -269,7 +269,7 @@ func (c *client) dialWSS() Session {
 	if c.cert != "" {
 		certPEMBlock, err := ioutil.ReadFile(c.cert)
 		if err != nil {
-			panic(fmt.Sprintf("ioutil.ReadFile(cert:%s) = error:%+v", c.cert, err))
+			panic(fmt.Sprintf("ioutil.ReadFile(cert:%s) = error:%+v", c.cert, perrors.WithStack(err)))
 		}
 
 		var cert tls.Certificate
@@ -291,7 +291,7 @@ func (c *client) dialWSS() Session {
 	for _, c := range config.Certificates {
 		roots, err = x509.ParseCertificates(c.Certificate[len(c.Certificate)-1])
 		if err != nil {
-			panic(fmt.Sprintf("error parsing server's root cert: %+v\n", err))
+			panic(fmt.Sprintf("error parsing server's root cert: %+v\n", perrors.WithStack(err)))
 		}
 		for _, root = range roots {
 			certPool.AddCert(root)
@@ -321,7 +321,7 @@ func (c *client) dialWSS() Session {
 			return ss
 		}
 
-		log.Infof("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, err)
+		log.Infof("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, perrors.WithStack(err))
 		<-wheel.After(connectInterval)
 	}
 }
@@ -387,7 +387,7 @@ func (c *client) connect() {
 	}
 }
 
-// there are two methods to keep connection pool. the first approch is like
+// there are two methods to keep connection pool. the first approach is like
 // redigo's lazy connection pool(https://github.com/gomodule/redigo/blob/master/redis/pool.go:),
 // in which you should apply testOnBorrow to check alive of the connection.
 // the second way is as follows. @RunEventLoop detects the aliveness of the connection
@@ -405,13 +405,11 @@ func (c *client) RunEventLoop(newSession NewSessionCallback) {
 func (c *client) reConnect() {
 	var num, max, times, interval int
 
-	// c.Lock()
 	max = c.number
 	interval = c.reconnectInterval
 	if interval == 0 {
 		interval = reconnectInterval
 	}
-	// c.Unlock()
 	for {
 		if c.IsClosed() {
 			log.Warnf("client{peer:%s} goroutine exit now.", c.addr)
