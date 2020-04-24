@@ -448,8 +448,8 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 
 	// reduce syscall and memcopy for multiple packages
 	if _, ok := s.Connection.(*gettyTCPConn); ok {
-	        if _, err := s.Connection.send(pkgs); err != nil {
-		        return perrors.Wrapf(err, "s.Connection.Write(pkgs num:%d)", len(pkgs))
+		if _, err := s.Connection.send(pkgs); err != nil {
+			return perrors.Wrapf(err, "s.Connection.Write(pkgs num:%d)", len(pkgs))
 		}
 	}
 
