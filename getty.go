@@ -13,9 +13,10 @@ import (
 	"compress/flate"
 	"net"
 	"time"
+)
 
+import (
 	gxsync "github.com/dubbogo/gost/sync"
-
 	perrors "github.com/pkg/errors"
 )
 
