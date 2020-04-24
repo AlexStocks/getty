@@ -561,7 +561,7 @@ LOOP:
 			<-s.rDone
 
 			if len(s.wQ) == 0 {
-				log.Info("%s, [session.handleLoop] got done signal. session.wQ are nil.", s.Stat())
+				log.Info("%s, [session.handleLoop] got done signal. wQ is nil.", s.Stat())
 				break LOOP
 			}
 			counter.Start()
@@ -582,7 +582,7 @@ LOOP:
 			if udpFlag || wsFlag {
 				err = s.WritePkg(outPkg, 0)
 				if err != nil {
-					log.Error("%s, [session.handleLoop] = error{%s}", s.sessionToken(), jerrors.ErrorStack(err))
+					log.Error("%s, [session.handleLoop] = error:%+v", s.sessionToken(), jerrors.ErrorStack(err))
 					s.stop()
 					// break LOOP
 					flag = false
@@ -805,6 +805,7 @@ func (s *session) handleUDPPackage() error {
 		netError net.Error
 		conn     *gettyUDPConn
 		bufLen   int
+		maxBufLen int
 		bufp     *[]byte
 		buf      []byte
 		addr     *net.UDPAddr
@@ -813,12 +814,11 @@ func (s *session) handleUDPPackage() error {
 	)
 
 	conn = s.Connection.(*gettyUDPConn)
-	bufLen = int(s.maxMsgLen + maxReadBufLen)
+	maxBufLen = int(s.maxMsgLen + maxReadBufLen)
 	if int(s.maxMsgLen<<1) < bufLen {
-		bufLen = int(s.maxMsgLen << 1)
+		maxBufLen = int(s.maxMsgLen << 1)
 	}
-	// buf = make([]byte, bufLen)
-	bufp = gxbytes.GetBytes(bufLen) //make([]byte, maxBufLen)
+	bufp = gxbytes.GetBytes(maxBufLen)
 	defer gxbytes.PutBytes(bufp)
 	buf = *bufp
 	for {
@@ -827,12 +827,12 @@ func (s *session) handleUDPPackage() error {
 		}
 
 		bufLen, addr, err = conn.recv(buf)
-		log.Debug("conn.read() = bufLen:%d, addr:%#v, err:%s", bufLen, addr, jerrors.ErrorStack(err))
+		log.Debug("conn.read() = bufLen:%d, addr:%#v, err:%+v", bufLen, addr, jerrors.ErrorStack(err))
 		if netError, ok = jerrors.Cause(err).(net.Error); ok && netError.Timeout() {
 			continue
 		}
 		if err != nil {
-			log.Error("%s, [session.handleUDPPackage] = len{%d}, error{%s}",
+			log.Error("%s, [session.handleUDPPackage] = len:%d, error:%+v",
 				s.sessionToken(), bufLen, jerrors.ErrorStack(err))
 			err = jerrors.Annotatef(err, "conn.read()")
 			break

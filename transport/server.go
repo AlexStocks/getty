@@ -470,6 +470,10 @@ func (s *server) Listener() net.Listener {
 	return s.streamListener
 }
 
+func (s *server) PacketConn() net.PacketConn {
+	return s.pktListener
+}
+
 func (s *server) Close() {
 	s.stop()
 	s.wg.Wait()
