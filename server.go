@@ -280,15 +280,23 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 }
 
 func (s *server) runUDPEventLoop(newSession NewSessionCallback) {
-	var (
-		ss Session
-	)
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		var (
+			err  error
+			conn *net.UDPConn
+			ss   Session
+		)
 
-	ss = newUDPSession(s.pktListener.(*net.UDPConn), s)
-	if err := newSession(ss); err != nil {
-		panic(err.Error())
-	}
-	ss.(*session).run()
+		conn = s.pktListener.(*net.UDPConn)
+		ss = newUDPSession(conn, s)
+		if err = newSession(ss); err != nil {
+			conn.Close()
+			panic(err.Error())
+		}
+		ss.(*session).run()
+	}()
 }
 
 type wsHandler struct {
