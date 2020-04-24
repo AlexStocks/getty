@@ -1,10 +1,15 @@
 language: go
 
+os:
+  - linux
+
 go:
   - "1.13"
 
 env:
   - GO111MODULE=on
+
+install: true
 
 script:
   - go fmt ./... && [[ -z `git status -s` ]]
