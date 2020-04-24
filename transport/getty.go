@@ -11,13 +11,13 @@ package getty
 
 import (
 	"compress/flate"
-	"errors"
 	"net"
 	"time"
 )
 
 import (
 	"github.com/dubbogo/gost/sync"
+	jerrors "github.com/juju/errors"
 )
 
 // NewSessionCallback will be invoked when server accepts a new client connection or client connects to server successfully.
@@ -133,9 +133,9 @@ type Connection interface {
 /////////////////////////////////////////
 
 var (
-	ErrSessionClosed  = errors.New("session Already Closed")
-	ErrSessionBlocked = errors.New("session Full Blocked")
-	ErrNullPeerAddr   = errors.New("peer address is nil")
+	ErrSessionClosed  = jerrors.New("session Already Closed")
+	ErrSessionBlocked = jerrors.New("session Full Blocked")
+	ErrNullPeerAddr   = jerrors.New("peer address is nil")
 )
 
 type Session interface {
@@ -194,8 +194,21 @@ type Client interface {
 	EndPoint
 }
 
+// Server interface
 type Server interface {
 	EndPoint
+}
+
+// StreamServer is like tcp/websocket/wss server
+type StreamServer interface {
+	Server
 	// get the network listener
 	Listener() net.Listener
+}
+
+// PacketServer is like udp listen endpoint
+type PacketServer interface {
+	Server
+	// get the network listener
+	PacketConn() net.PacketConn
 }

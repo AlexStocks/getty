@@ -174,6 +174,7 @@ func (s *server) listenTCP() error {
 	}
 
 	s.streamListener = streamListener
+	s.addr = s.streamListener.Addr().String()
 
 	return nil
 }
@@ -202,6 +203,7 @@ func (s *server) listenUDP() error {
 	}
 
 	s.pktListener = pktListener
+	s.addr = s.pktListener.LocalAddr().String()
 
 	return nil
 }
@@ -253,7 +255,6 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 				return
 			}
 			if delay != 0 {
-				// time.Sleep(delay)
 				<-wheel.After(delay)
 			}
 			client, err = s.accept(newSession)
@@ -269,7 +270,7 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 					}
 					continue
 				}
-				log.Warn("server{%s}.Accept() = err {%+v}", s.addr, jerrors.ErrorStack(err))
+				log.Warn("server{%s}.Accept() = err:%+v", s.addr, jerrors.ErrorStack(err))
 				continue
 			}
 			delay = 0
