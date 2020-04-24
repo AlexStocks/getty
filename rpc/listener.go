@@ -196,10 +196,10 @@ func (h *RpcServerHandler) callService(session getty.Session, req GettyRPCReques
 // RpcClientHandler
 ////////////////////////////////////////////
 
-type PackageHandler func(ss getty.Session, protocolType CodecType, package interface{}) error
+type PackageHandler func(ss getty.Session, protocolType CodecType, pkg interface{}) error
 
 type RpcClientHandler struct {
-	conn *gettyRPCClient
+	conn                *gettyRPCClient
 	handleServerRequest PackageHandler
 }
 
@@ -238,9 +238,9 @@ func (h *RpcClientHandler) OnMessage(session getty.Session, pkg interface{}) {
 
 	pendingResponse := h.conn.pool.rpcClient.removePendingResponse(p.H.Sequence)
 	if pendingResponse == nil {
-		if h.handleServerRequest == nil {                 
-		    log.Error("failed to get pending response context for response package %+v", p)
-		    return
+		if h.handleServerRequest == nil {
+			log.Error("failed to get pending response context for response package %+v", p)
+			return
 		}
 		if err := h.handleServerRequest(session, p); err != nil {
 			log.Error("handleServerRequest(session:%s, p:%+v) = error:%+v", session.Stat(), p, err)

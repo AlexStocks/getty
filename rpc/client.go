@@ -100,12 +100,12 @@ func NewClient(conf *ClientConfig, opts ...ClientOption) (*Client, error) {
 	if initSequence%2 == 0 {
 		initSequence++
 	}
-	
+
 	var copts ClientOptions
 	for _, o := range opts {
 		o(&copts)
 	}
-	
+
 	c := &Client{
 		pendingResponses: make(map[SequenceType]*PendingResponse),
 		conf:             *conf,
