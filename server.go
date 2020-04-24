@@ -24,8 +24,9 @@ import (
 )
 
 import (
-	"github.com/dubbogo/gost/net"
+	gxnet "github.com/dubbogo/gost/net"
 	"github.com/gorilla/websocket"
+
 	perrors "github.com/pkg/errors"
 )
 
@@ -173,6 +174,7 @@ func (s *server) listenTCP() error {
 	}
 
 	s.streamListener = streamListener
+	s.addr = s.streamListener.Addr().String()
 
 	return nil
 }
@@ -201,6 +203,7 @@ func (s *server) listenUDP() error {
 	}
 
 	s.pktListener = pktListener
+	s.addr = s.pktListener.LocalAddr().String()
 
 	return nil
 }
@@ -458,6 +461,10 @@ func (s *server) RunEventLoop(newSession NewSessionCallback) {
 
 func (s *server) Listener() net.Listener {
 	return s.streamListener
+}
+
+func (s *server) PacketConn() net.PacketConn {
+	return s.pktListener
 }
 
 func (s *server) Close() {
