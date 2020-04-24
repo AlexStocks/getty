@@ -68,6 +68,19 @@ type CallResponse struct {
 
 type AsyncCallback func(response CallResponse)
 
+type ClientOptions struct {
+	// handle server mq packet request
+	handleServerRequest MQPacketHandler
+}
+
+type ClientOption func(options *ClientOptions)
+
+func WithPackageHandler(h MQPacketHandler) ClientOption {
+	return func(o *ClientOptions) {
+		o.handleServerRequest = h
+	}
+}
+
 type Client struct {
 	conf ClientConfig
 	pool *gettyRPCClientPool
@@ -78,7 +91,7 @@ type Client struct {
 	pendingResponses map[SequenceType]*PendingResponse
 }
 
-func NewClient(conf *ClientConfig) (*Client, error) {
+func NewClient(conf *ClientConfig, opts ...ClientOption) (*Client, error) {
 	if err := conf.CheckValidity(); err != nil {
 		return nil, jerrors.Trace(err)
 	}
@@ -87,13 +100,18 @@ func NewClient(conf *ClientConfig) (*Client, error) {
 	if initSequence%2 == 0 {
 		initSequence++
 	}
-
+	
+	var copts ClientOptions
+	for _, o := range opts {
+		o(&copts)
+	}
+	
 	c := &Client{
 		pendingResponses: make(map[SequenceType]*PendingResponse),
 		conf:             *conf,
 		sequence:         initSequence,
 	}
-	c.pool = newGettyRPCClientConnPool(c, conf.PoolSize, time.Duration(int(time.Second)*conf.PoolTTL))
+	c.pool = newGettyRPCClientConnPool(c, conf.PoolSize, time.Duration(int(time.Second)*conf.PoolTTL), copts.handleServerRequest)
 
 	return c, nil
 }
