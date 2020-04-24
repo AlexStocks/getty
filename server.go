@@ -259,7 +259,7 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 			}
 			client, err = s.accept(newSession)
 			if err != nil {
-				if netErr, ok := err.(net.Error); ok && netErr.Temporary() {
+				if netErr, ok := perrors.Cause(err).(net.Error); ok && netErr.Temporary() {
 					if delay == 0 {
 						delay = 5 * time.Millisecond
 					} else {
