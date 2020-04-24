@@ -13,10 +13,9 @@ import (
 	"compress/flate"
 	"net"
 	"time"
-)
 
-import (
 	gxsync "github.com/dubbogo/gost/sync"
+
 	perrors "github.com/pkg/errors"
 )
 
@@ -195,8 +194,21 @@ type Client interface {
 	EndPoint
 }
 
+// Server interface
 type Server interface {
 	EndPoint
+}
+
+// StreamServer is like tcp/websocket/wss server
+type StreamServer interface {
+	Server
 	// get the network listener
 	Listener() net.Listener
+}
+
+// PacketServer is like udp listen endpoint
+type PacketServer interface {
+	Server
+	// get the network listener
+	PacketConn() net.PacketConn
 }
