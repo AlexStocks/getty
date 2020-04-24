@@ -17,6 +17,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -66,10 +67,6 @@ func newServer(t EndPointType, opts ...ServerOption) *server {
 	}
 
 	s.init(opts...)
-
-	if s.addr == "" {
-		panic(fmt.Sprintf("@addr:%s", s.addr))
-	}
 
 	return s
 }
@@ -163,9 +160,16 @@ func (s *server) listenTCP() error {
 		streamListener net.Listener
 	)
 
-	streamListener, err = net.Listen("tcp", s.addr)
-	if err != nil {
-		return perrors.Wrapf(err, "net.Listen(tcp, addr:%s))", s.addr)
+	if len(s.addr) == 0 || !strings.Contains(s.addr, ":") {
+		streamListener, err = gxnet.ListenOnTCPRandomPort(s.addr)
+		if err != nil {
+			return perrors.Wrapf(err, "gxnet.ListenOnTCPRandomPort(addr:%s)", s.addr)
+		}
+	} else {
+		streamListener, err = net.Listen("tcp", s.addr)
+		if err != nil {
+			return perrors.Wrapf(err, "net.Listen(tcp, addr:%s)", s.addr)
+		}
 	}
 
 	s.streamListener = streamListener
@@ -180,13 +184,20 @@ func (s *server) listenUDP() error {
 		pktListener *net.UDPConn
 	)
 
-	localAddr, err = net.ResolveUDPAddr("udp", s.addr)
-	if err != nil {
-		return perrors.Wrapf(err, "net.ResolveUDPAddr(udp, addr:%s)", s.addr)
-	}
-	pktListener, err = net.ListenUDP("udp", localAddr)
-	if err != nil {
-		return perrors.Wrapf(err, "net.ListenUDP((udp, localAddr:%#v)", localAddr)
+	if len(s.addr) == 0 || !strings.Contains(s.addr, ":") {
+		pktListener, err = gxnet.ListenOnUDPRandomPort(s.addr)
+		if err != nil {
+			return perrors.Wrapf(err, "gxnet.ListenOnUDPRandomPort(addr:%s)", s.addr)
+		}
+	} else {
+		localAddr, err = net.ResolveUDPAddr("udp", s.addr)
+		if err != nil {
+			return perrors.Wrapf(err, "net.ResolveUDPAddr(udp, addr:%s)", s.addr)
+		}
+		pktListener, err = net.ListenUDP("udp", localAddr)
+		if err != nil {
+			return perrors.Wrapf(err, "net.ListenUDP((udp, localAddr:%#v)", localAddr)
+		}
 	}
 
 	s.pktListener = pktListener
@@ -213,7 +224,7 @@ func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 	}
 	if gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 		log.Warnf("conn.localAddr{%s} == conn.RemoteAddr", conn.LocalAddr().String(), conn.RemoteAddr().String())
-		return nil, errSelfConnect
+		return nil, perrors.WithStack(errSelfConnect)
 	}
 
 	ss := newTCPSession(conn, s)
@@ -237,7 +248,7 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 		)
 		for {
 			if s.IsClosed() {
-				log.Warnf("server{%s} stop acceptting client connect request.", s.addr)
+				log.Warnf("server{%s} stop accepting client connect request.", s.addr)
 				return
 			}
 			if delay != 0 {
@@ -256,7 +267,7 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 					}
 					continue
 				}
-				log.Warnf("server{%s}.Accept() = err {%+v}", s.addr, err)
+				log.Warnf("server{%s}.Accept() = err {%+v}", s.addr, perrors.WithStack(err))
 				continue
 			}
 			delay = 0
@@ -357,8 +368,7 @@ func (s *server) runWSEventLoop(newSession NewSessionCallback) {
 		s.lock.Unlock()
 		err = server.Serve(s.streamListener)
 		if err != nil {
-			log.Errorf("http.server.Serve(addr{%s}) = err{%+v}", s.addr, err)
-			// panic(err)
+			log.Errorf("http.server.Serve(addr{%s}) = err:%+v", s.addr, perrors.WithStack(err))
 		}
 	}()
 }
@@ -380,8 +390,8 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 		defer s.wg.Done()
 
 		if certificate, err = tls.LoadX509KeyPair(s.cert, s.privateKey); err != nil {
-			panic(fmt.Sprintf("tls.LoadX509KeyPair(cert{%s}, privateKey{%s}) = err{%+v}",
-				s.cert, s.privateKey, err))
+			panic(fmt.Sprintf("tls.LoadX509KeyPair(cert{%s}, privateKey{%s}) = err:%+v",
+				s.cert, s.privateKey, perrors.WithStack(err)))
 			return
 		}
 		config = &tls.Config{
@@ -394,7 +404,7 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 		if s.caCert != "" {
 			certPem, err = ioutil.ReadFile(s.caCert)
 			if err != nil {
-				panic(fmt.Errorf("ioutil.ReadFile(certFile{%s}) = err{%+v}", s.caCert, err))
+				panic(fmt.Errorf("ioutil.ReadFile(certFile{%s}) = err:%+v", s.caCert, perrors.WithStack(err)))
 			}
 			certPool = x509.NewCertPool()
 			if ok := certPool.AppendCertsFromPEM(certPem); !ok {
@@ -419,7 +429,7 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 		s.lock.Unlock()
 		err = server.Serve(tls.NewListener(s.streamListener, config))
 		if err != nil {
-			log.Errorf("http.server.Serve(addr{%s}) = err{%+v}", s.addr, err)
+			log.Errorf("http.server.Serve(addr{%s}) = err:%+v", s.addr, perrors.WithStack(err))
 			panic(err)
 		}
 	}()
@@ -429,7 +439,7 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 // @newSession: new connection callback
 func (s *server) RunEventLoop(newSession NewSessionCallback) {
 	if err := s.listen(); err != nil {
-		panic(fmt.Errorf("server.listen() = error:%+v", err))
+		panic(fmt.Errorf("server.listen() = error:%+v", perrors.WithStack(err)))
 	}
 
 	switch s.endPointType {
