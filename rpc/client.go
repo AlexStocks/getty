@@ -70,12 +70,12 @@ type AsyncCallback func(response CallResponse)
 
 type ClientOptions struct {
 	// handle server mq packet request
-	handleServerRequest MQPacketHandler
+	handleServerRequest PackageHandler
 }
 
 type ClientOption func(options *ClientOptions)
 
-func WithPackageHandler(h MQPacketHandler) ClientOption {
+func WithPackageHandler(h PackageHandler) ClientOption {
 	return func(o *ClientOptions) {
 		o.handleServerRequest = h
 	}

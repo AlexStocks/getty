@@ -40,8 +40,9 @@ func (s *rpcSession) GetReqNum() int32 {
 type RpcServerHandler struct {
 	maxSessionNum  int
 	sessionTimeout time.Duration
-	sessionMap     map[getty.Session]*rpcSession
+
 	rwlock         sync.RWMutex
+	sessionMap     map[getty.Session]*rpcSession
 }
 
 func NewRpcServerHandler(maxSessionNum int, sessionTimeout time.Duration) *RpcServerHandler {
@@ -196,7 +197,7 @@ func (h *RpcServerHandler) callService(session getty.Session, req GettyRPCReques
 // RpcClientHandler
 ////////////////////////////////////////////
 
-type PackageHandler func(ss getty.Session, protocolType CodecType, pkg interface{}) error
+type PackageHandler func(ss getty.Session, pkg interface{}) error
 
 type RpcClientHandler struct {
 	conn                *gettyRPCClient

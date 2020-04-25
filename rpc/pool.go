@@ -56,7 +56,7 @@ func newGettyRPCClient(pool *gettyRPCClientPool, protocol, addr string) (*gettyR
 
 		if idx > 2000 {
 			c.gettyClient.Close()
-			return nil, jerrors.New(fmt.Sprintf("failed to create client connection to %s in 3 seconds", addr))
+			return nil, jerrors.New(fmt.Sprintf("failed to create client connection to %s in 2 seconds", addr))
 		}
 		time.Sleep(1e6)
 	}
@@ -367,15 +367,19 @@ type gettyRPCClientPool struct {
 	rpcClient *Client
 	size      int   // []*gettyRPCClient数组的size
 	ttl       int64 // 每个gettyRPCClient的有效期时间. pool对象会在getConn时执行ttl检查
+	handleServerRequest PackageHandler
 
 	connMap RPCClientMap // 从[]*gettyRPCClient 可见key是连接地址，而value是对应这个地址的连接数组
 }
 
-func newGettyRPCClientConnPool(rpcClient *Client, size int, ttl time.Duration) *gettyRPCClientPool {
+func newGettyRPCClientConnPool(rpcClient *Client, size int,
+	ttl time.Duration, serverRequestHandler PackageHandler) *gettyRPCClientPool {
+
 	return &gettyRPCClientPool{
 		rpcClient: rpcClient,
 		size:      size,
 		ttl:       int64(ttl.Seconds()),
+		handleServerRequest: serverRequestHandler,
 	}
 }
 
