@@ -17,6 +17,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -67,10 +68,6 @@ func newServer(t EndPointType, opts ...ServerOption) *server {
 	}
 
 	s.init(opts...)
-
-	if s.addr == "" {
-		panic(fmt.Sprintf("@addr:%s", s.addr))
-	}
 
 	return s
 }
@@ -128,7 +125,7 @@ func (s *server) stop() {
 				if err = s.server.Shutdown(ctx); err != nil {
 					// if the log output is "shutdown ctx: context deadline exceeded"， it means that
 					// there are still some active connections.
-					log.Error("server shutdown ctx:%s error:%s", ctx, err)
+					log.Error("server shutdown ctx:%s error:%v", ctx, err)
 				}
 			}
 			s.server = nil
@@ -164,12 +161,20 @@ func (s *server) listenTCP() error {
 		streamListener net.Listener
 	)
 
-	streamListener, err = net.Listen("tcp", s.addr)
-	if err != nil {
-		return jerrors.Annotatef(err, "net.Listen(tcp, addr:%s))", s.addr)
+	if len(s.addr) == 0 || !strings.Contains(s.addr, ":") {
+		streamListener, err = gxnet.ListenOnTCPRandomPort(s.addr)
+		if err != nil {
+			return jerrors.Annotatef(err, "gxnet.ListenOnTCPRandomPort(addr:%s)", s.addr)
+		}
+	} else {
+		streamListener, err = net.Listen("tcp", s.addr)
+		if err != nil {
+			return jerrors.Annotatef(err, "net.Listen(tcp, addr:%s)", s.addr)
+		}
 	}
 
 	s.streamListener = streamListener
+	s.addr = s.streamListener.Addr().String()
 
 	return nil
 }
@@ -181,16 +186,24 @@ func (s *server) listenUDP() error {
 		pktListener *net.UDPConn
 	)
 
-	localAddr, err = net.ResolveUDPAddr("udp", s.addr)
-	if err != nil {
-		return jerrors.Annotatef(err, "net.ResolveUDPAddr(udp, addr:%s)", s.addr)
-	}
-	pktListener, err = net.ListenUDP("udp", localAddr)
-	if err != nil {
-		return jerrors.Annotatef(err, "net.ListenUDP((udp, localAddr:%#v)", localAddr)
+	if len(s.addr) == 0 || !strings.Contains(s.addr, ":") {
+		pktListener, err = gxnet.ListenOnUDPRandomPort(s.addr)
+		if err != nil {
+			return jerrors.Annotatef(err, "gxnet.ListenOnUDPRandomPort(addr:%s)", s.addr)
+		}
+	} else {
+		localAddr, err = net.ResolveUDPAddr("udp", s.addr)
+		if err != nil {
+			return jerrors.Annotatef(err, "net.ResolveUDPAddr(udp, addr:%s)", s.addr)
+		}
+		pktListener, err = net.ListenUDP("udp", localAddr)
+		if err != nil {
+			return jerrors.Annotatef(err, "net.ListenUDP((udp, localAddr:%#v)", localAddr)
+		}
 	}
 
 	s.pktListener = pktListener
+	s.addr = s.pktListener.LocalAddr().String()
 
 	return nil
 }
@@ -238,11 +251,10 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 		)
 		for {
 			if s.IsClosed() {
-				log.Warn("server{%s} stop acceptting client connect request.", s.addr)
+				log.Warn("server{%s} stop accepting client connect request.", s.addr)
 				return
 			}
 			if delay != 0 {
-				// time.Sleep(delay)
 				<-wheel.After(delay)
 			}
 			client, err = s.accept(newSession)
@@ -258,7 +270,7 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 					}
 					continue
 				}
-				log.Warn("server{%s}.Accept() = err {%#v}", s.addr, jerrors.ErrorStack(err))
+				log.Warn("server{%s}.Accept() = err:%+v", s.addr, jerrors.ErrorStack(err))
 				continue
 			}
 			delay = 0
@@ -322,7 +334,7 @@ func (s *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Warn("upgrader.Upgrader(http.Request{%#v}) = error{%s}", r, err)
+		log.Warn("upgrader.Upgrader(http.Request{%#v}) = error:%+v", r, err)
 		return
 	}
 	if conn.RemoteAddr().String() == conn.LocalAddr().String() {
@@ -367,8 +379,7 @@ func (s *server) runWSEventLoop(newSession NewSessionCallback) {
 		s.lock.Unlock()
 		err = server.Serve(s.streamListener)
 		if err != nil {
-			log.Error("http.server.Serve(addr{%s}) = err{%s}", s.addr, jerrors.ErrorStack(err))
-			// panic(err)
+			log.Error("http.server.Serve(addr{%s}) = err:%+v", s.addr, jerrors.ErrorStack(err))
 		}
 	}()
 }
@@ -390,7 +401,7 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 		defer s.wg.Done()
 
 		if certificate, err = tls.LoadX509KeyPair(s.cert, s.privateKey); err != nil {
-			panic(fmt.Sprintf("tls.LoadX509KeyPair(cert{%s}, privateKey{%s}) = err{%s}",
+			panic(fmt.Sprintf("tls.LoadX509KeyPair(cert{%s}, privateKey{%s}) = err:%+v",
 				s.cert, s.privateKey, jerrors.ErrorStack(err)))
 		}
 		config = &tls.Config{
@@ -403,7 +414,7 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 		if s.caCert != "" {
 			certPem, err = ioutil.ReadFile(s.caCert)
 			if err != nil {
-				panic(fmt.Errorf("ioutil.ReadFile(certFile{%s}) = err{%s}", s.caCert, jerrors.ErrorStack(err)))
+				panic(fmt.Errorf("ioutil.ReadFile(certFile{%s}) = err:%+v", s.caCert, jerrors.ErrorStack(err)))
 			}
 			certPool = x509.NewCertPool()
 			if ok := certPool.AppendCertsFromPEM(certPem); !ok {
@@ -428,7 +439,7 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 		s.lock.Unlock()
 		err = server.Serve(tls.NewListener(s.streamListener, config))
 		if err != nil {
-			log.Error("http.server.Serve(addr{%s}) = err{%s}", s.addr, jerrors.ErrorStack(err))
+			log.Error("http.server.Serve(addr{%s}) = err:%+v", s.addr, jerrors.ErrorStack(err))
 			panic(err)
 		}
 	}()
@@ -438,7 +449,7 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 // @newSession: new connection callback
 func (s *server) RunEventLoop(newSession NewSessionCallback) {
 	if err := s.listen(); err != nil {
-		panic(fmt.Errorf("server.listen() = error:%s", jerrors.ErrorStack(err)))
+		panic(fmt.Errorf("server.listen() = error:%+v", jerrors.ErrorStack(err)))
 	}
 
 	switch s.endPointType {
@@ -457,6 +468,10 @@ func (s *server) RunEventLoop(newSession NewSessionCallback) {
 
 func (s *server) Listener() net.Listener {
 	return s.streamListener
+}
+
+func (s *server) PacketConn() net.PacketConn {
+	return s.pktListener
 }
 
 func (s *server) Close() {

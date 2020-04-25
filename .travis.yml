@@ -1,11 +1,15 @@
 language: go
 
+os:
+  - linux
+
 go:
   - "1.13"
 
 env:
   - GO111MODULE=on
 
+install: true
 script:
   - go fmt ./... && [[ -z `git status -s` ]]
   - go mod vendor && go test $(go list ./... | grep -v vendor | grep -v examples) -coverprofile=coverage.txt -covermode=atomic
