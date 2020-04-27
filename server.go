@@ -24,8 +24,9 @@ import (
 )
 
 import (
-	"github.com/dubbogo/gost/net"
+	gxnet "github.com/dubbogo/gost/net"
 	"github.com/gorilla/websocket"
+
 	perrors "github.com/pkg/errors"
 )
 
@@ -173,6 +174,7 @@ func (s *server) listenTCP() error {
 	}
 
 	s.streamListener = streamListener
+	s.addr = s.streamListener.Addr().String()
 
 	return nil
 }
@@ -201,6 +203,7 @@ func (s *server) listenUDP() error {
 	}
 
 	s.pktListener = pktListener
+	s.addr = s.pktListener.LocalAddr().String()
 
 	return nil
 }
@@ -256,7 +259,7 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 			}
 			client, err = s.accept(newSession)
 			if err != nil {
-				if netErr, ok := err.(net.Error); ok && netErr.Temporary() {
+				if netErr, ok := perrors.Cause(err).(net.Error); ok && netErr.Temporary() {
 					if delay == 0 {
 						delay = 5 * time.Millisecond
 					} else {
@@ -277,15 +280,23 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 }
 
 func (s *server) runUDPEventLoop(newSession NewSessionCallback) {
-	var (
-		ss Session
-	)
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		var (
+			err  error
+			conn *net.UDPConn
+			ss   Session
+		)
 
-	ss = newUDPSession(s.pktListener.(*net.UDPConn), s)
-	if err := newSession(ss); err != nil {
-		panic(err.Error())
-	}
-	ss.(*session).run()
+		conn = s.pktListener.(*net.UDPConn)
+		ss = newUDPSession(conn, s)
+		if err = newSession(ss); err != nil {
+			conn.Close()
+			panic(err.Error())
+		}
+		ss.(*session).run()
+	}()
 }
 
 type wsHandler struct {
@@ -458,6 +469,10 @@ func (s *server) RunEventLoop(newSession NewSessionCallback) {
 
 func (s *server) Listener() net.Listener {
 	return s.streamListener
+}
+
+func (s *server) PacketConn() net.PacketConn {
+	return s.pktListener
 }
 
 func (s *server) Close() {

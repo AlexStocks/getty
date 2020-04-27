@@ -26,6 +26,7 @@ import (
 	gxcontext "github.com/dubbogo/gost/context"
 	gxsync "github.com/dubbogo/gost/sync"
 	gxtime "github.com/dubbogo/gost/time"
+
 	"github.com/gorilla/websocket"
 	perrors "github.com/pkg/errors"
 )
@@ -479,7 +480,7 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 	}
 
 	if err = s.WriteBytes(arr); err != nil {
-		return jerrors.Trace(err)
+		return perrors.WithStack(err)
 	}
 
 	num := len(pkgs) - 1
@@ -579,7 +580,7 @@ LOOP:
 			if udpFlag || wsFlag {
 				err = s.WritePkg(outPkg, 0)
 				if err != nil {
-					log.Errorf("%s, [session.handleLoop] = error:%+v", s.sessionToken(), err)
+					log.Errorf("%s, [session.handleLoop] = error:%+v", s.sessionToken(), perrors.WithStack(err))
 					s.stop()
 					// break LOOP
 					flag = false
@@ -592,7 +593,7 @@ LOOP:
 			for idx := 0; idx < maxIovecNum; idx++ {
 				pkgBytes, err = s.writer.Write(s, outPkg)
 				if err != nil {
-					log.Errorf("%s, [session.handleLoop] = error:%+v", s.sessionToken(), jerrors.ErrorStack(err))
+					log.Errorf("%s, [session.handleLoop] = error:%+v", s.sessionToken(), perrors.WithStack(err))
 					s.stop()
 					// break LOOP
 					flag = false
@@ -813,7 +814,7 @@ func (s *session) handleUDPPackage() error {
 	if int(s.maxMsgLen<<1) < bufLen {
 		maxBufLen = int(s.maxMsgLen << 1)
 	}
-	bufp = gxbytes.GetBytes(maxBufLen) //make([]byte, maxBufLen)
+	bufp = gxbytes.GetBytes(maxBufLen)
 	defer gxbytes.PutBytes(bufp)
 	buf = *bufp
 	for {
@@ -827,8 +828,8 @@ func (s *session) handleUDPPackage() error {
 			continue
 		}
 		if err != nil {
-			log.Errorf("%s, [session.handleUDPPackage] = len{%d}, error{%+s}",
-				s.sessionToken(), bufLen, err)
+			log.Errorf("%s, [session.handleUDPPackage] = len:%d, error:%+v",
+				s.sessionToken(), bufLen, perrors.WithStack(err))
 			err = perrors.Wrapf(err, "conn.read()")
 			break
 		}
