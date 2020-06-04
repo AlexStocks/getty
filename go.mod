@@ -8,14 +8,14 @@ require (
 	github.com/coreos/go-semver v0.3.0 // indirect
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf // indirect
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
-	github.com/dubbogo/gost v1.6.0
+	github.com/dubbogo/gost v1.9.0
 	github.com/fatih/camelcase v1.0.0 // indirect
 	github.com/fatih/set v0.2.1 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/gogo/protobuf v1.3.1
 	github.com/golang/snappy v0.0.1
 	github.com/google/uuid v1.1.1 // indirect
-	github.com/gorilla/websocket v1.4.1
+	github.com/gorilla/websocket v1.4.2
 	github.com/grpc-ecosystem/go-grpc-middleware v1.2.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway v1.13.0 // indirect
 	github.com/json-iterator/go v1.1.9
