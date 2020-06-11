@@ -2,7 +2,6 @@ package rpc
 
 import (
 	"math/rand"
-	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -23,8 +22,16 @@ var (
 	errClientReadTimeout = jerrors.New("client read timeout")
 )
 
+var clientSender *sender
+var sequence uint64
+
 func init() {
 	rand.Seed(time.Now().UnixNano())
+	clientSender = newSender()
+	sequence = uint64(rand.Int63n(time.Now().UnixNano()))
+	if sequence%2 == 0 {
+		sequence++
+	}
 }
 
 type CallOptions struct {
@@ -70,12 +77,12 @@ type AsyncCallback func(response CallResponse)
 
 type Client struct {
 	conf ClientConfig
-	pool *gettyRPCClientPool
+	//pool *gettyRPCClientPool
 	// the sequence sent to server must be an odd number
-	sequence uint64
+	//sequence uint64
 
-	pendingLock      sync.RWMutex
-	pendingResponses map[SequenceType]*PendingResponse
+	//pendingLock      sync.RWMutex
+	//pendingResponses map[SequenceType]*PendingResponse
 }
 
 func NewClient(conf *ClientConfig) (*Client, error) {
@@ -89,14 +96,30 @@ func NewClient(conf *ClientConfig) (*Client, error) {
 	}
 
 	c := &Client{
-		pendingResponses: make(map[SequenceType]*PendingResponse),
+		// pendingResponses: make(map[SequenceType]*PendingResponse),
 		conf:             *conf,
-		sequence:         initSequence,
+		// sequence:         initSequence,
 	}
 	c.pool = newGettyRPCClientConnPool(c, conf.PoolSize, time.Duration(int(time.Second)*conf.PoolTTL))
 
 	return c, nil
 }
+
+// Client Example
+func newCLient(protocol, addr string) {
+	client := getty.NewTCPClient(getty.WithServerAddress(addr))
+	// 如果连接池有 conn 且有效，则不需要新建 conn
+	// TODO 协议复用？
+	if conn, ok := pool.connMap[addr+protocol]; ok {
+
+	}
+	conn, err := newGettyRPCConn(protocol, addr, client)
+	if err != nil {
+		session := conn.selectSession()
+		session.WritePkg(nil, 0)
+	}
+}
+
 
 // call one way
 func (c *Client) CallOneway(typ CodecType, addr, service, method string, args interface{}, opts ...CallOption) error {
@@ -166,7 +189,7 @@ func (c *Client) call(ct CallType, typ CodecType, addr, service, method string,
 	var (
 		err     error
 		session getty.Session
-		conn    *gettyRPCClient
+		conn    *gettyRPCConn
 	)
 	conn, session, err = c.selectSession(typ, addr)
 	if err != nil {
@@ -177,7 +200,7 @@ func (c *Client) call(ct CallType, typ CodecType, addr, service, method string,
 	}
 	defer func() {
 		if err == nil {
-			c.pool.put(conn)
+			pool.put(conn)
 			return
 		}
 		conn.close()
