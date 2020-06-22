@@ -452,6 +452,7 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 		if _, err := s.Connection.send(pkgs); err != nil {
 			return jerrors.Annotatef(err, "s.Connection.Write(pkgs num:%d)", len(pkgs))
 		}
+		return nil
 	}
 
 	// get len
@@ -800,17 +801,17 @@ func (s *session) handleTCPPackage() error {
 // get package from udp packet
 func (s *session) handleUDPPackage() error {
 	var (
-		ok       bool
-		err      error
-		netError net.Error
-		conn     *gettyUDPConn
-		bufLen   int
+		ok        bool
+		err       error
+		netError  net.Error
+		conn      *gettyUDPConn
+		bufLen    int
 		maxBufLen int
-		bufp     *[]byte
-		buf      []byte
-		addr     *net.UDPAddr
-		pkgLen   int
-		pkg      interface{}
+		bufp      *[]byte
+		buf       []byte
+		addr      *net.UDPAddr
+		pkgLen    int
+		pkg       interface{}
 	)
 
 	conn = s.Connection.(*gettyUDPConn)
