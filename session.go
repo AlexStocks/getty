@@ -452,6 +452,7 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 		if _, err := s.Connection.send(pkgs); err != nil {
 			return perrors.Wrapf(err, "s.Connection.Write(pkgs num:%d)", len(pkgs))
 		}
+		return nil
 	}
 
 	// get len
