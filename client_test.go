@@ -13,7 +13,7 @@ import (
 )
 
 import (
-	jerrors "github.com/juju/errors"
+	perrors "github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -186,7 +186,7 @@ func TestUDPClient(t *testing.T) {
 	err = ss.WritePkg(nil, 0)
 	assert.NotNil(t, err)
 	err = ss.WritePkg([]byte("hello"), 0)
-	assert.NotNil(t, jerrors.Cause(err))
+	assert.NotNil(t, perrors.Cause(err))
 	err = ss.WriteBytes([]byte("hello"))
 	assert.NotNil(t, err)
 	err = ss.WriteBytesArray([]byte("hello"))
