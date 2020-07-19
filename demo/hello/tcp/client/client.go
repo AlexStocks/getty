@@ -75,6 +75,7 @@ func main() {
 	taskPool.Close()
 }
 
+
 // NewHelloClientSession use for init client session
 func NewHelloClientSession(session getty.Session) (err error) {
 	tcp.EventListener.SessionOnOpen = func(session getty.Session) {
