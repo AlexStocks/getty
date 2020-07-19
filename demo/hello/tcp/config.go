@@ -33,7 +33,7 @@ import (
 
 var (
 	pkgHandler    = &hello.PackageHandler{}
-	// Register event callback
+	// EventListener register event callback
 	EventListener = &hello.MessageHandler{}
 )
 
