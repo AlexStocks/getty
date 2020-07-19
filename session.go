@@ -20,7 +20,6 @@ package getty
 import (
 	"bytes"
 	"fmt"
-	jerrors "github.com/juju/errors"
 	"io"
 	"net"
 	"runtime"
@@ -630,7 +629,7 @@ LOOP:
 			err = s.WriteBytesArray(iovec[:]...)
 			if err != nil {
 				log.Errorf("%s, [session.handleLoop]s.WriteBytesArray(iovec len:%d) = error:%+v",
-					s.sessionToken(), len(iovec), jerrors.ErrorStack(err))
+					s.sessionToken(), len(iovec), perrors.WithStack(err))
 				s.stop()
 				// break LOOP
 				flag = false
