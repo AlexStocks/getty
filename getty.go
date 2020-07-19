@@ -57,7 +57,7 @@ type Writer interface {
 	Write(Session, interface{}) ([]byte, error)
 }
 
-// package handler interface
+// ReadWriter interface use for handle application packages
 type ReadWriter interface {
 	Reader
 	Writer
