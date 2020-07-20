@@ -69,6 +69,7 @@ type client struct {
 
 	newSession NewSessionCallback
 	ssMap      map[Session]struct{}
+	sslConfig  *tls.Config
 
 	sync.Once
 	done chan struct{}
@@ -152,7 +153,12 @@ func (c *client) dialTCP() Session {
 		if c.IsClosed() {
 			return nil
 		}
-		conn, err = net.DialTimeout("tcp", c.addr, connectTimeout)
+		if c.sslConfig != nil {
+			d := &net.Dialer{Timeout: connectTimeout}
+			conn, err = tls.DialWithDialer(d, "tcp", c.addr, c.sslConfig)
+		} else {
+			conn, err = net.DialTimeout("tcp", c.addr, connectTimeout)
+		}
 		if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 			conn.Close()
 			err = errSelfConnect

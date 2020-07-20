@@ -56,7 +56,7 @@ type server struct {
 	lock           sync.Mutex // for server
 	endPointType   EndPointType
 	server         *http.Server // for ws or wss server
-
+	sslConfig      *tls.Config
 	sync.Once
 	done chan struct{}
 	wg   sync.WaitGroup
@@ -80,7 +80,7 @@ func newServer(t EndPointType, opts ...ServerOption) *server {
 	return s
 }
 
-// NewTCServer builds a tcp server.
+// NewTCPServer builds a tcp server.
 func NewTCPServer(opts ...ServerOption) Server {
 	return newServer(TCP_SERVER, opts...)
 }
@@ -175,7 +175,11 @@ func (s *server) listenTCP() error {
 			return perrors.Wrapf(err, "gxnet.ListenOnTCPRandomPort(addr:%s)", s.addr)
 		}
 	} else {
-		streamListener, err = net.Listen("tcp", s.addr)
+		if s.sslConfig != nil {
+			streamListener, err = tls.Listen("tcp", s.addr, s.sslConfig)
+		} else {
+			streamListener, err = net.Listen("tcp", s.addr)
+		}
 		if err != nil {
 			return perrors.Wrapf(err, "net.Listen(tcp, addr:%s)", s.addr)
 		}
