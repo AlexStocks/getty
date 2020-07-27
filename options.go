@@ -73,6 +73,20 @@ func WithWebsocketServerRootCert(cert string) ServerOption {
 	}
 }
 
+// @WithSslEnabled enable use tls
+func WithServerSslEnabled(sslEnabled bool) ServerOption {
+	return func(o *ServerOptions) {
+		o.sslEnabled = sslEnabled
+	}
+}
+
+// @WithSslConfig sslConfig is tls config
+func WithServerSslConfig(sslConfig *tls.Config) ServerOption {
+	return func(o *ServerOptions) {
+		o.sslConfig = sslConfig
+	}
+}
+
 /////////////////////////////////////////
 // Client Options
 /////////////////////////////////////////
@@ -123,5 +137,19 @@ func WithConnectionNumber(num int) ClientOption {
 func WithRootCertificateFile(cert string) ClientOption {
 	return func(o *ClientOptions) {
 		o.cert = cert
+	}
+}
+
+// @WithSslEnabled enable use tls
+func WithClientSslEnabled(sslEnabled bool) ClientOption {
+	return func(o *ClientOptions) {
+		o.sslEnabled = sslEnabled
+	}
+}
+
+// @WithSslConfig sslConfig is tls config
+func WithClientSslConfig(sslConfig *tls.Config) ClientOption {
+	return func(o *ClientOptions) {
+		o.sslConfig = sslConfig
 	}
 }
