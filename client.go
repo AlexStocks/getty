@@ -153,7 +153,7 @@ func (c *client) dialTCP() Session {
 		if c.IsClosed() {
 			return nil
 		}
-		if c.sslConfig != nil {
+		if c.sslEnabled && c.sslConfig != nil {
 			d := &net.Dialer{Timeout: connectTimeout}
 			conn, err = tls.DialWithDialer(d, "tcp", c.addr, c.sslConfig)
 		} else {

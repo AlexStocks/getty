@@ -17,6 +17,8 @@
 
 package getty
 
+import "crypto/tls"
+
 /////////////////////////////////////////
 // Server Options
 /////////////////////////////////////////
@@ -25,6 +27,9 @@ type ServerOption func(*ServerOptions)
 
 type ServerOptions struct {
 	addr string
+	//tls
+	sslEnabled bool
+	sslConfig  *tls.Config
 
 	// websocket
 	path       string
@@ -78,6 +83,10 @@ type ClientOptions struct {
 	addr              string
 	number            int
 	reconnectInterval int // reConnect Interval
+
+	//tls
+	sslEnabled bool
+	sslConfig  *tls.Config
 
 	// the cert file of wss server which may contain server domain, server ip, the starting effective date, effective
 	// duration, the hash alg, the len of the private key.

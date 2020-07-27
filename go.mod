@@ -1,5 +1,7 @@
 module github.com/dubbogo/getty
 
+go 1.14
+
 require (
 	github.com/dubbogo/gost v1.9.0
 	github.com/golang/snappy v0.0.1
@@ -8,5 +10,3 @@ require (
 	github.com/stretchr/testify v1.5.1
 	go.uber.org/zap v1.15.0
 )
-
-go 1.13
