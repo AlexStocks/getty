@@ -11,6 +11,10 @@ env:
 
 install: true
 script:
+  - echo 'start license check'
+  - sh before_validate_license.sh
+  - chmod u+x /tmp/tools/license/license-header-checker
+  - /tmp/tools/license/license-header-checker -v -a -r -i vendor  /tmp/tools/license/license.txt . go  && [[ -z `git status -s` ]]
   - go fmt ./... && [[ -z `git status -s` ]]
   - go mod vendor && go test $(go list ./... | grep -v vendor | grep -v examples) -coverprofile=coverage.txt -covermode=atomic
 
