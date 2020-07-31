@@ -69,7 +69,6 @@ type client struct {
 
 	newSession NewSessionCallback
 	ssMap      map[Session]struct{}
-	sslConfig  *tls.Config
 
 	sync.Once
 	done chan struct{}
@@ -153,9 +152,10 @@ func (c *client) dialTCP() Session {
 		if c.IsClosed() {
 			return nil
 		}
-		if c.sslEnabled && c.sslConfig != nil {
+		sslConfig := c.loadSslConfig()
+		if c.sslEnabled && sslConfig != nil {
 			d := &net.Dialer{Timeout: connectTimeout}
-			conn, err = tls.DialWithDialer(d, "tcp", c.addr, c.sslConfig)
+			conn, err = tls.DialWithDialer(d, "tcp", c.addr, sslConfig)
 		} else {
 			conn, err = net.DialTimeout("tcp", c.addr, connectTimeout)
 		}
@@ -474,4 +474,72 @@ func (c *client) IsClosed() bool {
 func (c *client) Close() {
 	c.stop()
 	c.wg.Wait()
+}
+func (c *client) loadSslConfig() *tls.Config {
+	/*	var (
+			err      error
+			root     *x509.Certificate
+			roots    []*x509.Certificate
+			certPool *x509.CertPool
+			config   *tls.Config
+		)
+
+		config = &tls.Config{
+			InsecureSkipVerify: true,
+		}
+		if c.clientTrustCertCollectionPath != "" {
+			certPEMBlock, err := ioutil.ReadFile(c.clientTrustCertCollectionPath)
+
+			if err != nil {
+				panic(fmt.Sprintf("ioutil.ReadFile(cert:%s) = error:%+v", c.clientTrustCertCollectionPath, perrors.WithStack(err)))
+			}
+
+			var cert tls.Certificate
+			for {
+				var certDERBlock *pem.Block
+				certDERBlock, certPEMBlock = pem.Decode(certPEMBlock)
+				if certDERBlock == nil {
+					break
+				}
+				if certDERBlock.Type == "CERTIFICATE" {
+					cert.Certificate = append(cert.Certificate, certDERBlock.Bytes)
+				}
+			}
+			config.Certificates = make([]tls.Certificate, 1)
+			config.Certificates[0] = cert
+		}
+
+		certPool = x509.NewCertPool()
+		for _, ce := range config.Certificates {
+			roots, err = x509.ParseCertificates(ce.Certificate[len(ce.Certificate)-1])
+			if err != nil {
+				panic(fmt.Sprintf("error parsing server's root cert: %+v\n", perrors.WithStack(err)))
+			}
+			for _, root = range roots {
+				certPool.AddCert(root)
+			}
+		}
+		config.InsecureSkipVerify = true
+		config.RootCAs = certPool
+		return config
+	*/
+	cert, err := tls.LoadX509KeyPair(c.clientTrustCertCollectionPath, c.clientPrivateKeyPath)
+	if err != nil {
+		s := fmt.Sprintf("Unable to load X509 Key Pair %v", err)
+		panic(s)
+	}
+	certBytes, err := ioutil.ReadFile(c.clientTrustCertCollectionPath)
+	if err != nil {
+		panic("Unable to read cert.pem")
+	}
+	clientCertPool := x509.NewCertPool()
+	ok := clientCertPool.AppendCertsFromPEM(certBytes)
+	if !ok {
+		panic("failed to parse root certificate")
+	}
+	return &tls.Config{
+		RootCAs:            clientCertPool,
+		Certificates:       []tls.Certificate{cert},
+		InsecureSkipVerify: true,
+	}
 }

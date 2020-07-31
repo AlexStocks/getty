@@ -174,8 +174,10 @@ func (s *server) listenTCP() error {
 			return perrors.Wrapf(err, "gxnet.ListenOnTCPRandomPort(addr:%s)", s.addr)
 		}
 	} else {
-		if s.sslEnabled && s.sslConfig != nil {
-			streamListener, err = tls.Listen("tcp", s.addr, s.sslConfig)
+		if s.sslEnabled {
+			if sslConfig := s.loadSslConfig(); sslConfig != nil {
+				streamListener, err = tls.Listen("tcp", s.addr, sslConfig)
+			}
 		} else {
 			streamListener, err = net.Listen("tcp", s.addr)
 		}
@@ -489,4 +491,39 @@ func (s *server) PacketConn() net.PacketConn {
 func (s *server) Close() {
 	s.stop()
 	s.wg.Wait()
+}
+
+func (s *server) loadSslConfig() *tls.Config {
+	var (
+		err         error
+		certPem     []byte
+		certificate tls.Certificate
+		certPool    *x509.CertPool
+		config      *tls.Config
+	)
+	if certificate, err = tls.LoadX509KeyPair(s.serverKeyCertChainPath, s.serverPrivateKeyPath); err != nil {
+		panic(fmt.Sprintf("tls.LoadX509KeyPair(cert{%s}, privateKey{%s}) = err:%+v",
+			s.serverKeyCertChainPath, s.serverPrivateKeyPath, perrors.WithStack(err)))
+
+	}
+	config = &tls.Config{
+		InsecureSkipVerify: true, // do not verify peer cert
+		ClientAuth:         tls.RequireAnyClientCert,
+		Certificates:       []tls.Certificate{certificate},
+	}
+
+	if s.serverTrustCertCollectionPath != "" {
+		certPem, err = ioutil.ReadFile(s.serverTrustCertCollectionPath)
+		if err != nil {
+			panic(fmt.Errorf("ioutil.ReadFile(certFile{%s}) = err:%+v", s.serverTrustCertCollectionPath, perrors.WithStack(err)))
+		}
+		certPool = x509.NewCertPool()
+		if ok := certPool.AppendCertsFromPEM(certPem); !ok {
+			panic("failed to parse root certificate file")
+		}
+		config.ClientCAs = certPool
+		config.ClientAuth = tls.RequireAnyClientCert
+		config.InsecureSkipVerify = false
+	}
+	return config
 }

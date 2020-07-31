@@ -17,8 +17,6 @@
 
 package getty
 
-import "crypto/tls"
-
 /////////////////////////////////////////
 // Server Options
 /////////////////////////////////////////
@@ -28,8 +26,11 @@ type ServerOption func(*ServerOptions)
 type ServerOptions struct {
 	addr string
 	//tls
-	sslEnabled bool
-	sslConfig  *tls.Config
+	sslEnabled                    bool
+	serverKeyCertChainPath        string
+	serverPrivateKeyPath          string
+	serverKeyPassword             string
+	serverTrustCertCollectionPath string
 
 	// websocket
 	path       string
@@ -80,10 +81,31 @@ func WithServerSslEnabled(sslEnabled bool) ServerOption {
 	}
 }
 
-// @WithSslConfig sslConfig is tls config
-func WithServerSslConfig(sslConfig *tls.Config) ServerOption {
+// @WithServerKeyCertChainPath sslConfig is tls config
+func WithServerKeyCertChainPath(serverKeyCertChainPath string) ServerOption {
 	return func(o *ServerOptions) {
-		o.sslConfig = sslConfig
+		o.serverKeyCertChainPath = serverKeyCertChainPath
+	}
+}
+
+// @WithServerPrivateKeyPath sslConfig is tls config
+func WithServerPrivateKeyPath(serverPrivateKeyPath string) ServerOption {
+	return func(o *ServerOptions) {
+		o.serverPrivateKeyPath = serverPrivateKeyPath
+	}
+}
+
+// @WithServerKeyPassword sslConfig is tls config
+func WithServerKeyPassword(serverKeyPassword string) ServerOption {
+	return func(o *ServerOptions) {
+		o.serverKeyPassword = serverKeyPassword
+	}
+}
+
+// @WithServerTrustCertCollectionPath sslConfig is tls config
+func WithServerTrustCertCollectionPath(serverTrustCertCollectionPath string) ServerOption {
+	return func(o *ServerOptions) {
+		o.serverTrustCertCollectionPath = serverTrustCertCollectionPath
 	}
 }
 
@@ -99,8 +121,11 @@ type ClientOptions struct {
 	reconnectInterval int // reConnect Interval
 
 	//tls
-	sslEnabled bool
-	sslConfig  *tls.Config
+	sslEnabled                    bool
+	clientKeyCertChainPath        string
+	clientPrivateKeyPath          string
+	clientKeyPassword             string
+	clientTrustCertCollectionPath string
 
 	// the cert file of wss server which may contain server domain, server ip, the starting effective date, effective
 	// duration, the hash alg, the len of the private key.
@@ -147,9 +172,30 @@ func WithClientSslEnabled(sslEnabled bool) ClientOption {
 	}
 }
 
-// @WithSslConfig sslConfig is tls config
-func WithClientSslConfig(sslConfig *tls.Config) ClientOption {
+// @WithClientKeyCertChainPath sslConfig is tls config
+func WithClientKeyCertChainPath(clientKeyCertChainPath string) ClientOption {
 	return func(o *ClientOptions) {
-		o.sslConfig = sslConfig
+		o.clientKeyCertChainPath = clientKeyCertChainPath
+	}
+}
+
+// @WithClientPrivateKeyPath sslConfig is tls config
+func WithClientPrivateKeyPath(clientPrivateKeyPath string) ClientOption {
+	return func(o *ClientOptions) {
+		o.clientPrivateKeyPath = clientPrivateKeyPath
+	}
+}
+
+// @WithClientKeyPassword sslConfig is tls config
+func WithClientKeyPassword(clientKeyPassword string) ClientOption {
+	return func(o *ClientOptions) {
+		o.clientKeyPassword = clientKeyPassword
+	}
+}
+
+// @WithClientTrustCertCollectionPath sslConfig is tls config
+func WithClientTrustCertCollectionPath(clientTrustCertCollectionPath string) ClientOption {
+	return func(o *ClientOptions) {
+		o.clientTrustCertCollectionPath = clientTrustCertCollectionPath
 	}
 }

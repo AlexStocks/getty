@@ -37,7 +37,7 @@ import (
 var (
 	launchTime = time.Now()
 
-// ErrInvalidConnection = perrors.New("connection has been closed.")
+	// ErrInvalidConnection = perrors.New("connection has been closed.")
 )
 
 /////////////////////////////////////////
@@ -322,8 +322,13 @@ func (t *gettyTCPConn) close(waitSec int) {
 				log.Errorf("snappy.Writer.Close() = error:%+v", err)
 			}
 		}
-		t.conn.(*net.TCPConn).SetLinger(waitSec)
-		t.conn.Close()
+		if conn, ok := t.conn.(*net.TCPConn); ok {
+			conn.SetLinger(waitSec)
+			conn.Close()
+		} else {
+			t.conn.(*tls.Conn).Close()
+
+		}
 		t.conn = nil
 	}
 }
