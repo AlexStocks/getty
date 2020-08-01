@@ -26,12 +26,8 @@ type ServerOption func(*ServerOptions)
 type ServerOptions struct {
 	addr string
 	//tls
-	sslEnabled                    bool
-	serverKeyCertChainPath        string
-	serverPrivateKeyPath          string
-	serverKeyPassword             string
-	serverTrustCertCollectionPath string
-
+	sslEnabled       bool
+	tlsConfigBuilder TlsConfigBuilder
 	// websocket
 	path       string
 	cert       string
@@ -82,30 +78,9 @@ func WithServerSslEnabled(sslEnabled bool) ServerOption {
 }
 
 // @WithServerKeyCertChainPath sslConfig is tls config
-func WithServerKeyCertChainPath(serverKeyCertChainPath string) ServerOption {
+func WithServerTlsConfigBuilder(tlsConfigBuilder TlsConfigBuilder) ServerOption {
 	return func(o *ServerOptions) {
-		o.serverKeyCertChainPath = serverKeyCertChainPath
-	}
-}
-
-// @WithServerPrivateKeyPath sslConfig is tls config
-func WithServerPrivateKeyPath(serverPrivateKeyPath string) ServerOption {
-	return func(o *ServerOptions) {
-		o.serverPrivateKeyPath = serverPrivateKeyPath
-	}
-}
-
-// @WithServerKeyPassword sslConfig is tls config
-func WithServerKeyPassword(serverKeyPassword string) ServerOption {
-	return func(o *ServerOptions) {
-		o.serverKeyPassword = serverKeyPassword
-	}
-}
-
-// @WithServerTrustCertCollectionPath sslConfig is tls config
-func WithServerTrustCertCollectionPath(serverTrustCertCollectionPath string) ServerOption {
-	return func(o *ServerOptions) {
-		o.serverTrustCertCollectionPath = serverTrustCertCollectionPath
+		o.tlsConfigBuilder = tlsConfigBuilder
 	}
 }
 
@@ -121,11 +96,8 @@ type ClientOptions struct {
 	reconnectInterval int // reConnect Interval
 
 	//tls
-	sslEnabled                    bool
-	clientKeyCertChainPath        string
-	clientPrivateKeyPath          string
-	clientKeyPassword             string
-	clientTrustCertCollectionPath string
+	sslEnabled       bool
+	tlsConfigBuilder TlsConfigBuilder
 
 	// the cert file of wss server which may contain server domain, server ip, the starting effective date, effective
 	// duration, the hash alg, the len of the private key.
@@ -173,29 +145,8 @@ func WithClientSslEnabled(sslEnabled bool) ClientOption {
 }
 
 // @WithClientKeyCertChainPath sslConfig is tls config
-func WithClientKeyCertChainPath(clientKeyCertChainPath string) ClientOption {
+func WithClientTlsConfigBuilder(tlsConfigBuilder TlsConfigBuilder) ClientOption {
 	return func(o *ClientOptions) {
-		o.clientKeyCertChainPath = clientKeyCertChainPath
-	}
-}
-
-// @WithClientPrivateKeyPath sslConfig is tls config
-func WithClientPrivateKeyPath(clientPrivateKeyPath string) ClientOption {
-	return func(o *ClientOptions) {
-		o.clientPrivateKeyPath = clientPrivateKeyPath
-	}
-}
-
-// @WithClientKeyPassword sslConfig is tls config
-func WithClientKeyPassword(clientKeyPassword string) ClientOption {
-	return func(o *ClientOptions) {
-		o.clientKeyPassword = clientKeyPassword
-	}
-}
-
-// @WithClientTrustCertCollectionPath sslConfig is tls config
-func WithClientTrustCertCollectionPath(clientTrustCertCollectionPath string) ClientOption {
-	return func(o *ClientOptions) {
-		o.clientTrustCertCollectionPath = clientTrustCertCollectionPath
+		o.tlsConfigBuilder = tlsConfigBuilder
 	}
 }

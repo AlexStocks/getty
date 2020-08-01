@@ -50,12 +50,15 @@ func main() {
 	util.SetLimit()
 
 	util.Profiling(*pprofPort)
+	c := &getty.ServerTlsConfigBuilder{
+		ServerKeyCertChainPath:        `E:\Projects\openSource\dubbo-samples\java\dubbo-samples-ssl\dubbo-samples-ssl-provider\src\main\resources\certs\server0.pem`,
+		ServerPrivateKeyPath:          `E:\Projects\openSource\dubbo-samples\java\dubbo-samples-ssl\dubbo-samples-ssl-provider\src\main\resources\certs\server0.key`,
+		ServerTrustCertCollectionPath: `E:\Projects\openSource\dubbo-samples\java\dubbo-samples-ssl\dubbo-samples-ssl-consumer\src\main\resources\certs\ca.pem`,
+	}
 
 	options := []getty.ServerOption{getty.WithLocalAddress(":8090"),
 		getty.WithServerSslEnabled(true),
-		getty.WithServerKeyCertChainPath(`E:\Projects\openSource\dubbo-samples\java\dubbo-samples-ssl\dubbo-samples-ssl-provider\src\main\resources\certs\server0.pem`),
-		getty.WithServerPrivateKeyPath(`E:\Projects\openSource\dubbo-samples\java\dubbo-samples-ssl\dubbo-samples-ssl-provider\src\main\resources\certs\server0.key`),
-		getty.WithServerTrustCertCollectionPath(`E:\Projects\openSource\dubbo-samples\java\dubbo-samples-ssl\dubbo-samples-ssl-consumer\src\main\resources\certs\ca.pem`),
+		getty.WithServerTlsConfigBuilder(c),
 	}
 
 	if *taskPoolMode {

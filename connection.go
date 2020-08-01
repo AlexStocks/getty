@@ -323,10 +323,10 @@ func (t *gettyTCPConn) close(waitSec int) {
 			}
 		}
 		if conn, ok := t.conn.(*net.TCPConn); ok {
-			conn.SetLinger(waitSec)
-			conn.Close()
+			_ = conn.SetLinger(waitSec)
+			_ = conn.Close()
 		} else {
-			t.conn.(*tls.Conn).Close()
+			_ = t.conn.(*tls.Conn).Close()
 
 		}
 		t.conn = nil

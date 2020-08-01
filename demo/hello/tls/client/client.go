@@ -61,12 +61,14 @@ func main() {
 			gxsync.WithTaskPoolTaskPoolSize(*taskPoolSize),
 		)
 	}
-
+	config := &getty.ClientTlsConfigBuilder{
+		ClientTrustCertCollectionPath: `E:\Projects\openSource\dubbo-samples\java\dubbo-samples-ssl\dubbo-samples-ssl-consumer\src\main\resources\certs\ca.pem`,
+		ClientPrivateKeyPath:          `E:\Projects\openSource\dubbo-samples\java\dubbo-samples-ssl\dubbo-samples-ssl-provider\src\main\resources\certs\ca.key`,
+	}
 	client := getty.NewTCPClient(
 		getty.WithServerAddress(*ip+":8090"),
 		getty.WithClientSslEnabled(true),
-		getty.WithClientTrustCertCollectionPath(`E:\Projects\openSource\dubbo-samples\java\dubbo-samples-ssl\dubbo-samples-ssl-consumer\src\main\resources\certs\ca.pem`),
-		getty.WithClientPrivateKeyPath(`E:\Projects\openSource\dubbo-samples\java\dubbo-samples-ssl\dubbo-samples-ssl-provider\src\main\resources\certs\ca.key`),
+		getty.WithClientTlsConfigBuilder(config),
 		getty.WithConnectionNumber(*connections),
 	)
 
