@@ -20,6 +20,7 @@ package main
 import (
 	"flag"
 	tls "github.com/dubbogo/getty/demo/hello/tls"
+	"path/filepath"
 )
 
 import (
@@ -50,10 +51,14 @@ func main() {
 	util.SetLimit()
 
 	util.Profiling(*pprofPort)
+	serverPemPath, _ := filepath.Abs("./demo/hello/tls/certs/server0.pem")
+	serverKeyPath, _ := filepath.Abs("./demo/hello/tls/certs/server0.key")
+	caPemPath, _ := filepath.Abs("./demo/hello/tls/certs/ca.pem")
+
 	c := &getty.ServerTlsConfigBuilder{
-		ServerKeyCertChainPath:        `E:\Projects\openSource\dubbo-samples\java\dubbo-samples-ssl\dubbo-samples-ssl-provider\src\main\resources\certs\server0.pem`,
-		ServerPrivateKeyPath:          `E:\Projects\openSource\dubbo-samples\java\dubbo-samples-ssl\dubbo-samples-ssl-provider\src\main\resources\certs\server0.key`,
-		ServerTrustCertCollectionPath: `E:\Projects\openSource\dubbo-samples\java\dubbo-samples-ssl\dubbo-samples-ssl-consumer\src\main\resources\certs\ca.pem`,
+		ServerKeyCertChainPath:        serverPemPath,
+		ServerPrivateKeyPath:          serverKeyPath,
+		ServerTrustCertCollectionPath: caPemPath,
 	}
 
 	options := []getty.ServerOption{getty.WithLocalAddress(":8090"),

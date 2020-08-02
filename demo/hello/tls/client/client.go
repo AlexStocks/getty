@@ -19,6 +19,7 @@ package main
 
 import (
 	"flag"
+	"path/filepath"
 )
 
 import (
@@ -61,9 +62,12 @@ func main() {
 			gxsync.WithTaskPoolTaskPoolSize(*taskPoolSize),
 		)
 	}
+	keyPath, _ := filepath.Abs("./demo/hello/tls/certs/ca.key")
+	caPemPath, _ := filepath.Abs("./demo/hello/tls/certs/ca.pem")
+
 	config := &getty.ClientTlsConfigBuilder{
-		ClientTrustCertCollectionPath: `E:\Projects\openSource\dubbo-samples\java\dubbo-samples-ssl\dubbo-samples-ssl-consumer\src\main\resources\certs\ca.pem`,
-		ClientPrivateKeyPath:          `E:\Projects\openSource\dubbo-samples\java\dubbo-samples-ssl\dubbo-samples-ssl-provider\src\main\resources\certs\ca.key`,
+		ClientTrustCertCollectionPath: caPemPath,
+		ClientPrivateKeyPath:          keyPath,
 	}
 	client := getty.NewTCPClient(
 		getty.WithServerAddress(*ip+":8090"),

@@ -18,6 +18,7 @@
 package getty
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -80,14 +81,22 @@ func testTCPTlsServer(t *testing.T, address string) {
 		server           *server
 		serverMsgHandler MessageHandler
 	)
+	serverPemPath, _ := filepath.Abs("./demo/hello/tls/certs/server0.pem")
+	serverKeyPath, _ := filepath.Abs("./demo/hello/tls/certs/server0.key")
+	caPemPath, _ := filepath.Abs("./demo/hello/tls/certs/ca.pem")
+
+	configBuilder := &ServerTlsConfigBuilder{
+		ServerKeyCertChainPath:        serverPemPath,
+		ServerPrivateKeyPath:          serverKeyPath,
+		ServerTrustCertCollectionPath: caPemPath,
+	}
 
 	func() {
 		server = newServer(
 			TCP_SERVER,
 			WithLocalAddress(address),
 			WithServerSslEnabled(true),
-			WithServerKeyCertChainPath(`E:\Projects\openSource\dubbo-samples\java\dubbo-samples-ssl\dubbo-samples-ssl-provider\src\main\resources\certs\server0.pem`),
-			WithServerPrivateKeyPath(`E:\Projects\openSource\dubbo-samples\java\dubbo-samples-ssl\dubbo-samples-ssl-provider\src\main\resources\certs\server0.key`),
+			WithServerTlsConfigBuilder(configBuilder),
 		)
 		newServerSession := func(session Session) error {
 			return newSessionCallback(session, &serverMsgHandler)
@@ -101,10 +110,19 @@ func testTCPTlsServer(t *testing.T, address string) {
 
 	addr := server.streamListener.Addr().String()
 	t.Logf("@address:%s, tcp server addr: %v", address, addr)
+	keyPath, _ := filepath.Abs("./demo/hello/tls/certs/ca.key")
+	clientCaPemPath, _ := filepath.Abs("./demo/hello/tls/certs/ca.pem")
+
+	clientConfig := &ClientTlsConfigBuilder{
+		ClientTrustCertCollectionPath: clientCaPemPath,
+		ClientPrivateKeyPath:          keyPath,
+	}
+
 	clt := newClient(TCP_CLIENT,
 		WithServerAddress(addr),
 		WithReconnectInterval(5e8),
 		WithConnectionNumber(1),
+		WithClientTlsConfigBuilder(clientConfig),
 	)
 	assert.NotNil(t, clt)
 	assert.True(t, clt.ID() > 0)
@@ -155,16 +173,16 @@ func testUDPServer(t *testing.T, address string) {
 func TestServer(t *testing.T) {
 	var addr string
 
-	//testTCPServer(t, addr)
-	//testUDPServer(t, addr)
-	//
-	//addr = "127.0.0.1:0"
-	//testTCPServer(t, addr)
-	//testUDPServer(t, addr)
-	//
-	//addr = "127.0.0.1"
-	//testTCPServer(t, addr)
-	//testUDPServer(t, addr)
+	testTCPServer(t, addr)
+	testUDPServer(t, addr)
+
+	addr = "127.0.0.1:0"
+	testTCPServer(t, addr)
+	testUDPServer(t, addr)
+
+	addr = "127.0.0.1"
+	testTCPServer(t, addr)
+	testUDPServer(t, addr)
 	addr = "127.0.0.9999"
 	testTCPTlsServer(t, addr)
 }

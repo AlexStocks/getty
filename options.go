@@ -49,7 +49,7 @@ func WithWebsocketServerPath(path string) ServerOption {
 	}
 }
 
-// @cert: server certificate file
+// @certs: server certificate file
 func WithWebsocketServerCert(cert string) ServerOption {
 	return func(o *ServerOptions) {
 		o.cert = cert
@@ -63,7 +63,7 @@ func WithWebsocketServerPrivateKey(key string) ServerOption {
 	}
 }
 
-// @cert is the root certificate file to verify the legitimacy of server
+// @certs is the root certificate file to verify the legitimacy of server
 func WithWebsocketServerRootCert(cert string) ServerOption {
 	return func(o *ServerOptions) {
 		o.caCert = cert
@@ -99,7 +99,7 @@ type ClientOptions struct {
 	sslEnabled       bool
 	tlsConfigBuilder TlsConfigBuilder
 
-	// the cert file of wss server which may contain server domain, server ip, the starting effective date, effective
+	// the certs file of wss server which may contain server domain, server ip, the starting effective date, effective
 	// duration, the hash alg, the len of the private key.
 	// wss client will use it.
 	cert string
@@ -130,7 +130,7 @@ func WithConnectionNumber(num int) ClientOption {
 	}
 }
 
-// @cert is client certificate file. it can be empty.
+// @certs is client certificate file. it can be empty.
 func WithRootCertificateFile(cert string) ClientOption {
 	return func(o *ClientOptions) {
 		o.cert = cert

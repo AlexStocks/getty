@@ -47,12 +47,12 @@ func (s *ServerTlsConfigBuilder) BuildTlsConfig() (*tls.Config, error) {
 		config      *tls.Config
 	)
 	if certificate, err = tls.LoadX509KeyPair(s.ServerKeyCertChainPath, s.ServerPrivateKeyPath); err != nil {
-		log.Error(fmt.Sprintf("tls.LoadX509KeyPair(cert{%s}, privateKey{%s}) = err:%+v",
+		log.Error(fmt.Sprintf("tls.LoadX509KeyPair(certs{%s}, privateKey{%s}) = err:%+v",
 			s.ServerKeyCertChainPath, s.ServerPrivateKeyPath, perrors.WithStack(err)))
 		return nil, err
 	}
 	config = &tls.Config{
-		InsecureSkipVerify: true, // do not verify peer cert
+		InsecureSkipVerify: true, // do not verify peer certs
 		ClientAuth:         tls.RequireAnyClientCert,
 		Certificates:       []tls.Certificate{certificate},
 	}

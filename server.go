@@ -99,7 +99,7 @@ func NewWSSServer(opts ...ServerOption) Server {
 	s := newServer(WSS_SERVER, opts...)
 
 	if s.addr == "" || s.cert == "" || s.privateKey == "" {
-		panic(fmt.Sprintf("@addr:%s, @cert:%s, @privateKey:%s, @caCert:%s",
+		panic(fmt.Sprintf("@addr:%s, @certs:%s, @privateKey:%s, @caCert:%s",
 			s.addr, s.cert, s.privateKey, s.caCert))
 	}
 
@@ -414,12 +414,12 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 		defer s.wg.Done()
 
 		if certificate, err = tls.LoadX509KeyPair(s.cert, s.privateKey); err != nil {
-			panic(fmt.Sprintf("tls.LoadX509KeyPair(cert{%s}, privateKey{%s}) = err:%+v",
+			panic(fmt.Sprintf("tls.LoadX509KeyPair(certs{%s}, privateKey{%s}) = err:%+v",
 				s.cert, s.privateKey, perrors.WithStack(err)))
 			return
 		}
 		config = &tls.Config{
-			InsecureSkipVerify: true, // do not verify peer cert
+			InsecureSkipVerify: true, // do not verify peer certs
 			ClientAuth:         tls.NoClientCert,
 			NextProtos:         []string{"http/1.1"},
 			Certificates:       []tls.Certificate{certificate},
