@@ -18,6 +18,7 @@
 package getty
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -53,6 +54,75 @@ func testTCPServer(t *testing.T, address string) {
 		WithServerAddress(addr),
 		WithReconnectInterval(5e8),
 		WithConnectionNumber(1),
+	)
+	assert.NotNil(t, clt)
+	assert.True(t, clt.ID() > 0)
+	assert.Equal(t, clt.endPointType, TCP_CLIENT)
+
+	var (
+		msgHandler MessageHandler
+	)
+	cb := func(session Session) error {
+		return newSessionCallback(session, &msgHandler)
+	}
+
+	clt.RunEventLoop(cb)
+	time.Sleep(1e9)
+
+	assert.Equal(t, 1, msgHandler.SessionNumber())
+	clt.Close()
+	assert.True(t, clt.IsClosed())
+
+	server.Close()
+	assert.True(t, server.IsClosed())
+}
+func testTCPTlsServer(t *testing.T, address string) {
+	var (
+		server           *server
+		serverMsgHandler MessageHandler
+	)
+	serverPemPath, _ := filepath.Abs("./demo/hello/tls/certs/server0.pem")
+	serverKeyPath, _ := filepath.Abs("./demo/hello/tls/certs/server0.key")
+	caPemPath, _ := filepath.Abs("./demo/hello/tls/certs/ca.pem")
+
+	configBuilder := &ServerTlsConfigBuilder{
+		ServerKeyCertChainPath:        serverPemPath,
+		ServerPrivateKeyPath:          serverKeyPath,
+		ServerTrustCertCollectionPath: caPemPath,
+	}
+
+	func() {
+		server = newServer(
+			TCP_SERVER,
+			WithLocalAddress(address),
+			WithServerSslEnabled(true),
+			WithServerTlsConfigBuilder(configBuilder),
+		)
+		newServerSession := func(session Session) error {
+			return newSessionCallback(session, &serverMsgHandler)
+		}
+		server.RunEventLoop(newServerSession)
+		assert.True(t, server.ID() > 0)
+		assert.True(t, server.EndPointType() == TCP_SERVER)
+		assert.NotNil(t, server.streamListener)
+	}()
+	time.Sleep(500e6)
+
+	addr := server.streamListener.Addr().String()
+	t.Logf("@address:%s, tcp server addr: %v", address, addr)
+	keyPath, _ := filepath.Abs("./demo/hello/tls/certs/ca.key")
+	clientCaPemPath, _ := filepath.Abs("./demo/hello/tls/certs/ca.pem")
+
+	clientConfig := &ClientTlsConfigBuilder{
+		ClientTrustCertCollectionPath: clientCaPemPath,
+		ClientPrivateKeyPath:          keyPath,
+	}
+
+	clt := newClient(TCP_CLIENT,
+		WithServerAddress(addr),
+		WithReconnectInterval(5e8),
+		WithConnectionNumber(1),
+		WithClientTlsConfigBuilder(clientConfig),
 	)
 	assert.NotNil(t, clt)
 	assert.True(t, clt.ID() > 0)
@@ -113,4 +183,6 @@ func TestServer(t *testing.T) {
 	addr = "127.0.0.1"
 	testTCPServer(t, addr)
 	testUDPServer(t, addr)
+	addr = "127.0.0.9999"
+	testTCPTlsServer(t, addr)
 }

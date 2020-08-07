@@ -56,7 +56,6 @@ type server struct {
 	lock           sync.Mutex // for server
 	endPointType   EndPointType
 	server         *http.Server // for ws or wss server
-
 	sync.Once
 	done chan struct{}
 	wg   sync.WaitGroup
@@ -80,7 +79,7 @@ func newServer(t EndPointType, opts ...ServerOption) *server {
 	return s
 }
 
-// NewTCServer builds a tcp server.
+// NewTCPServer builds a tcp server.
 func NewTCPServer(opts ...ServerOption) Server {
 	return newServer(TCP_SERVER, opts...)
 }
@@ -100,7 +99,7 @@ func NewWSSServer(opts ...ServerOption) Server {
 	s := newServer(WSS_SERVER, opts...)
 
 	if s.addr == "" || s.cert == "" || s.privateKey == "" {
-		panic(fmt.Sprintf("@addr:%s, @cert:%s, @privateKey:%s, @caCert:%s",
+		panic(fmt.Sprintf("@addr:%s, @certs:%s, @privateKey:%s, @caCert:%s",
 			s.addr, s.cert, s.privateKey, s.caCert))
 	}
 
@@ -175,7 +174,13 @@ func (s *server) listenTCP() error {
 			return perrors.Wrapf(err, "gxnet.ListenOnTCPRandomPort(addr:%s)", s.addr)
 		}
 	} else {
-		streamListener, err = net.Listen("tcp", s.addr)
+		if s.sslEnabled {
+			if sslConfig, err := s.tlsConfigBuilder.BuildTlsConfig(); err == nil && sslConfig != nil {
+				streamListener, err = tls.Listen("tcp", s.addr, sslConfig)
+			}
+		} else {
+			streamListener, err = net.Listen("tcp", s.addr)
+		}
 		if err != nil {
 			return perrors.Wrapf(err, "net.Listen(tcp, addr:%s)", s.addr)
 		}
@@ -409,12 +414,12 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 		defer s.wg.Done()
 
 		if certificate, err = tls.LoadX509KeyPair(s.cert, s.privateKey); err != nil {
-			panic(fmt.Sprintf("tls.LoadX509KeyPair(cert{%s}, privateKey{%s}) = err:%+v",
+			panic(fmt.Sprintf("tls.LoadX509KeyPair(certs{%s}, privateKey{%s}) = err:%+v",
 				s.cert, s.privateKey, perrors.WithStack(err)))
 			return
 		}
 		config = &tls.Config{
-			InsecureSkipVerify: true, // do not verify peer cert
+			InsecureSkipVerify: true, // do not verify peer certs
 			ClientAuth:         tls.NoClientCert,
 			NextProtos:         []string{"http/1.1"},
 			Certificates:       []tls.Certificate{certificate},

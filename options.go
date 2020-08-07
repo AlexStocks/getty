@@ -25,7 +25,9 @@ type ServerOption func(*ServerOptions)
 
 type ServerOptions struct {
 	addr string
-
+	//tls
+	sslEnabled       bool
+	tlsConfigBuilder TlsConfigBuilder
 	// websocket
 	path       string
 	cert       string
@@ -47,7 +49,7 @@ func WithWebsocketServerPath(path string) ServerOption {
 	}
 }
 
-// @cert: server certificate file
+// @certs: server certificate file
 func WithWebsocketServerCert(cert string) ServerOption {
 	return func(o *ServerOptions) {
 		o.cert = cert
@@ -61,10 +63,24 @@ func WithWebsocketServerPrivateKey(key string) ServerOption {
 	}
 }
 
-// @cert is the root certificate file to verify the legitimacy of server
+// @certs is the root certificate file to verify the legitimacy of server
 func WithWebsocketServerRootCert(cert string) ServerOption {
 	return func(o *ServerOptions) {
 		o.caCert = cert
+	}
+}
+
+// @WithSslEnabled enable use tls
+func WithServerSslEnabled(sslEnabled bool) ServerOption {
+	return func(o *ServerOptions) {
+		o.sslEnabled = sslEnabled
+	}
+}
+
+// @WithServerKeyCertChainPath sslConfig is tls config
+func WithServerTlsConfigBuilder(tlsConfigBuilder TlsConfigBuilder) ServerOption {
+	return func(o *ServerOptions) {
+		o.tlsConfigBuilder = tlsConfigBuilder
 	}
 }
 
@@ -79,7 +95,11 @@ type ClientOptions struct {
 	number            int
 	reconnectInterval int // reConnect Interval
 
-	// the cert file of wss server which may contain server domain, server ip, the starting effective date, effective
+	//tls
+	sslEnabled       bool
+	tlsConfigBuilder TlsConfigBuilder
+
+	// the certs file of wss server which may contain server domain, server ip, the starting effective date, effective
 	// duration, the hash alg, the len of the private key.
 	// wss client will use it.
 	cert string
@@ -110,9 +130,23 @@ func WithConnectionNumber(num int) ClientOption {
 	}
 }
 
-// @cert is client certificate file. it can be empty.
+// @certs is client certificate file. it can be empty.
 func WithRootCertificateFile(cert string) ClientOption {
 	return func(o *ClientOptions) {
 		o.cert = cert
+	}
+}
+
+// @WithSslEnabled enable use tls
+func WithClientSslEnabled(sslEnabled bool) ClientOption {
+	return func(o *ClientOptions) {
+		o.sslEnabled = sslEnabled
+	}
+}
+
+// @WithClientKeyCertChainPath sslConfig is tls config
+func WithClientTlsConfigBuilder(tlsConfigBuilder TlsConfigBuilder) ClientOption {
+	return func(o *ClientOptions) {
+		o.tlsConfigBuilder = tlsConfigBuilder
 	}
 }
