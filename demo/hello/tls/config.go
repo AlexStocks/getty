@@ -36,6 +36,7 @@ var (
 	EventListener = &hello.MessageHandler{}
 )
 
+// InitialSession init session
 func InitialSession(session getty.Session) (err error) {
 	//session.SetCompressType(getty.CompressZip)
 	_, ok := session.Conn().(*tls.Conn)

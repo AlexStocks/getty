@@ -27,10 +27,12 @@ import (
 	perrors "github.com/pkg/errors"
 )
 
+// TlsConfigBuilder  tls config builder interface
 type TlsConfigBuilder interface {
 	BuildTlsConfig() (*tls.Config, error)
 }
 
+// ServerTlsConfigBuilder impl TlsConfigBuilder for server
 type ServerTlsConfigBuilder struct {
 	ServerKeyCertChainPath        string
 	ServerPrivateKeyPath          string
@@ -38,6 +40,7 @@ type ServerTlsConfigBuilder struct {
 	ServerTrustCertCollectionPath string
 }
 
+// BuildTlsConfig impl TlsConfigBuilder method
 func (s *ServerTlsConfigBuilder) BuildTlsConfig() (*tls.Config, error) {
 	var (
 		err         error
@@ -75,6 +78,7 @@ func (s *ServerTlsConfigBuilder) BuildTlsConfig() (*tls.Config, error) {
 	return config, nil
 }
 
+// ClientTlsConfigBuilder impl TlsConfigBuilder for client
 type ClientTlsConfigBuilder struct {
 	ClientKeyCertChainPath        string
 	ClientPrivateKeyPath          string
@@ -82,6 +86,7 @@ type ClientTlsConfigBuilder struct {
 	ClientTrustCertCollectionPath string
 }
 
+// BuildTlsConfig impl TlsConfigBuilder method
 func (c *ClientTlsConfigBuilder) BuildTlsConfig() (*tls.Config, error) {
 
 	cert, err := tls.LoadX509KeyPair(c.ClientTrustCertCollectionPath, c.ClientPrivateKeyPath)
