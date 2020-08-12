@@ -39,13 +39,14 @@ import (
 )
 
 const (
-	maxReadBufLen    = 4 * 1024
-	netIOTimeout     = 1e9      // 1s
-	period           = 60 * 1e9 // 1 minute
-	pendingDuration  = 3e9
-	defaultQLen      = 1024
-	maxIovecNum      = 10
-	MaxWheelTimeSpan = 900e9 // 900s, 15 minute
+	maxReadBufLen   = 4 * 1024
+	netIOTimeout    = 1e9      // 1s
+	period          = 60 * 1e9 // 1 minute
+	pendingDuration = 3e9
+	defaultQLen     = 1024
+	maxIovecNum     = 10
+	//MaxWheelTimeSpan 900s, 15 minute
+	MaxWheelTimeSpan = 900e9
 
 	defaultSessionName    = "session"
 	defaultTCPSessionName = "tcp-session"
