@@ -39,13 +39,14 @@ import (
 )
 
 const (
-	maxReadBufLen    = 4 * 1024
-	netIOTimeout     = 1e9      // 1s
-	period           = 60 * 1e9 // 1 minute
-	pendingDuration  = 3e9
-	defaultQLen      = 1024
-	maxIovecNum      = 10
-	maxWheelTimeSpan = 900e9 // 900s, 15 minute
+	maxReadBufLen   = 4 * 1024
+	netIOTimeout    = 1e9      // 1s
+	period          = 60 * 1e9 // 1 minute
+	pendingDuration = 3e9
+	defaultQLen     = 1024
+	maxIovecNum     = 10
+	//MaxWheelTimeSpan 900s, 15 minute
+	MaxWheelTimeSpan = 900e9
 
 	defaultSessionName    = "session"
 	defaultTCPSessionName = "tcp-session"
@@ -65,7 +66,7 @@ var (
 
 func init() {
 	span := 100e6 // 100ms
-	buckets := maxWheelTimeSpan / span
+	buckets := MaxWheelTimeSpan / span
 	wheel = gxtime.NewWheel(time.Duration(span), int(buckets)) // wheel longest span is 15 minute
 }
 
