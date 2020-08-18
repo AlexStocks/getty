@@ -22,13 +22,13 @@ import (
 )
 
 import (
-	"github.com/dubbogo/getty"
+	"github.com/apache/dubbo-getty"
 	gxsync "github.com/dubbogo/gost/sync"
 )
 
 import (
-	"github.com/dubbogo/getty/demo/hello/tcp"
-	"github.com/dubbogo/getty/demo/util"
+	"github.com/apache/dubbo-getty/demo/hello/tcp"
+	"github.com/apache/dubbo-getty/demo/util"
 )
 
 var (

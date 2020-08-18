@@ -23,11 +23,11 @@ import (
 )
 
 import (
-	"github.com/dubbogo/getty"
+	"github.com/apache/dubbo-getty"
 )
 
 import (
-	"github.com/dubbogo/getty/demo/hello"
+	"github.com/apache/dubbo-getty/demo/hello"
 )
 
 var (

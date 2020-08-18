@@ -3,7 +3,7 @@
 ## 1. prepare
 ```bash
 
-git clone https://github.com/dubbogo/getty.git
+git clone https://github.com/apache/dubbo-getty.git
 
 cd getty/demo/hello
 ```

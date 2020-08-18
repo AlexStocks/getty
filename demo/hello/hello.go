@@ -18,7 +18,7 @@
 package hello
 
 import (
-	"github.com/dubbogo/getty"
+	"github.com/apache/dubbo-getty"
 )
 
 var (
