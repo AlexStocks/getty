@@ -37,6 +37,7 @@ var (
 	errTooManySessions = jerrors.New("too many sessions")
 )
 
+/*
 type rpcSession struct {
 	session getty.Session
 	reqNum  int32
@@ -49,6 +50,7 @@ func (s *rpcSession) AddReqNum(num int32) {
 func (s *rpcSession) GetReqNum() int32 {
 	return atomic.LoadInt32(&s.reqNum)
 }
+*/
 
 ////////////////////////////////////////////
 // RpcServerHandler
