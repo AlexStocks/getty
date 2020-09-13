@@ -63,7 +63,7 @@ jobs:
       run: bash <(curl -s https://codecov.io/bash)
 
       # Because the contexts of push and PR are different, there are two Notify.
-      # Notifications are triggered only in the apache/dubbo-go repository.
+      # Notifications are triggered only in the apache/dubbo-getty repository.
     - name: DingTalk Message Notify only Push
       uses: zcong1993/actions-ding@v3.0.1
       # Whether job is successful or not, always () is always true.
