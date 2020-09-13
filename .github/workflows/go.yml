@@ -1,4 +1,4 @@
-name: Go
+name: CI
 
 on:
   push:
@@ -42,10 +42,11 @@ jobs:
 
     - name: Get dependencies
       run: |
-        go get -v -t -d ./...
         if [ -f Gopkg.toml ]; then
             curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
             dep ensure
+        else
+            go get -v -t -d ./...
         fi
 
     - name: License Check
@@ -86,10 +87,10 @@ jobs:
           
     - name: DingTalk Message Notify only PR
       uses: zcong1993/actions-ding@v3.0.1
-      # TODO: github.repository == 'apache/dubbo-getty'
       if: | 
         always() && 
-        github.event_name == 'pull_request'
+        github.event_name == 'pull_request' &&
+        github.repository == 'apache/dubbo-getty'
       with:
         dingToken: ${{ env.DING_TOKEN }}
         secret: ${{ env.DING_SIGN }}
@@ -98,6 +99,6 @@ jobs:
             "msgtype": "markdown",
             "markdown": {
                 "title": "Github Actions",
-                "text": "## Github Actions \n - name: CI \n - repository: ${{ github.repository }} \n - pr_title: ${{ github.event.pull_request.title }} \n - trigger: ${{ github.actor }} \n - event: ${{ github.event_name }} \n - ref: [${{ github.ref }}](${{ github.event.pull_request._links.html.href }}) \n - status: [${{ job.status	}}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) \n - environment: ${{ runner.os }} \n > SHA: [${{ github.sha }}](${{ github.event.pull_request._links.html.href }})"
+                "text": "## Github Actions \n - name: CI \n - repository: ${{ github.repository }} \n - pr_title: **${{ github.event.pull_request.title }}** \n - trigger: ${{ github.actor }} \n - event: ${{ github.event_name }} \n - ref: [${{ github.ref }}](${{ github.event.pull_request._links.html.href }}) \n - status: [${{ job.status	}}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) \n - environment: ${{ runner.os }} \n > SHA: [${{ github.sha }}](${{ github.event.pull_request._links.html.href }})"
             }
           }
