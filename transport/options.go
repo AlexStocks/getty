@@ -17,6 +17,8 @@
 
 package getty
 
+import gxsync "github.com/dubbogo/gost/sync"
+
 /////////////////////////////////////////
 // Server Options
 /////////////////////////////////////////
@@ -31,6 +33,8 @@ type ServerOptions struct {
 	cert       string
 	privateKey string
 	caCert     string
+	// task queue
+	tPool *gxsync.TaskPool
 }
 
 // @addr server listen address.
@@ -68,6 +72,13 @@ func WithWebsocketServerRootCert(cert string) ServerOption {
 	}
 }
 
+// @pool server task pool.
+func WithServerTaskPool(pool *gxsync.TaskPool) ServerOption {
+	return func(o *ServerOptions) {
+		o.tPool = pool
+	}
+}
+
 /////////////////////////////////////////
 // Client Options
 /////////////////////////////////////////
@@ -83,6 +94,8 @@ type ClientOptions struct {
 	// duration, the hash alg, the len of the private key.
 	// wss client will use it.
 	cert string
+	// task queue
+	tPool *gxsync.TaskPool
 }
 
 // @addr is server address.
@@ -114,5 +127,12 @@ func WithConnectionNumber(num int) ClientOption {
 func WithRootCertificateFile(cert string) ClientOption {
 	return func(o *ClientOptions) {
 		o.cert = cert
+	}
+}
+
+// @pool client task pool.
+func WithClientTaskPool(pool *gxsync.TaskPool) ClientOption {
+	return func(o *ClientOptions) {
+		o.tPool = pool
 	}
 }

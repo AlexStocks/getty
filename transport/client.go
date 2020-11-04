@@ -34,6 +34,7 @@ import (
 	log "github.com/AlexStocks/log4go"
 	gxbytes "github.com/dubbogo/gost/bytes"
 	"github.com/dubbogo/gost/net"
+	gxsync "github.com/dubbogo/gost/sync"
 	"github.com/gorilla/websocket"
 	jerrors "github.com/juju/errors"
 )
@@ -409,6 +410,10 @@ func (c *client) RunEventLoop(newSession NewSessionCallback) {
 	c.newSession = newSession
 	c.Unlock()
 	c.reConnect()
+}
+
+func (c *client) GetTaskPool() *gxsync.TaskPool {
+	return c.tPool
 }
 
 // a for-loop connect to make sure the connection pool is valid
