@@ -117,7 +117,7 @@ func newSession(session getty.Session) error {
 	session.SetWriteTimeout(conf.GettySessionParam.tcpWriteTimeout)
 	session.SetCronPeriod((int)(conf.sessionTimeout.Nanoseconds() / 1e6))
 	session.SetWaitTime(conf.GettySessionParam.waitTimeout)
-	session.SetTaskPool(taskPool)
+	//session.SetTaskPool(taskPool)
 	log.Debug("app accepts new session:%s\n", session.Stat())
 
 	return nil
@@ -129,14 +129,6 @@ func initServer() {
 		portList []string
 		server   getty.Server
 	)
-
-	if conf.TaskPoolSize != 0 {
-		taskPool = gxsync.NewTaskPool(
-			gxsync.WithTaskPoolTaskPoolSize(conf.TaskPoolSize),
-			gxsync.WithTaskPoolTaskQueueLength(conf.TaskQueueLength),
-			gxsync.WithTaskPoolTaskQueueNumber(conf.TaskQueueNumber),
-		)
-	}
 
 	// if *host == "" {
 	// 	panic("host can not be nil")
@@ -153,9 +145,16 @@ func initServer() {
 	}
 	for _, port := range portList {
 		addr = gxnet.HostAddress2(conf.Host, port)
-		server = getty.NewTCPServer(
-			getty.WithLocalAddress(addr),
-		)
+		serverOpts := []getty.ServerOption{getty.WithLocalAddress(addr)}
+		if conf.TaskPoolSize != 0 {
+			taskPool = gxsync.NewTaskPool(
+				gxsync.WithTaskPoolTaskPoolSize(conf.TaskPoolSize),
+				gxsync.WithTaskPoolTaskQueueLength(conf.TaskQueueLength),
+				gxsync.WithTaskPoolTaskQueueNumber(conf.TaskQueueNumber),
+			)
+			serverOpts = append(serverOpts, getty.WithServerTaskPool(taskPool))
+		}
+		server = getty.NewTCPServer(serverOpts...)
 		// run server
 		server.RunEventLoop(newSession)
 		log.Debug("server bind addr{%s} ok!", addr)
