@@ -24,7 +24,7 @@ import (
 )
 
 import (
-	"github.com/dubbogo/gost/sync"
+	gxsync "github.com/dubbogo/gost/sync"
 	jerrors "github.com/juju/errors"
 )
 
@@ -167,6 +167,7 @@ type Session interface {
 	SetRQLen(int)
 	SetWQLen(int)
 	SetWaitTime(time.Duration)
+	// Deprecated: don't use SetTaskPool, move to endpoints layer.
 	SetTaskPool(*gxsync.TaskPool)
 
 	GetAttribute(interface{}) interface{}
@@ -196,6 +197,7 @@ type EndPoint interface {
 	IsClosed() bool
 	// close the endpoint and free its resource
 	Close()
+	GetTaskPool() *gxsync.TaskPool
 }
 
 type Client interface {
