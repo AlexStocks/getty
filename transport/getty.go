@@ -169,6 +169,7 @@ type Session interface {
 	SetWaitTime(time.Duration)
 	// Deprecated: don't use SetTaskPool, move to endpoints layer.
 	SetTaskPool(*gxsync.TaskPool)
+	GetTaskPool() *gxsync.TaskPool
 
 	GetAttribute(interface{}) interface{}
 	SetAttribute(interface{}, interface{})

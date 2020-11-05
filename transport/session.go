@@ -332,6 +332,11 @@ func (s *session) SetTaskPool(p *gxsync.TaskPool) {
 	s.tPool = p
 }
 
+// get task pool
+func (s *session) GetTaskPool() *gxsync.TaskPool {
+	return s.endPoint.GetTaskPool()
+}
+
 // set attribute of key @session:key
 func (s *session) GetAttribute(key interface{}) interface{} {
 	s.lock.RLock()
