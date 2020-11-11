@@ -21,6 +21,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -470,4 +471,39 @@ func (c *client) IsClosed() bool {
 func (c *client) Close() {
 	c.stop()
 	c.wg.Wait()
+}
+
+func (c *client) WritePkg(pkg interface{}, timeout time.Duration) error {
+	s, err := c.GetActiveSession()
+	if err != nil {
+		return err
+	}
+	return s.WritePkg(pkg, timeout)
+}
+
+func (c *client) WriteBytes(data []byte) error {
+	s, err := c.GetActiveSession()
+	if err != nil {
+		return err
+	}
+	return s.WriteBytes(data)
+}
+
+func (c *client) WriteBytesArray(data ...[]byte) error {
+	s, err := c.GetActiveSession()
+	if err != nil {
+		return err
+	}
+	return s.WriteBytesArray(data...)
+}
+
+func (c *client) GetActiveSession() (Session, error) {
+	c.Lock()
+	defer c.Unlock()
+	for s, _ := range c.ssMap {
+		if !s.IsClosed() {
+			return s, nil
+		}
+	}
+	return nil, errors.New("not found active session")
 }

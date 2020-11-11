@@ -486,3 +486,15 @@ func (s *server) Close() {
 	s.stop()
 	s.wg.Wait()
 }
+
+func (s *server) WritePkg(pkg interface{}, timeout time.Duration) error {
+	return nil
+}
+
+func (s *server) WriteBytes(data []byte) error {
+	return nil
+}
+
+func (s *server) WriteBytesArray(data ...[]byte) error {
+	return nil
+}

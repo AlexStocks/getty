@@ -196,6 +196,12 @@ type EndPoint interface {
 	IsClosed() bool
 	// close the endpoint and free its resource
 	Close()
+	// write pkg  to endpoint
+	WritePkg(pkg interface{}, timeout time.Duration) error
+	// write bytes to endpoint
+	WriteBytes([]byte) error
+	// write bytes array to endpoint
+	WriteBytesArray(...[]byte) error
 }
 
 type Client interface {
