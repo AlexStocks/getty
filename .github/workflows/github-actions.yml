@@ -12,6 +12,7 @@ jobs:
     name: Build
     runs-on: ${{ matrix.os }}
     strategy:
+      # If you want to matrix build , you can append the following list.
       matrix:
         go_version:
           - 1.13
@@ -19,9 +20,11 @@ jobs:
           - ubuntu-latest
 
     env:
-      DING_TOKEN: db178ff8c63cdc1b9ae0b86f7c4006ddf35e0249f4ae03441d80e55fdc600419
-      DING_SIGN: SECbcc50d56d7315e57da8469d05da306d6cd825348a781861a42084e9579f1aebb
-
+      # DING_TOKEN: db178ff8c63cdc1b9ae0b86f7c4006ddf35e0249f4ae03441d80e55fdc600419
+      # DING_SIGN: SECbcc50d56d7315e57da8469d05da306d6cd825348a781861a42084e9579f1aebb
+      DING_TOKEN: ${{ secrets.DING_TOKEN }}
+      DING_SIGN: ${{ secrets.DING_SIGN }}
+      
     steps:
 
     - name: Set up Go ${{ matrix.go_version }}
