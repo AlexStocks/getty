@@ -126,18 +126,17 @@ func newSession(session getty.Session) error {
 }
 
 func initClient() {
+	clientOpts := []getty.ClientOption{getty.WithServerAddress(gxnet.HostAddress(conf.ServerHost, conf.ServerPort))}
 	if conf.TaskPoolSize != 0 {
 		taskPool = gxsync.NewTaskPool(
 			gxsync.WithTaskPoolTaskPoolSize(conf.TaskPoolSize),
 			gxsync.WithTaskPoolTaskQueueLength(conf.TaskQueueLength),
 			gxsync.WithTaskPoolTaskQueueNumber(conf.TaskQueueNumber),
 		)
+		clientOpts = append(clientOpts, getty.WithClientTaskPool(taskPool))
 	}
 
-	client.gettyClient = getty.NewTCPClient(
-		getty.WithServerAddress(gxnet.HostAddress(conf.ServerHost, conf.ServerPort)),
-		getty.WithConnectionNumber((int)(conf.ConnectionNum)),
-	)
+	client.gettyClient = getty.NewTCPClient(clientOpts...)
 	client.gettyClient.RunEventLoop(newSession)
 }
 
