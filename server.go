@@ -22,6 +22,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	gxsync "github.com/dubbogo/gost/sync"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -148,6 +149,10 @@ func (s *server) stop() {
 			}
 		})
 	}
+}
+
+func (s *server) GetTaskPool() gxsync.GenericTaskPool {
+	return s.tPool
 }
 
 func (s *server) IsClosed() bool {

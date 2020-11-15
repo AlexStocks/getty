@@ -40,7 +40,7 @@ var (
 )
 
 var (
-	taskPool *gxsync.TaskPool
+	taskPool gxsync.GenericTaskPool
 )
 
 func main() {
@@ -72,6 +72,5 @@ func NewHelloServerSession(session getty.Session) (err error) {
 	if err != nil {
 		return
 	}
-	session.SetTaskPool(taskPool)
 	return
 }

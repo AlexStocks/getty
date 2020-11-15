@@ -93,7 +93,7 @@ type session struct {
 
 	// handle logic
 	maxMsgLen int32
-	// task queue
+	// Deprecated: don't use tPool, move to endpoints layer.
 	tPool *gxsync.TaskPool
 
 	// heartbeat
@@ -325,7 +325,7 @@ func (s *session) SetWaitTime(waitTime time.Duration) {
 	s.wait = waitTime
 }
 
-// set task pool
+// Deprecated: set task pool
 func (s *session) SetTaskPool(p *gxsync.TaskPool) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -655,8 +655,8 @@ func (s *session) addTask(pkg interface{}) {
 		s.listener.OnMessage(s, pkg)
 		s.incReadPkgNum()
 	}
-	if s.tPool != nil {
-		s.tPool.AddTask(f)
+	if taskPool := s.EndPoint().GetTaskPool(); taskPool != nil {
+		taskPool.AddTaskAlways(f)
 		return
 	}
 	f()
