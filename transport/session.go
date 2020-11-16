@@ -324,7 +324,7 @@ func (s *session) SetWaitTime(waitTime time.Duration) {
 	s.wait = waitTime
 }
 
-// set task pool
+// Deprecated: set task pool
 func (s *session) SetTaskPool(p *gxsync.TaskPool) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -658,8 +658,8 @@ func (s *session) addTask(pkg interface{}) {
 		s.incReadPkgNum()
 	}
 
-	if s.tPool != nil {
-		s.tPool.AddTask(f)
+	if taskPool := s.EndPoint().GetTaskPool(); taskPool != nil {
+		taskPool.AddTask(f)
 		return
 	}
 
