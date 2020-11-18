@@ -22,7 +22,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	gxsync "github.com/dubbogo/gost/sync"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -34,8 +33,8 @@ import (
 
 import (
 	gxnet "github.com/dubbogo/gost/net"
+	gxsync "github.com/dubbogo/gost/sync"
 	"github.com/gorilla/websocket"
-
 	perrors "github.com/pkg/errors"
 )
 
