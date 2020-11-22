@@ -256,7 +256,7 @@ func (h *RpcClientHandler) OnMessage(session getty.Session, pkg interface{}) {
 	if p.H.Code == GettyFail && len(p.header.Error) > 0 {
 		pendingResponse.err = jerrors.New(p.header.Error)
 		if pendingResponse.callback == nil {
-			pendingResponse.done <- struct{}{}
+			close(pendingResponse.done)
 		} else {
 			pendingResponse.callback(pendingResponse.GetCallResponse())
 		}
@@ -265,13 +265,13 @@ func (h *RpcClientHandler) OnMessage(session getty.Session, pkg interface{}) {
 	codec := Codecs[p.H.CodecType]
 	if codec == nil {
 		pendingResponse.err = jerrors.Errorf("can not find codec for %d", p.H.CodecType)
-		pendingResponse.done <- struct{}{}
+		close(pendingResponse.done)
 		return
 	}
 	err := codec.Decode(p.body, pendingResponse.reply)
 	pendingResponse.err = err
 	if pendingResponse.callback == nil {
-		pendingResponse.done <- struct{}{}
+		close(pendingResponse.done)
 	} else {
 		pendingResponse.callback(pendingResponse.GetCallResponse())
 	}
