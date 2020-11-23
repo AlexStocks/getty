@@ -168,6 +168,7 @@ type Session interface {
 
 	SetWQLen(int)
 	SetWaitTime(time.Duration)
+	// Deprecated: don't use SetTaskPool, move to endpoints layer.
 	SetTaskPool(*gxsync.TaskPool)
 
 	GetAttribute(interface{}) interface{}
@@ -197,6 +198,7 @@ type EndPoint interface {
 	IsClosed() bool
 	// close the endpoint and free its resource
 	Close()
+	GetTaskPool() gxsync.GenericTaskPool
 }
 
 type Client interface {

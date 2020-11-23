@@ -33,8 +33,8 @@ import (
 
 import (
 	gxnet "github.com/dubbogo/gost/net"
+	gxsync "github.com/dubbogo/gost/sync"
 	"github.com/gorilla/websocket"
-
 	perrors "github.com/pkg/errors"
 )
 
@@ -148,6 +148,10 @@ func (s *server) stop() {
 			}
 		})
 	}
+}
+
+func (s *server) GetTaskPool() gxsync.GenericTaskPool {
+	return s.tPool
 }
 
 func (s *server) IsClosed() bool {

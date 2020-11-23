@@ -33,6 +33,7 @@ import (
 import (
 	"github.com/dubbogo/gost/bytes"
 	"github.com/dubbogo/gost/net"
+	gxsync "github.com/dubbogo/gost/sync"
 	"github.com/gorilla/websocket"
 	perrors "github.com/pkg/errors"
 )
@@ -354,6 +355,10 @@ func (c *client) dial() Session {
 	}
 
 	return nil
+}
+
+func (c *client) GetTaskPool() gxsync.GenericTaskPool {
+	return c.tPool
 }
 
 func (c *client) sessionNum() int {
