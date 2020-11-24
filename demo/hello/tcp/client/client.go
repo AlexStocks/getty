@@ -44,7 +44,7 @@ var (
 )
 
 var (
-	taskPool *gxsync.TaskPool
+	taskPool gxsync.GenericTaskPool
 )
 
 func main() {
