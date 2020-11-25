@@ -35,6 +35,7 @@ import (
 import (
 	log "github.com/AlexStocks/log4go"
 	"github.com/dubbogo/gost/net"
+	gxsync "github.com/dubbogo/gost/sync"
 	"github.com/gorilla/websocket"
 	jerrors "github.com/juju/errors"
 )
@@ -286,6 +287,10 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 			client.(*session).run()
 		}
 	}()
+}
+
+func (s *server) GetTaskPool() *gxsync.TaskPool {
+	return s.tPool
 }
 
 func (s *server) runUDPEventLoop(newSession NewSessionCallback) {
