@@ -21,6 +21,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -487,14 +488,16 @@ func (s *server) Close() {
 	s.wg.Wait()
 }
 
+var notImplement = errors.New("Not implemented")
+
 func (s *server) WritePkg(pkg interface{}, timeout time.Duration) error {
-	return nil
+	return notImplement
 }
 
 func (s *server) WriteBytes(data []byte) error {
-	return nil
+	return notImplement
 }
 
 func (s *server) WriteBytesArray(data ...[]byte) error {
-	return nil
+	return notImplement
 }
