@@ -43,7 +43,6 @@ func InitialSession(session getty.Session) (err error) {
 	if ok {
 		session.SetName("hello")
 		session.SetMaxMsgLen(128)
-		// session.SetRQLen(1024)
 		session.SetWQLen(512)
 		session.SetReadTimeout(time.Second)
 		session.SetWriteTimeout(5 * time.Second)

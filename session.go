@@ -299,9 +299,6 @@ func (s *session) SetCronPeriod(period int) {
 	s.period = time.Duration(period) * time.Millisecond
 }
 
-// Deprecated: don't use read queue.
-func (s *session) SetRQLen(readQLen int) {}
-
 // set @session's Write queue size
 func (s *session) SetWQLen(writeQLen int) {
 	if writeQLen < 1 {

@@ -163,9 +163,6 @@ type Session interface {
 	SetWriter(Writer)
 	SetCronPeriod(int)
 
-	// Deprecated: don't use read queue.
-	SetRQLen(int)
-
 	SetWQLen(int)
 	SetWaitTime(time.Duration)
 	// Deprecated: don't use SetTaskPool, move to endpoints layer.
