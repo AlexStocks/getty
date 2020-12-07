@@ -206,7 +206,6 @@ type EndPoint interface {
 	WriteBytesArray(...[]byte) error
 
 	GetTaskPool() *gxsync.TaskPool
-
 }
 
 type Client interface {
