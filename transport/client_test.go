@@ -163,6 +163,16 @@ func TestTCPClient(t *testing.T) {
 	assert.Equal(t, beforeWriteBytes+30, atomic.LoadUint32(&conn.writeBytes))
 	assert.True(t, conn.compress == CompressSnappy)
 
+	err = clt.WriteBytes([]byte("hello"))
+	assert.Equal(t, beforeWritePkgNum+7, atomic.LoadUint32(&conn.writePkgNum))
+	assert.Nil(t, err)
+	assert.Equal(t, beforeWriteBytes+35, atomic.LoadUint32(&conn.writeBytes))
+
+	err = clt.WriteBytesArray(pkgs...)
+	assert.Equal(t, beforeWritePkgNum+9, atomic.LoadUint32(&conn.writePkgNum))
+	assert.Equal(t, beforeWriteBytes+45, atomic.LoadUint32(&conn.writeBytes))
+	assert.Nil(t, err)
+
 	clt.Close()
 	assert.True(t, clt.IsClosed())
 }
