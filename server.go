@@ -99,7 +99,7 @@ func NewWSSServer(opts ...ServerOption) Server {
 	s := newServer(WSS_SERVER, opts...)
 
 	if s.addr == "" || s.cert == "" || s.privateKey == "" {
-		panic(fmt.Sprintf("@addr:%s, @certs:%s, @privateKey:%s, @caCert:%s",
+		panic(fmt.Sprintf("@addr:%s, @cert:%s, @privateKey:%s, @caCert:%s",
 			s.addr, s.cert, s.privateKey, s.caCert))
 	}
 

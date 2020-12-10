@@ -32,11 +32,9 @@ import (
 )
 
 var (
-	taskPoolMode        = flag.Bool("taskPool", false, "task pool mode")
-	taskPoolQueueLength = flag.Int("task_queue_length", 100, "task queue length")
-	taskPoolQueueNumber = flag.Int("task_queue_number", 4, "task queue number")
-	taskPoolSize        = flag.Int("task_pool_size", 2000, "task poll size")
-	pprofPort           = flag.Int("pprof_port", 65432, "pprof http port")
+	taskPoolMode = flag.Bool("taskPool", false, "task pool mode")
+	taskPoolSize = flag.Int("task_pool_size", 2000, "task poll size")
+	pprofPort    = flag.Int("pprof_port", 65432, "pprof http port")
 )
 
 var (
@@ -53,11 +51,8 @@ func main() {
 	options := []getty.ServerOption{getty.WithLocalAddress(":8090")}
 
 	if *taskPoolMode {
-		taskPool = gxsync.NewTaskPool(
-			gxsync.WithTaskPoolTaskQueueLength(*taskPoolQueueLength),
-			gxsync.WithTaskPoolTaskQueueNumber(*taskPoolQueueNumber),
-			gxsync.WithTaskPoolTaskPoolSize(*taskPoolSize),
-		)
+		taskPool = gxsync.NewTaskPoolSimple(*taskPoolSize)
+		options = append(options, getty.WithServerTaskPool(taskPool))
 	}
 
 	server := getty.NewTCPServer(options...)

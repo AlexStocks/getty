@@ -35,7 +35,8 @@ type ServerOptions struct {
 	cert       string
 	privateKey string
 	caCert     string
-	tPool      gxsync.GenericTaskPool
+	// task queue
+	tPool gxsync.GenericTaskPool
 }
 
 // @addr server listen address.
@@ -52,7 +53,7 @@ func WithWebsocketServerPath(path string) ServerOption {
 	}
 }
 
-// @certs: server certificate file
+// @cert: server certificate file
 func WithWebsocketServerCert(cert string) ServerOption {
 	return func(o *ServerOptions) {
 		o.cert = cert
@@ -66,7 +67,7 @@ func WithWebsocketServerPrivateKey(key string) ServerOption {
 	}
 }
 
-// @certs is the root certificate file to verify the legitimacy of server
+// @cert is the root certificate file to verify the legitimacy of server
 func WithWebsocketServerRootCert(cert string) ServerOption {
 	return func(o *ServerOptions) {
 		o.caCert = cert
@@ -109,10 +110,11 @@ type ClientOptions struct {
 	sslEnabled       bool
 	tlsConfigBuilder TlsConfigBuilder
 
-	// the certs file of wss server which may contain server domain, server ip, the starting effective date, effective
+	// the cert file of wss server which may contain server domain, server ip, the starting effective date, effective
 	// duration, the hash alg, the len of the private key.
 	// wss client will use it.
-	cert  string
+	cert string
+	// task queue
 	tPool gxsync.GenericTaskPool
 }
 

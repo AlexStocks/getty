@@ -42,8 +42,7 @@ func InitialSession(session getty.Session) (err error) {
 	_, ok := session.Conn().(*tls.Conn)
 	if ok {
 		session.SetName("hello")
-		session.SetMaxMsgLen(128)
-		session.SetWQLen(512)
+		session.SetMaxMsgLen(128 * 1024) // max message package length is 128k
 		session.SetReadTimeout(time.Second)
 		session.SetWriteTimeout(5 * time.Second)
 		session.SetCronPeriod(int(hello.CronPeriod / 1e6))

@@ -43,9 +43,7 @@ const (
 	netIOTimeout    = 1e9      // 1s
 	period          = 60 * 1e9 // 1 minute
 	pendingDuration = 3e9
-	defaultQLen     = 1024
-	maxIovecNum     = 10
-	//MaxWheelTimeSpan 900s, 15 minute
+	// MaxWheelTimeSpan 900s, 15 minute
 	MaxWheelTimeSpan = 900e9
 
 	defaultSessionName    = "session"
@@ -88,13 +86,8 @@ type session struct {
 	reader Reader // @reader should be nil when @conn is a gettyWSConn object.
 	writer Writer
 
-	// write
-	wQ chan interface{}
-
 	// handle logic
 	maxMsgLen int32
-	// Deprecated: don't use tPool, move to endpoints layer.
-	tPool *gxsync.TaskPool
 
 	// heartbeat
 	period time.Duration
@@ -299,18 +292,6 @@ func (s *session) SetCronPeriod(period int) {
 	s.period = time.Duration(period) * time.Millisecond
 }
 
-// set @session's Write queue size
-func (s *session) SetWQLen(writeQLen int) {
-	if writeQLen < 1 {
-		panic("@writeQLen < 1")
-	}
-
-	s.lock.Lock()
-	defer s.lock.Unlock()
-	s.wQ = make(chan interface{}, writeQLen)
-	log.Debugf("%s, [session.SetWQLen] wQ{len:%d, cap:%d}", s.Stat(), len(s.wQ), cap(s.wQ))
-}
-
 // set maximum wait time when session got error or got exit signal
 func (s *session) SetWaitTime(waitTime time.Duration) {
 	if waitTime < 1 {
@@ -391,38 +372,30 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 		}
 	}()
 
-	if timeout <= 0 {
-		pkgBytes, err := s.writer.Write(s, pkg)
-		if err != nil {
-			log.Warnf("%s, [session.WritePkg] session.writer.Write(@pkg:%#v) = error:%+v", s.Stat(), pkg, err)
-			return perrors.WithStack(err)
-		}
-		var udpCtxPtr *UDPContext
-		if udpCtx, ok := pkg.(UDPContext); ok {
-			udpCtxPtr = &udpCtx
-		} else if udpCtxP, ok := pkg.(*UDPContext); ok {
-			udpCtxPtr = udpCtxP
-		}
-		if udpCtxPtr != nil {
-			udpCtxPtr.Pkg = pkgBytes
-			pkg = *udpCtxPtr
-		} else {
-			pkg = pkgBytes
-		}
-		_, err = s.Connection.send(pkg)
-		if err != nil {
-			log.Warnf("%s, [session.WritePkg] @s.Connection.Write(pkg:%#v) = err:%+v", s.Stat(), pkg, err)
-			return perrors.WithStack(err)
-		}
-		return nil
+	pkgBytes, err := s.writer.Write(s, pkg)
+	if err != nil {
+		log.Warnf("%s, [session.WritePkg] session.writer.Write(@pkg:%#v) = error:%+v", s.Stat(), pkg, err)
+		return perrors.WithStack(err)
 	}
-	select {
-	case s.wQ <- pkg:
-		break // for possible gen a new pkg
-
-	case <-wheel.After(timeout):
-		log.Warnf("%s, [session.WritePkg] wQ{len:%d, cap:%d}", s.Stat(), len(s.wQ), cap(s.wQ))
-		return ErrSessionBlocked
+	var udpCtxPtr *UDPContext
+	if udpCtx, ok := pkg.(UDPContext); ok {
+		udpCtxPtr = &udpCtx
+	} else if udpCtxP, ok := pkg.(*UDPContext); ok {
+		udpCtxPtr = udpCtxP
+	}
+	if udpCtxPtr != nil {
+		udpCtxPtr.Pkg = pkgBytes
+		pkg = *udpCtxPtr
+	} else {
+		pkg = pkgBytes
+	}
+	if 0 < timeout {
+		s.Connection.SetWriteTimeout(timeout)
+	}
+	_, err = s.Connection.send(pkg)
+	if err != nil {
+		log.Warnf("%s, [session.WritePkg] @s.Connection.Write(pkg:%#v) = err:%+v", s.Stat(), pkg, err)
+		return perrors.WithStack(err)
 	}
 
 	return nil
@@ -446,9 +419,7 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 	if s.IsClosed() {
 		return ErrSessionClosed
 	}
-	// s.conn.SetWriteTimeout(time.Now().Add(s.wTimeout))
 	if len(pkgs) == 1 {
-		// return s.Connection.Write(pkgs[0])
 		return s.WriteBytes(pkgs[0])
 	}
 
@@ -506,10 +477,6 @@ func (s *session) run() {
 		panic(errStr)
 	}
 
-	if s.wQ == nil {
-		s.wQ = make(chan interface{}, defaultQLen)
-	}
-
 	// call session opened
 	s.UpdateActive()
 	if err := s.listener.OnOpen(s); err != nil {
@@ -526,17 +493,9 @@ func (s *session) run() {
 
 func (s *session) handleLoop() {
 	var (
-		err      error
-		ok       bool
-		flag     bool
-		wsFlag   bool
-		udpFlag  bool
-		loopFlag bool
-		wsConn   *gettyWSConn
-		counter  gxtime.CountWatch
-		outPkg   interface{}
-		pkgBytes []byte
-		iovec    [][]byte
+		wsFlag  bool
+		wsConn  *gettyWSConn
+		counter gxtime.CountWatch
 	)
 
 	defer func() {
@@ -553,96 +512,27 @@ func (s *session) handleLoop() {
 		s.gc()
 	}()
 
-	flag = true // do not do any read/Write/cron operation while got Write error
 	wsConn, wsFlag = s.Connection.(*gettyWSConn)
-	_, udpFlag = s.Connection.(*gettyUDPConn)
-	iovec = make([][]byte, 0, maxIovecNum)
 LOOP:
 	for {
-		// A select blocks until one of its cases is ready to run.
-		// It choose one at random if multiple are ready. Otherwise it choose default branch if none is ready.
 		select {
 		case <-s.done:
-			// this case branch assure the (session)handleLoop gr will exit before (session)handlePackage gr.
+			// this case branch assure the (session)handleLoop gr will exit after (session)handlePackage gr.
 			<-s.rDone
-			if len(s.wQ) == 0 {
-				log.Infof("%s, [session.handleLoop] got done signal. wQ is nil.", s.Stat())
-				break LOOP
-			}
 			counter.Start()
 			if counter.Count() > s.wait.Nanoseconds() {
 				log.Infof("%s, [session.handleLoop] got done signal ", s.Stat())
 				break LOOP
 			}
-		case outPkg, ok = <-s.wQ:
-			if !ok {
-				continue
-			}
-			if !flag {
-				log.Warnf("[session.handleLoop] drop write out package %#v", outPkg)
-				continue
-			}
-
-			if udpFlag || wsFlag {
-				err = s.WritePkg(outPkg, 0)
-				if err != nil {
-					log.Errorf("%s, [session.handleLoop] = error:%+v", s.sessionToken(), perrors.WithStack(err))
-					s.stop()
-					// break LOOP
-					flag = false
-				}
-
-				continue
-			}
-
-			iovec = iovec[:0]
-			for idx := 0; idx < maxIovecNum; idx++ {
-				pkgBytes, err = s.writer.Write(s, outPkg)
-				if err != nil {
-					log.Errorf("%s, [session.handleLoop] = error:%+v", s.sessionToken(), perrors.WithStack(err))
-					s.stop()
-					// break LOOP
-					flag = false
-					break
-				}
-				iovec = append(iovec, pkgBytes)
-
-				if idx < maxIovecNum-1 {
-					loopFlag = true
-					select {
-					case outPkg, ok = <-s.wQ:
-						if !ok {
-							loopFlag = false
-						}
-
-					default:
-						loopFlag = false
-						break
-					}
-					if !loopFlag {
-						break // break for-idx loop
-					}
-				}
-			}
-			err = s.WriteBytesArray(iovec[:]...)
-			if err != nil {
-				log.Errorf("%s, [session.handleLoop]s.WriteBytesArray(iovec len:%d) = error:%+v",
-					s.sessionToken(), len(iovec), perrors.WithStack(err))
-				s.stop()
-				// break LOOP
-				flag = false
-			}
 
 		case <-wheel.After(s.period):
-			if flag {
-				if wsFlag {
-					err := wsConn.writePing()
-					if err != nil {
-						log.Warnf("wsConn.writePing() = error:%+v", perrors.WithStack(err))
-					}
+			if wsFlag {
+				err := wsConn.writePing()
+				if err != nil {
+					log.Warnf("wsConn.writePing() = error:%+v", perrors.WithStack(err))
 				}
-				s.listener.OnCron(s)
 			}
+			s.listener.OnCron(s)
 		}
 	}
 }
@@ -943,25 +833,20 @@ func (s *session) stop() {
 
 func (s *session) gc() {
 	var (
-		wQ   chan interface{}
 		conn Connection
 	)
 
 	s.lock.Lock()
 	if s.attrs != nil {
 		s.attrs = nil
-		if s.wQ != nil {
-			wQ = s.wQ
-			s.wQ = nil
-		}
 		conn = s.Connection
+		s.Connection = nil
 	}
 	s.lock.Unlock()
 
 	go func() {
-		if wQ != nil {
-			conn.close((int)((int64)(s.wait)))
-			close(wQ)
+		if conn != nil {
+			conn.close(int(s.wait))
 		}
 	}()
 }
