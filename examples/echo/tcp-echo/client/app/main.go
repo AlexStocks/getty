@@ -136,6 +136,10 @@ func initClient() {
 		clientOpts = append(clientOpts, getty.WithClientTaskPool(taskPool))
 	}
 
+	if conf.ConnectionNum != 0 {
+		clientOpts = append(clientOpts, getty.WithConnectionNumber(conf.ConnectionNum))
+	}
+
 	client.gettyClient = getty.NewTCPClient(clientOpts...)
 	client.gettyClient.RunEventLoop(newSession)
 }
