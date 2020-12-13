@@ -15,30 +15,7 @@
  * limitations under the License.
  */
 
-package hello
+package util
 
-import (
-	"github.com/apache/dubbo-getty"
-)
-
-var (
-	Sessions []getty.Session
-)
-
-func ClientRequest() {
-	for _, session := range Sessions {
-		ss := session
-		go func() {
-			echoTimes := 10
-			for i := 0; i < echoTimes; i++ {
-				err := ss.WritePkg("hello", WritePkgTimeout)
-				if err != nil {
-					log.Infof("session.WritePkg(session{%s}, error{%v}", ss.Stat(), err)
-					ss.Close()
-				}
-			}
-			log.Infof("after loop %d times", echoTimes)
-		}()
-	}
-
+func SetLimit() {
 }

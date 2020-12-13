@@ -126,7 +126,7 @@ func NewWSSClient(opts ...ClientOption) Client {
 	c := newClient(WSS_CLIENT, opts...)
 
 	if c.cert == "" {
-		panic(fmt.Sprintf("@certs:%s", c.cert))
+		panic(fmt.Sprintf("@cert:%s", c.cert))
 	}
 	if !strings.HasPrefix(c.addr, "wss://") {
 		panic(fmt.Sprintf("the prefix @serverAddr:%s is not wss://", c.addr))
@@ -135,11 +135,11 @@ func NewWSSClient(opts ...ClientOption) Client {
 	return c
 }
 
-func (c client) ID() EndPointID {
+func (c *client) ID() EndPointID {
 	return c.endPointID
 }
 
-func (c client) EndPointType() EndPointType {
+func (c *client) EndPointType() EndPointType {
 	return c.endPointType
 }
 
@@ -154,7 +154,7 @@ func (c *client) dialTCP() Session {
 			return nil
 		}
 		if c.sslEnabled {
-			if sslConfig, err := c.tlsConfigBuilder.BuildTlsConfig(); err == nil && sslConfig != nil {
+			if sslConfig, buildTlsConfErr := c.tlsConfigBuilder.BuildTlsConfig(); buildTlsConfErr == nil && sslConfig != nil {
 				d := &net.Dialer{Timeout: connectTimeout}
 				conn, err = tls.DialWithDialer(d, "tcp", c.addr, sslConfig)
 			}
@@ -285,7 +285,7 @@ func (c *client) dialWSS() Session {
 	if c.cert != "" {
 		certPEMBlock, err := ioutil.ReadFile(c.cert)
 		if err != nil {
-			panic(fmt.Sprintf("ioutil.ReadFile(certs:%s) = error:%+v", c.cert, perrors.WithStack(err)))
+			panic(fmt.Sprintf("ioutil.ReadFile(cert:%s) = error:%+v", c.cert, perrors.WithStack(err)))
 		}
 
 		var cert tls.Certificate
@@ -307,7 +307,7 @@ func (c *client) dialWSS() Session {
 	for _, c := range config.Certificates {
 		roots, err = x509.ParseCertificates(c.Certificate[len(c.Certificate)-1])
 		if err != nil {
-			panic(fmt.Sprintf("error parsing server's root certs: %+v\n", perrors.WithStack(err)))
+			panic(fmt.Sprintf("error parsing server's root cert: %+v\n", perrors.WithStack(err)))
 		}
 		for _, root = range roots {
 			certPool.AddCert(root)

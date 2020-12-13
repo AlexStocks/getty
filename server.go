@@ -106,20 +106,15 @@ func NewWSSServer(opts ...ServerOption) Server {
 	return s
 }
 
-func (s server) ID() int32 {
+func (s *server) ID() int32 {
 	return s.endPointID
 }
 
-func (s server) EndPointType() EndPointType {
+func (s *server) EndPointType() EndPointType {
 	return s.endPointType
 }
 
 func (s *server) stop() {
-	var (
-		err error
-		ctx context.Context
-	)
-
 	select {
 	case <-s.done:
 		return
@@ -128,12 +123,13 @@ func (s *server) stop() {
 			close(s.done)
 			s.lock.Lock()
 			if s.server != nil {
-				ctx, _ = context.WithTimeout(context.Background(), serverFastFailTimeout)
-				if err = s.server.Shutdown(ctx); err != nil {
+				ctx, cancel := context.WithTimeout(context.Background(), serverFastFailTimeout)
+				if err := s.server.Shutdown(ctx); err != nil {
 					// if the log output is "shutdown ctx: context deadline exceeded"， it means that
 					// there are still some active connections.
 					log.Errorf("server shutdown ctx:%s error:%v", ctx, err)
 				}
+				cancel()
 			}
 			s.server = nil
 			s.lock.Unlock()
@@ -179,7 +175,7 @@ func (s *server) listenTCP() error {
 		}
 	} else {
 		if s.sslEnabled {
-			if sslConfig, err := s.tlsConfigBuilder.BuildTlsConfig(); err == nil && sslConfig != nil {
+			if sslConfig, buildTlsConfErr := s.tlsConfigBuilder.BuildTlsConfig(); buildTlsConfErr == nil && sslConfig != nil {
 				streamListener, err = tls.Listen("tcp", s.addr, sslConfig)
 			}
 		} else {
@@ -420,7 +416,6 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 		if certificate, err = tls.LoadX509KeyPair(s.cert, s.privateKey); err != nil {
 			panic(fmt.Sprintf("tls.LoadX509KeyPair(certs{%s}, privateKey{%s}) = err:%+v",
 				s.cert, s.privateKey, perrors.WithStack(err)))
-			return
 		}
 		config = &tls.Config{
 			InsecureSkipVerify: true, // do not verify peer certs
