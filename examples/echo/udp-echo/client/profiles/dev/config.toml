@@ -36,7 +36,6 @@ FailFastTimeout         = "3s"
     CompressEncoding    = true
     UdpRBufSize         = 262144
     UdpWBufSize         = 65536
-    PkgRQSize           = 512
     PkgWQSize           = 256
     UdpReadTimeout      = "10s"
     UdpWriteTimeout     = "5s"

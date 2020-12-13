@@ -42,7 +42,6 @@ FailFastTimeout         = "3s"
     TcpKeepAlive        = true
     TcpRBufSize         = 262144
     TcpWBufSize         = 65536
-    PkgRQSize           = 512
     PkgWQSize           = 256
     TcpReadTimeout      = "1s"
     TcpWriteTimeout     = "5s"

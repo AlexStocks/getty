@@ -81,7 +81,7 @@ func newServer(t EndPointType, opts ...ServerOption) *server {
 	return s
 }
 
-// NewTCServer builds a tcp server.
+// NewTCPServer builds a tcp server.
 func NewTCPServer(opts ...ServerOption) Server {
 	return newServer(TCP_SERVER, opts...)
 }
@@ -152,6 +152,10 @@ func (s *server) stop() {
 	}
 }
 
+func (s *server) GetTaskPool() gxsync.GenericTaskPool {
+	return s.tPool
+}
+
 func (s *server) IsClosed() bool {
 	select {
 	case <-s.done:
@@ -176,7 +180,13 @@ func (s *server) listenTCP() error {
 			return jerrors.Annotatef(err, "gxnet.ListenOnTCPRandomPort(addr:%s)", s.addr)
 		}
 	} else {
-		streamListener, err = net.Listen("tcp", s.addr)
+		if s.sslEnabled {
+			if sslConfig, err := s.tlsConfigBuilder.BuildTlsConfig(); err == nil && sslConfig != nil {
+				streamListener, err = tls.Listen("tcp", s.addr, sslConfig)
+			}
+		} else {
+			streamListener, err = net.Listen("tcp", s.addr)
+		}
 		if err != nil {
 			return jerrors.Annotatef(err, "net.Listen(tcp, addr:%s)", s.addr)
 		}
@@ -286,10 +296,6 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 			client.(*session).run()
 		}
 	}()
-}
-
-func (s *server) GetTaskPool() *gxsync.TaskPool {
-	return s.tPool
 }
 
 func (s *server) runUDPEventLoop(newSession NewSessionCallback) {

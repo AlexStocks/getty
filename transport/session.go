@@ -30,7 +30,6 @@ import (
 
 import (
 	gxbytes "github.com/dubbogo/gost/bytes"
-	gxsync "github.com/dubbogo/gost/sync"
 	"github.com/gorilla/websocket"
 	jerrors "github.com/juju/errors"
 
@@ -92,8 +91,6 @@ type session struct {
 
 	// handle logic
 	maxMsgLen int32
-	// task queue
-	tPool *gxsync.TaskPool
 
 	// heartbeat
 	period time.Duration
@@ -298,9 +295,6 @@ func (s *session) SetCronPeriod(period int) {
 	s.period = time.Duration(period) * time.Millisecond
 }
 
-// Deprecated: don't use read queue.
-func (s *session) SetRQLen(readQLen int) {}
-
 // set @session's Write queue size
 func (s *session) SetWQLen(writeQLen int) {
 	if writeQLen < 1 {
@@ -322,14 +316,6 @@ func (s *session) SetWaitTime(waitTime time.Duration) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	s.wait = waitTime
-}
-
-// Deprecated: set task pool
-func (s *session) SetTaskPool(p *gxsync.TaskPool) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	s.tPool = p
 }
 
 // set attribute of key @session:key

@@ -29,6 +29,7 @@ import (
 
 import (
 	log "github.com/AlexStocks/log4go"
+	gxsync "github.com/dubbogo/gost/sync"
 	jerrors "github.com/juju/errors"
 )
 
@@ -50,6 +51,8 @@ type gettyRPCClient struct {
 }
 
 var (
+	taskPool = gxsync.NewTaskPoolSimple(0)
+
 	errClientPoolClosed = jerrors.New("client pool closed")
 )
 
@@ -60,6 +63,7 @@ func newGettyRPCClient(pool *gettyRPCClientPool, protocol, addr string) (*gettyR
 		pool:     pool,
 		gettyClient: getty.NewTCPClient(
 			getty.WithServerAddress(addr),
+			getty.WithClientTaskPool(taskPool),
 			getty.WithConnectionNumber(pool.rpcClient.conf.ConnectionNum),
 		),
 	}
@@ -119,7 +123,6 @@ func (c *gettyRPCClient) newSession(session getty.Session) error {
 	session.SetMaxMsgLen(conf.GettySessionParam.MaxMsgLen)
 	session.SetPkgHandler(rpcClientPackageHandler)
 	session.SetEventListener(NewRpcClientHandler(c))
-	// session.SetRQLen(conf.GettySessionParam.PkgRQSize)
 	session.SetWQLen(conf.GettySessionParam.PkgWQSize)
 	session.SetReadTimeout(conf.GettySessionParam.tcpReadTimeout)
 	session.SetWriteTimeout(conf.GettySessionParam.tcpWriteTimeout)

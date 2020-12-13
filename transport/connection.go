@@ -322,8 +322,13 @@ func (t *gettyTCPConn) close(waitSec int) {
 				log.Error("snappy.Writer.Close() = error{%s}", jerrors.ErrorStack(err))
 			}
 		}
-		t.conn.(*net.TCPConn).SetLinger(waitSec)
-		t.conn.Close()
+		if conn, ok := t.conn.(*net.TCPConn); ok {
+			_ = conn.SetLinger(waitSec)
+			_ = conn.Close()
+		} else {
+			_ = t.conn.(*tls.Conn).Close()
+
+		}
 		t.conn = nil
 	}
 }

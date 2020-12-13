@@ -83,7 +83,6 @@ func buildServerConfig() *ServerConfig {
 			keepAlivePeriod:  time.Second * 120,
 			TcpRBufSize:      262144,
 			TcpWBufSize:      524288,
-			PkgRQSize:        1024,
 			PkgWQSize:        512,
 			TcpReadTimeout:   "1s",
 			TcpWriteTimeout:  "3s",

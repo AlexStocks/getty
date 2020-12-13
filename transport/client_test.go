@@ -87,13 +87,11 @@ func newSessionCallback(session Session, handler *MessageHandler) error {
 	session.SetMaxMsgLen(1024)
 	session.SetPkgHandler(&pkgHandler)
 	session.SetEventListener(handler)
-	session.SetRQLen(4)
 	session.SetWQLen(32)
 	session.SetReadTimeout(3e9)
 	session.SetWriteTimeout(3e9)
 	session.SetCronPeriod((int)(30e9 / 1e6))
 	session.SetWaitTime(3e9)
-	session.SetTaskPool(nil)
 
 	return nil
 }

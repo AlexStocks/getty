@@ -46,7 +46,6 @@ type (
 		TcpKeepAlive     bool   `default:"true"`
 		TcpRBufSize      int    `default:"262144"`
 		TcpWBufSize      int    `default:"65536"`
-		PkgRQSize        int    `default:"1024"`
 		PkgWQSize        int    `default:"1024"`
 		TcpReadTimeout   string `default:"1s"`
 		tcpReadTimeout   time.Duration

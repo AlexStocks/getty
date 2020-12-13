@@ -121,7 +121,6 @@ func (s *Server) newSession(session getty.Session) error {
 	session.SetMaxMsgLen(s.conf.GettySessionParam.MaxMsgLen)
 	session.SetPkgHandler(s.pkgHandler)
 	session.SetEventListener(s.rpcHandler)
-	session.SetRQLen(s.conf.GettySessionParam.PkgRQSize)
 	session.SetWQLen(s.conf.GettySessionParam.PkgWQSize)
 	session.SetReadTimeout(s.conf.GettySessionParam.tcpReadTimeout)
 	session.SetWriteTimeout(s.conf.GettySessionParam.tcpWriteTimeout)
@@ -146,6 +145,7 @@ func (s *Server) Start() {
 	for _, port := range portList {
 		addr = net.JoinHostPort(s.conf.Host, port)
 		tcpServer = getty.NewTCPServer(
+			getty.WithServerTaskPool(taskPool),
 			getty.WithLocalAddress(addr),
 		)
 		tcpServer.RunEventLoop(s.newSession)

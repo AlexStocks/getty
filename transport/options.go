@@ -27,14 +27,16 @@ type ServerOption func(*ServerOptions)
 
 type ServerOptions struct {
 	addr string
-
+	//tls
+	sslEnabled       bool
+	tlsConfigBuilder TlsConfigBuilder
 	// websocket
 	path       string
 	cert       string
 	privateKey string
 	caCert     string
 	// task queue
-	tPool *gxsync.TaskPool
+	tPool gxsync.GenericTaskPool
 }
 
 // @addr server listen address.
@@ -73,9 +75,23 @@ func WithWebsocketServerRootCert(cert string) ServerOption {
 }
 
 // @pool server task pool.
-func WithServerTaskPool(pool *gxsync.TaskPool) ServerOption {
+func WithServerTaskPool(pool gxsync.GenericTaskPool) ServerOption {
 	return func(o *ServerOptions) {
 		o.tPool = pool
+	}
+}
+
+// @WithSslEnabled enable use tls
+func WithServerSslEnabled(sslEnabled bool) ServerOption {
+	return func(o *ServerOptions) {
+		o.sslEnabled = sslEnabled
+	}
+}
+
+// @WithServerKeyCertChainPath sslConfig is tls config
+func WithServerTlsConfigBuilder(tlsConfigBuilder TlsConfigBuilder) ServerOption {
+	return func(o *ServerOptions) {
+		o.tlsConfigBuilder = tlsConfigBuilder
 	}
 }
 
@@ -90,12 +106,16 @@ type ClientOptions struct {
 	number            int
 	reconnectInterval int // reConnect Interval
 
-	// the cert file of wss server which may contain server domain, server ip, the starting effective date, effective
+	//tls
+	sslEnabled       bool
+	tlsConfigBuilder TlsConfigBuilder
+
+	// the certs file of wss server which may contain server domain, server ip, the starting effective date, effective
 	// duration, the hash alg, the len of the private key.
 	// wss client will use it.
 	cert string
 	// task queue
-	tPool *gxsync.TaskPool
+	tPool gxsync.GenericTaskPool
 }
 
 // @addr is server address.
@@ -111,6 +131,13 @@ func WithReconnectInterval(reconnectInterval int) ClientOption {
 		if 0 < reconnectInterval {
 			o.reconnectInterval = reconnectInterval
 		}
+	}
+}
+
+// @pool client task pool.
+func WithClientTaskPool(pool gxsync.GenericTaskPool) ClientOption {
+	return func(o *ClientOptions) {
+		o.tPool = pool
 	}
 }
 
@@ -130,9 +157,16 @@ func WithRootCertificateFile(cert string) ClientOption {
 	}
 }
 
-// @pool client task pool.
-func WithClientTaskPool(pool *gxsync.TaskPool) ClientOption {
+// @WithSslEnabled enable use tls
+func WithClientSslEnabled(sslEnabled bool) ClientOption {
 	return func(o *ClientOptions) {
-		o.tPool = pool
+		o.sslEnabled = sslEnabled
+	}
+}
+
+// @WithClientKeyCertChainPath sslConfig is tls config
+func WithClientTlsConfigBuilder(tlsConfigBuilder TlsConfigBuilder) ClientOption {
+	return func(o *ClientOptions) {
+		o.tlsConfigBuilder = tlsConfigBuilder
 	}
 }

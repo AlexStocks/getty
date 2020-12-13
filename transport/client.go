@@ -154,7 +154,14 @@ func (c *client) dialTCP() Session {
 		if c.IsClosed() {
 			return nil
 		}
-		conn, err = net.DialTimeout("tcp", c.addr, connectTimeout)
+		if c.sslEnabled {
+			if sslConfig, err := c.tlsConfigBuilder.BuildTlsConfig(); err == nil && sslConfig != nil {
+				d := &net.Dialer{Timeout: connectTimeout}
+				conn, err = tls.DialWithDialer(d, "tcp", c.addr, sslConfig)
+			}
+		} else {
+			conn, err = net.DialTimeout("tcp", c.addr, connectTimeout)
+		}
 		if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 			conn.Close()
 			err = errSelfConnect
@@ -352,6 +359,10 @@ func (c *client) dial() Session {
 	return nil
 }
 
+func (c *client) GetTaskPool() gxsync.GenericTaskPool {
+	return c.tPool
+}
+
 func (c *client) sessionNum() int {
 	var num int
 
@@ -410,10 +421,6 @@ func (c *client) RunEventLoop(newSession NewSessionCallback) {
 	c.newSession = newSession
 	c.Unlock()
 	c.reConnect()
-}
-
-func (c *client) GetTaskPool() *gxsync.TaskPool {
-	return c.tPool
 }
 
 // a for-loop connect to make sure the connection pool is valid

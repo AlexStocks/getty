@@ -53,7 +53,6 @@ func buildClientConfig() *ClientConfig {
 			TcpWriteTimeout:  "5s",
 			TcpRBufSize:      262144,
 			TcpWBufSize:      524288,
-			PkgRQSize:        1024,
 			PkgWQSize:        10,
 			WaitTimeout:      "1s",
 			MaxMsgLen:        8388608,

@@ -8,7 +8,7 @@ require (
 	github.com/coreos/go-semver v0.3.0 // indirect
 	github.com/coreos/go-systemd v0.0.0-20191104093116-d3cd4ed1dbcf // indirect
 	github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f // indirect
-	github.com/dubbogo/gost v1.9.3
+	github.com/dubbogo/gost v1.10.0
 	github.com/fatih/camelcase v1.0.0 // indirect
 	github.com/fatih/set v0.2.1 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
@@ -24,6 +24,7 @@ require (
 	github.com/juju/testing v0.0.0-20191001232224-ce9dec17d28b // indirect
 	github.com/koding/multiconfig v0.0.0-20171124222453-69c27309b2d7
 	github.com/mailru/easyjson v0.7.1 // indirect
+	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.4.1 // indirect
 	github.com/samuel/go-zookeeper v0.0.0-20190923202752-2cc03de413da // indirect
 	github.com/stretchr/testify v1.6.1

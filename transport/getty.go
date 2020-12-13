@@ -163,12 +163,8 @@ type Session interface {
 	SetWriter(Writer)
 	SetCronPeriod(int)
 
-	// Deprecated: don't use read queue.
-	SetRQLen(int)
 	SetWQLen(int)
 	SetWaitTime(time.Duration)
-	// Deprecated: don't use SetTaskPool, move to endpoints layer.
-	SetTaskPool(*gxsync.TaskPool)
 
 	GetAttribute(interface{}) interface{}
 	SetAttribute(interface{}, interface{})
@@ -197,7 +193,7 @@ type EndPoint interface {
 	IsClosed() bool
 	// close the endpoint and free its resource
 	Close()
-	GetTaskPool() *gxsync.TaskPool
+	GetTaskPool() gxsync.GenericTaskPool
 }
 
 type Client interface {

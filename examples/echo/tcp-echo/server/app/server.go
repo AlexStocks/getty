@@ -50,7 +50,7 @@ var (
 
 var (
 	serverList []getty.Server
-	taskPool   *gxsync.TaskPool
+	taskPool   gxsync.GenericTaskPool
 )
 
 func main() {
@@ -63,6 +63,7 @@ func main() {
 
 	initProfiling()
 
+	taskPool = gxsync.NewTaskPoolSimple(0)
 	initServer()
 	gxlog.CInfo("%s starts successfull! its version=%s, its listen ends=%s:%s\n",
 		conf.AppName, getty.Version, conf.Host, conf.Ports)
@@ -145,14 +146,7 @@ func initServer() {
 	for _, port := range portList {
 		addr = gxnet.HostAddress2(conf.Host, port)
 		serverOpts := []getty.ServerOption{getty.WithLocalAddress(addr)}
-		if conf.TaskPoolSize != 0 {
-			taskPool = gxsync.NewTaskPool(
-				gxsync.WithTaskPoolTaskPoolSize(conf.TaskPoolSize),
-				gxsync.WithTaskPoolTaskQueueLength(conf.TaskQueueLength),
-				gxsync.WithTaskPoolTaskQueueNumber(conf.TaskQueueNumber),
-			)
-			serverOpts = append(serverOpts, getty.WithServerTaskPool(taskPool))
-		}
+		serverOpts = append(serverOpts, getty.WithServerTaskPool(taskPool))
 		server = getty.NewTCPServer(serverOpts...)
 		// run server
 		server.RunEventLoop(newSession)
@@ -165,7 +159,9 @@ func uninitServer() {
 	for _, server := range serverList {
 		server.Close()
 	}
-	taskPool.Close()
+	if taskPool != nil {
+		taskPool.Close()
+	}
 }
 
 func initSignal() {

@@ -43,7 +43,6 @@ type (
 		CompressEncoding bool   `default:"false"`
 		UdpRBufSize      int    `default:"262144"`
 		UdpWBufSize      int    `default:"65536"`
-		PkgRQSize        int    `default:"1024"`
 		PkgWQSize        int    `default:"1024"`
 		UdpReadTimeout   string `default:"1s"`
 		udpReadTimeout   time.Duration

@@ -54,7 +54,7 @@ const (
 
 var (
 	client   EchoClient
-	taskPool *gxsync.TaskPool
+	taskPool gxsync.GenericTaskPool
 )
 
 ////////////////////////////////////////////////////////////////////
@@ -66,6 +66,7 @@ func main() {
 
 	initProfiling()
 
+	taskPool = gxsync.NewTaskPoolSimple(0)
 	initClient()
 	gxlog.CInfo("%s starts successfull! its version=%s\n", conf.AppName, getty.Version)
 	log.Info("%s starts successfull! its version=%s\n", conf.AppName, getty.Version)
@@ -118,7 +119,6 @@ func newSession(session getty.Session) error {
 	session.SetWriteTimeout(conf.GettySessionParam.tcpWriteTimeout)
 	session.SetCronPeriod((int)(conf.heartbeatPeriod.Nanoseconds() / 1e6))
 	session.SetWaitTime(conf.GettySessionParam.waitTimeout)
-	session.SetTaskPool(taskPool)
 	log.Debug("client new session:%s\n", session.Stat())
 
 	return nil
@@ -126,14 +126,7 @@ func newSession(session getty.Session) error {
 
 func initClient() {
 	clientOpts := []getty.ClientOption{getty.WithServerAddress(gxnet.HostAddress(conf.ServerHost, conf.ServerPort))}
-	if conf.TaskPoolSize != 0 {
-		taskPool = gxsync.NewTaskPool(
-			gxsync.WithTaskPoolTaskPoolSize(conf.TaskPoolSize),
-			gxsync.WithTaskPoolTaskQueueLength(conf.TaskQueueLength),
-			gxsync.WithTaskPoolTaskQueueNumber(conf.TaskQueueNumber),
-		)
-		clientOpts = append(clientOpts, getty.WithClientTaskPool(taskPool))
-	}
+	clientOpts = append(clientOpts, getty.WithClientTaskPool(taskPool))
 
 	if conf.ConnectionNum != 0 {
 		clientOpts = append(clientOpts, getty.WithConnectionNumber(conf.ConnectionNum))
@@ -145,7 +138,9 @@ func initClient() {
 
 func uninitClient() {
 	client.close()
-	taskPool.Close()
+	if taskPool != nil {
+		taskPool.Close()
+	}
 }
 
 func initSignal() {
