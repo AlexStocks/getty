@@ -124,7 +124,6 @@ func newSession(session getty.Session) error {
 	session.SetMaxMsgLen(conf.GettySessionParam.MaxMsgLen)
 	session.SetPkgHandler(echoPkgHandler)
 	session.SetEventListener(newEchoMessageHandler(client))
-	session.SetRQLen(conf.GettySessionParam.PkgRQSize)
 	session.SetWQLen(conf.GettySessionParam.PkgWQSize)
 	session.SetReadTimeout(conf.GettySessionParam.udpReadTimeout)
 	session.SetWriteTimeout(conf.GettySessionParam.udpWriteTimeout)

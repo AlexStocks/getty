@@ -113,7 +113,6 @@ func newSession(session getty.Session) error {
 	session.SetMaxMsgLen(conf.GettySessionParam.MaxMsgLen)
 	session.SetPkgHandler(echoPkgHandler)
 	session.SetEventListener(echoMsgHandler)
-	session.SetRQLen(conf.GettySessionParam.PkgRQSize)
 	session.SetWQLen(conf.GettySessionParam.PkgWQSize)
 	session.SetReadTimeout(conf.GettySessionParam.tcpReadTimeout)
 	session.SetWriteTimeout(conf.GettySessionParam.tcpWriteTimeout)
@@ -134,6 +133,10 @@ func initClient() {
 			gxsync.WithTaskPoolTaskQueueNumber(conf.TaskQueueNumber),
 		)
 		clientOpts = append(clientOpts, getty.WithClientTaskPool(taskPool))
+	}
+
+	if conf.ConnectionNum != 0 {
+		clientOpts = append(clientOpts, getty.WithConnectionNumber(conf.ConnectionNum))
 	}
 
 	client.gettyClient = getty.NewTCPClient(clientOpts...)
