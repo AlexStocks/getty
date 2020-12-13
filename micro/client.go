@@ -126,7 +126,7 @@ func NewClient(conf *rpc.ClientConfig, regConf *ConsumerRegistryConfig, opts ...
 	serviceAttrFilter := gxregistry.ServiceAttr{
 		Role: gxregistry.SRT_Provider,
 	}
-	gxctx := gxcontext.NewValuesContext(nil)
+	gxctx := gxcontext.NewValuesContext(context.Background())
 	gxctx.Set(gxpool.GxfilterServiceAttrKey, serviceAttrFilter)
 
 	if filter, err = gxpool.NewFilter(

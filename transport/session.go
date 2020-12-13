@@ -19,6 +19,7 @@ package getty
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -124,7 +125,7 @@ func newSession(endPoint EndPoint, conn Connection) *session {
 		once:  &sync.Once{},
 		done:  make(chan struct{}),
 		wait:  pendingDuration,
-		attrs: gxcontext.NewValuesContext(nil),
+		attrs: gxcontext.NewValuesContext(context.Background()),
 		rDone: make(chan struct{}),
 	}
 
@@ -166,7 +167,7 @@ func (s *session) Reset() {
 		done:   make(chan struct{}),
 		period: period,
 		wait:   pendingDuration,
-		attrs:  gxcontext.NewValuesContext(nil),
+		attrs:  gxcontext.NewValuesContext(context.Background()),
 		rDone:  make(chan struct{}),
 	}
 }

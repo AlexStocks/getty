@@ -163,7 +163,7 @@ func buildServer(t *testing.T) *Server {
 
 func testProtobuf(t *testing.T, client *Client) {
 	ts := rpcservice.TestService{}
-	testReq := rpcservice.TestReq{"aaa", "bbb", "ccc"}
+	testReq := rpcservice.TestReq{A: "aaa", B: "bbb", C: "ccc"}
 	testRsp := rpcservice.TestRsp{}
 	addr := net.JoinHostPort(ServerHost, ServerPort)
 
@@ -180,7 +180,7 @@ func testProtobuf(t *testing.T, client *Client) {
 		WithCallResponseTimeout(500e6))
 	assert.Nil(t, err)
 
-	addReq := rpcservice.AddReq{1, 10}
+	addReq := rpcservice.AddReq{A: 1, B: 10}
 	addRsp := rpcservice.AddRsp{}
 	err = client.Call(CodecProtobuf,
 		addr, ts.Service(), "Add", &addReq, &addRsp,
@@ -188,7 +188,7 @@ func testProtobuf(t *testing.T, client *Client) {
 		WithCallResponseTimeout(500e6))
 	assert.Nil(t, err)
 
-	errReq := rpcservice.ErrReq{1}
+	errReq := rpcservice.ErrReq{A: 1}
 	errRsp := rpcservice.ErrRsp{}
 	err = client.Call(CodecProtobuf,
 		addr, ts.Service(), "Err", &errReq, &errRsp,
@@ -199,7 +199,7 @@ func testProtobuf(t *testing.T, client *Client) {
 
 func testAsyncProtobuf(t *testing.T, client *Client) {
 	ts := rpcservice.TestService{}
-	testReq := rpcservice.TestReq{"aaa", "bbb", "ccc"}
+	testReq := rpcservice.TestReq{A: "aaa", B: "bbb", C: "ccc"}
 	testRsp := rpcservice.TestRsp{}
 	addr := net.JoinHostPort(ServerHost, ServerPort)
 
@@ -210,7 +210,7 @@ func testAsyncProtobuf(t *testing.T, client *Client) {
 		WithCallMeta("hello", "Service::Test::Protobuf"))
 	assert.Nil(t, err)
 
-	addReq := rpcservice.AddReq{1, 10}
+	addReq := rpcservice.AddReq{A: 1, B: 10}
 	addRsp := rpcservice.AddRsp{}
 	err = client.AsyncCall(CodecProtobuf, addr,
 		ts.Service(), "Add", &addReq, Callback, &addRsp,
@@ -219,7 +219,7 @@ func testAsyncProtobuf(t *testing.T, client *Client) {
 		WithCallMeta("hello", "Service::Add::Protobuf"))
 	assert.Nil(t, err)
 
-	errReq := rpcservice.ErrReq{1}
+	errReq := rpcservice.ErrReq{A: 1}
 	errRsp := rpcservice.ErrRsp{}
 	err = client.AsyncCall(CodecProtobuf,
 		addr, ts.Service(), "Err", &errReq, Callback, &errRsp,

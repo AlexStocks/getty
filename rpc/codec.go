@@ -41,11 +41,11 @@ import (
 type gettyCommand int16
 
 const (
-	gettyDefaultCmd     gettyCommand = 0x00
-	gettyCmdHbRequest                = 0x01
-	gettyCmdHbResponse               = 0x02
-	gettyCmdRPCRequest               = 0x03
-	gettyCmdRPCResponse              = 0x04
+	gettyDefaultCmd     = gettyCommand(0x00)
+	gettyCmdHbRequest   = gettyCommand(0x01)
+	gettyCmdHbResponse  = gettyCommand(0x02)
+	gettyCmdRPCRequest  = gettyCommand(0x03)
+	gettyCmdRPCResponse = gettyCommand(0x04)
 )
 
 var gettyCommandStrings = [...]string{
@@ -67,8 +67,8 @@ func (c gettyCommand) String() string {
 type ErrorCode int16
 
 const (
-	GettyOK   ErrorCode = 0x00
-	GettyFail           = 0x01
+	GettyOK   = ErrorCode(0x00)
+	GettyFail = ErrorCode(0x01)
 )
 
 ////////////////////////////////////////////
@@ -78,9 +78,9 @@ const (
 type CodecType int16
 
 const (
-	CodecUnknown  CodecType = 0x00
-	CodecJson               = 0x01
-	CodecProtobuf           = 0x02
+	CodecUnknown  = CodecType(0x00)
+	CodecJson     = CodecType(0x01)
+	CodecProtobuf = CodecType(0x02)
 )
 
 var (

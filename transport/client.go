@@ -136,11 +136,11 @@ func NewWSSClient(opts ...ClientOption) Client {
 	return c
 }
 
-func (c client) ID() EndPointID {
+func (c *client) ID() EndPointID {
 	return c.endPointID
 }
 
-func (c client) EndPointType() EndPointType {
+func (c *client) EndPointType() EndPointType {
 	return c.endPointType
 }
 
@@ -155,7 +155,7 @@ func (c *client) dialTCP() Session {
 			return nil
 		}
 		if c.sslEnabled {
-			if sslConfig, err := c.tlsConfigBuilder.BuildTlsConfig(); err == nil && sslConfig != nil {
+			if sslConfig, e := c.tlsConfigBuilder.BuildTlsConfig(); e == nil && sslConfig != nil {
 				d := &net.Dialer{Timeout: connectTimeout}
 				conn, err = tls.DialWithDialer(d, "tcp", c.addr, sslConfig)
 			}

@@ -35,8 +35,8 @@ var (
 )
 
 type ServiceConfig struct {
-	LocalHost string `default:"127.0.0.1" yaml:"local_host" json:"local_host, omitempty"`
-	LocalPort int    `default:"10001" yaml:"local_port" json:"local_port, omitempty"`
+	LocalHost string `default:"127.0.0.1" yaml:"local_host" json:"local_host,omitempty"`
+	LocalPort int    `default:"10001" yaml:"local_port" json:"local_port,omitempty"`
 	Group     string `default:"idc-bj" yaml:"group" json:"group,omitempty"`
 	NodeID    string `default:"node0" yaml:"node_id" json:"node_id,omitempty"`
 	Protocol  string `default:"json" yaml:"protocol" json:"protocol,omitempty"`
