@@ -36,11 +36,9 @@ var (
 	ip          = flag.String("ip", "127.0.0.1", "server IP")
 	connections = flag.Int("conn", 1, "number of tcp connections")
 
-	taskPoolMode        = flag.Bool("taskPool", false, "task pool mode")
-	taskPoolQueueLength = flag.Int("task_queue_length", 100, "task queue length")
-	taskPoolQueueNumber = flag.Int("task_queue_number", 4, "task queue number")
-	taskPoolSize        = flag.Int("task_pool_size", 2000, "task poll size")
-	pprofPort           = flag.Int("pprof_port", 65431, "pprof http port")
+	taskPoolMode = flag.Bool("taskPool", false, "task pool mode")
+	taskPoolSize = flag.Int("task_pool_size", 2000, "task poll size")
+	pprofPort    = flag.Int("pprof_port", 65431, "pprof http port")
 )
 
 var (
@@ -55,16 +53,13 @@ func main() {
 	util.Profiling(*pprofPort)
 
 	if *taskPoolMode {
-		taskPool = gxsync.NewTaskPool(
-			gxsync.WithTaskPoolTaskQueueLength(*taskPoolQueueLength),
-			gxsync.WithTaskPoolTaskQueueNumber(*taskPoolQueueNumber),
-			gxsync.WithTaskPoolTaskPoolSize(*taskPoolSize),
-		)
+		taskPool = gxsync.NewTaskPoolSimple(*taskPoolSize)
 	}
 
 	client := getty.NewTCPClient(
 		getty.WithServerAddress(*ip+":8090"),
 		getty.WithConnectionNumber(*connections),
+		getty.WithClientTaskPool(taskPool),
 	)
 
 	client.RunEventLoop(NewHelloClientSession)

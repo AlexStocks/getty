@@ -84,15 +84,13 @@ func (p *Package) Unmarshal(buf *bytes.Buffer) (int, error) { return 0, nil }
 func newSessionCallback(session Session, handler *MessageHandler) error {
 	var pkgHandler PackageHandler
 	session.SetName("hello-client-session")
-	session.SetMaxMsgLen(1024)
+	session.SetMaxMsgLen(128 * 1024) // max message package length 128k
 	session.SetPkgHandler(&pkgHandler)
 	session.SetEventListener(handler)
-	session.SetWQLen(32)
 	session.SetReadTimeout(3e9)
 	session.SetWriteTimeout(3e9)
 	session.SetCronPeriod((int)(30e9 / 1e6))
 	session.SetWaitTime(3e9)
-	session.SetTaskPool(nil)
 
 	return nil
 }
@@ -295,8 +293,10 @@ func TestNewWSClient(t *testing.T) {
 	assert.Equal(t, beforeWriteBytes+5, atomic.LoadUint32(&conn.writeBytes))
 	beforeWritePkgNum := atomic.LoadUint32(&conn.writePkgNum)
 	err = ss.WriteBytes([]byte("hello"))
+	assert.Nil(t, err)
 	assert.Equal(t, beforeWritePkgNum+1, atomic.LoadUint32(&conn.writePkgNum))
 	err = ss.WriteBytesArray([]byte("hello"), []byte("hello"))
+	assert.Nil(t, err)
 	assert.Equal(t, beforeWritePkgNum+3, atomic.LoadUint32(&conn.writePkgNum))
 	err = conn.writePing()
 	assert.Nil(t, err)
