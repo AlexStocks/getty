@@ -31,7 +31,6 @@ import (
 import (
 	gxbytes "github.com/dubbogo/gost/bytes"
 	gxcontext "github.com/dubbogo/gost/context"
-	gxsync "github.com/dubbogo/gost/sync"
 	gxtime "github.com/dubbogo/gost/time"
 
 	"github.com/gorilla/websocket"
@@ -301,14 +300,6 @@ func (s *session) SetWaitTime(waitTime time.Duration) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	s.wait = waitTime
-}
-
-// Deprecated: set task pool
-func (s *session) SetTaskPool(p *gxsync.TaskPool) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	s.tPool = p
 }
 
 // set attribute of key @session:key
