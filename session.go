@@ -394,22 +394,22 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 }
 
 // for codecs
-func (s *session) WriteBytes(pkg []byte) error {
+func (s *session) WriteBytes(pkg []byte) (int, error) {
 	if s.IsClosed() {
-		return ErrSessionClosed
+		return 0, ErrSessionClosed
 	}
 
-	// s.conn.SetWriteTimeout(time.Now().Add(s.wTimeout))
-	if _, err := s.Connection.send(pkg); err != nil {
-		return perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
+	lg, err := s.Connection.send(pkg)
+	if err != nil {
+		return 0, perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
 	}
-	return nil
+	return lg, nil
 }
 
 // Write multiple packages at once. so we invoke write sys.call just one time.
-func (s *session) WriteBytesArray(pkgs ...[]byte) error {
+func (s *session) WriteBytesArray(pkgs ...[]byte) (int, error) {
 	if s.IsClosed() {
-		return ErrSessionClosed
+		return 0, ErrSessionClosed
 	}
 	if len(pkgs) == 1 {
 		return s.WriteBytes(pkgs[0])
@@ -417,15 +417,17 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 
 	// reduce syscall and memcopy for multiple packages
 	if _, ok := s.Connection.(*gettyTCPConn); ok {
-		if _, err := s.Connection.send(pkgs); err != nil {
-			return perrors.Wrapf(err, "s.Connection.Write(pkgs num:%d)", len(pkgs))
+		lg, err := s.Connection.send(pkgs)
+		if err != nil {
+			return 0, perrors.Wrapf(err, "s.Connection.Write(pkgs num:%d)", len(pkgs))
 		}
-		return nil
+		return lg, nil
 	}
 
 	// get len
 	var (
 		l      int
+		wlg    int
 		err    error
 		length int
 		arrp   *[]byte
@@ -437,7 +439,6 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 	}
 
 	// merge the pkgs
-	//arr = make([]byte, length)
 	arrp = gxbytes.AcquireBytes(length)
 	defer gxbytes.ReleaseBytes(arrp)
 	arr = *arrp
@@ -448,8 +449,9 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 		l += len(pkgs[i])
 	}
 
-	if err = s.WriteBytes(arr); err != nil {
-		return perrors.WithStack(err)
+	wlg, err = s.WriteBytes(arr)
+	if err != nil {
+		return 0, perrors.WithStack(err)
 	}
 
 	num := len(pkgs) - 1
@@ -457,7 +459,7 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 		s.incWritePkgNum()
 	}
 
-	return nil
+	return wlg, nil
 }
 
 // func (s *session) RunEventLoop() {
