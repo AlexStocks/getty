@@ -347,12 +347,12 @@ func (s *session) sessionToken() string {
 		s.name, s.EndPoint().EndPointType(), s.ID(), s.LocalAddr(), s.RemoteAddr())
 }
 
-func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
+func (s *session) WritePkg(pkg interface{}, timeout time.Duration) (int, error) {
 	if pkg == nil {
-		return fmt.Errorf("@pkg is nil")
+		return 0, fmt.Errorf("@pkg is nil")
 	}
 	if s.IsClosed() {
-		return ErrSessionClosed
+		return 0, ErrSessionClosed
 	}
 
 	defer func() {
@@ -367,7 +367,7 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 	pkgBytes, err := s.writer.Write(s, pkg)
 	if err != nil {
 		log.Warnf("%s, [session.WritePkg] session.writer.Write(@pkg:%#v) = error:%+v", s.Stat(), pkg, err)
-		return perrors.WithStack(err)
+		return 0, perrors.WithStack(err)
 	}
 	var udpCtxPtr *UDPContext
 	if udpCtx, ok := pkg.(UDPContext); ok {
@@ -384,13 +384,13 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 	if 0 < timeout {
 		s.Connection.SetWriteTimeout(timeout)
 	}
-	_, err = s.Connection.send(pkg)
+	var len int
+	len, err = s.Connection.send(pkg)
 	if err != nil {
 		log.Warnf("%s, [session.WritePkg] @s.Connection.Write(pkg:%#v) = err:%+v", s.Stat(), pkg, err)
-		return perrors.WithStack(err)
+		return len, perrors.WithStack(err)
 	}
-
-	return nil
+	return len, nil
 }
 
 // for codecs

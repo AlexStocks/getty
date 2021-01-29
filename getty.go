@@ -171,7 +171,7 @@ type Session interface {
 
 	// the Writer will invoke this function. Pls attention that if timeout is less than 0, WritePkg will send @pkg asap.
 	// for udp session, the first parameter should be UDPContext.
-	WritePkg(pkg interface{}, timeout time.Duration) error
+	WritePkg(pkg interface{}, timeout time.Duration) (int, error)
 	WriteBytes([]byte) (int, error)
 	WriteBytesArray(...[]byte) (int, error)
 	Close()
