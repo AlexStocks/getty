@@ -172,7 +172,7 @@ func TestUDPClient(t *testing.T) {
 	var (
 		err      error
 		conn     *net.UDPConn
-		leng     int
+		sendLen  int
 		totalLen int
 	)
 	func() {
@@ -207,13 +207,13 @@ func TestUDPClient(t *testing.T) {
 
 	assert.Equal(t, 1, msgHandler.SessionNumber())
 	ss := msgHandler.array[0]
-	totalLen, leng, err = ss.WritePkg(nil, 0)
+	totalLen, sendLen, err = ss.WritePkg(nil, 0)
 	assert.NotNil(t, err)
-	assert.True(t, leng == 0)
+	assert.True(t, sendLen == 0)
 	assert.True(t, totalLen == 0)
-	totalLen, leng, err = ss.WritePkg([]byte("hello"), 0)
+	totalLen, sendLen, err = ss.WritePkg([]byte("hello"), 0)
 	assert.NotNil(t, perrors.Cause(err))
-	assert.True(t, leng == 0)
+	assert.True(t, sendLen == 0)
 	assert.True(t, totalLen == 0)
 	l, err := ss.WriteBytes([]byte("hello"))
 	assert.Zero(t, l)
@@ -246,10 +246,10 @@ func TestUDPClient(t *testing.T) {
 	assert.Nil(t, err)
 
 	beforeWritePkgNum := atomic.LoadUint32(&udpConn.writePkgNum)
-	totalLen, leng, err = ss.WritePkg(udpCtx, 0)
+	totalLen, sendLen, err = ss.WritePkg(udpCtx, 0)
 	assert.Equal(t, beforeWritePkgNum+1, atomic.LoadUint32(&udpConn.writePkgNum))
 	assert.Nil(t, err)
-	assert.True(t, leng == 0)
+	assert.True(t, sendLen == 0)
 	assert.True(t, totalLen == 0)
 
 	clt.Close()
