@@ -31,7 +31,7 @@ func ClientRequest() {
 		go func() {
 			echoTimes := 10
 			for i := 0; i < echoTimes; i++ {
-				err := ss.WritePkg("hello", WritePkgTimeout)
+				_, _, err := ss.WritePkg("hello", WritePkgTimeout)
 				if err != nil {
 					log.Infof("session.WritePkg(session{%s}, error{%v}", ss.Stat(), err)
 					ss.Close()
