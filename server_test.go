@@ -76,6 +76,7 @@ func testTCPServer(t *testing.T, address string) {
 	server.Close()
 	assert.True(t, server.IsClosed())
 }
+
 func testTCPTlsServer(t *testing.T, address string) {
 	var (
 		server           *server
