@@ -19,8 +19,9 @@ package main
 
 import (
 	"flag"
-	tls "github.com/apache/dubbo-getty/demo/hello/tls"
 	"path/filepath"
+
+	tls "github.com/apache/dubbo-getty/demo/hello/tls"
 )
 
 import (
@@ -39,9 +40,7 @@ var (
 	Sessions     []getty.Session
 )
 
-var (
-	taskPool gxsync.GenericTaskPool
-)
+var taskPool gxsync.GenericTaskPool
 
 func main() {
 	flag.Parse()
@@ -62,7 +61,8 @@ func main() {
 	if *taskPoolMode {
 		taskPool = gxsync.NewTaskPoolSimple(*taskPoolSize)
 	}
-	options := []getty.ServerOption{getty.WithLocalAddress(":8090"),
+	options := []getty.ServerOption{
+		getty.WithLocalAddress(":8090"),
 		getty.WithServerSslEnabled(true),
 		getty.WithServerTlsConfigBuilder(c),
 		getty.WithServerTaskPool(taskPool),

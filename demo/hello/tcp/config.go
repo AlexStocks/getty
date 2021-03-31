@@ -38,7 +38,7 @@ var (
 )
 
 func InitialSession(session getty.Session) (err error) {
-	//session.SetCompressType(getty.CompressZip)
+	// session.SetCompressType(getty.CompressZip)
 
 	tcpConn, ok := session.Conn().(*net.TCPConn)
 	if !ok {

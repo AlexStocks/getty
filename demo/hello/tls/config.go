@@ -38,7 +38,7 @@ var (
 
 // InitialSession init session
 func InitialSession(session getty.Session) (err error) {
-	//session.SetCompressType(getty.CompressZip)
+	// session.SetCompressType(getty.CompressZip)
 	_, ok := session.Conn().(*tls.Conn)
 	if ok {
 		session.SetName("hello")

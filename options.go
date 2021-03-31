@@ -27,7 +27,7 @@ type ServerOption func(*ServerOptions)
 
 type ServerOptions struct {
 	addr string
-	//tls
+	// tls
 	sslEnabled       bool
 	tlsConfigBuilder TlsConfigBuilder
 	// websocket
@@ -106,7 +106,7 @@ type ClientOptions struct {
 	number            int
 	reconnectInterval int // reConnect Interval
 
-	//tls
+	// tls
 	sslEnabled       bool
 	tlsConfigBuilder TlsConfigBuilder
 

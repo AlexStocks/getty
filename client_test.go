@@ -120,11 +120,9 @@ func TestTCPClient(t *testing.T) {
 	)
 	assert.NotNil(t, clt)
 	assert.True(t, clt.ID() > 0)
-	//assert.Equal(t, clt.endPointType, TCP_CLIENT)
+	// assert.Equal(t, clt.endPointType, TCP_CLIENT)
 
-	var (
-		msgHandler MessageHandler
-	)
+	var msgHandler MessageHandler
 	cb := func(session Session) error {
 		return newSessionCallback(session, &msgHandler)
 	}
@@ -193,11 +191,9 @@ func TestUDPClient(t *testing.T) {
 	)
 	assert.NotNil(t, clt)
 	assert.True(t, clt.ID() > 0)
-	//assert.Equal(t, clt.endPointType, UDP_CLIENT)
+	// assert.Equal(t, clt.endPointType, UDP_CLIENT)
 
-	var (
-		msgHandler MessageHandler
-	)
+	var msgHandler MessageHandler
 	cb := func(session Session) error {
 		return newSessionCallback(session, &msgHandler)
 	}
@@ -256,7 +252,7 @@ func TestUDPClient(t *testing.T) {
 	assert.True(t, clt.IsClosed())
 	msgHandler.array[0].Reset()
 	assert.Nil(t, msgHandler.array[0].Conn())
-	//ss.WritePkg([]byte("hello"), 0)
+	// ss.WritePkg([]byte("hello"), 0)
 }
 
 func TestNewWSClient(t *testing.T) {
@@ -283,9 +279,7 @@ func TestNewWSClient(t *testing.T) {
 		WithConnectionNumber(1),
 	)
 
-	var (
-		msgHandler MessageHandler
-	)
+	var msgHandler MessageHandler
 	cb := func(session Session) error {
 		return newSessionCallback(session, &msgHandler)
 	}
@@ -437,9 +431,7 @@ func TestNewWSSClient(t *testing.T) {
 		WithRootCertificateFile(WssClientCRTFile),
 	)
 
-	var (
-		msgHandler MessageHandler
-	)
+	var msgHandler MessageHandler
 	cb := func(session Session) error {
 		return newSessionCallback(session, &msgHandler)
 	}
@@ -451,7 +443,7 @@ func TestNewWSSClient(t *testing.T) {
 	client.Close()
 	assert.True(t, client.IsClosed())
 	assert.False(t, server.IsClosed())
-	//time.Sleep(1000e9)
-	//server.Close()
-	//assert.True(t, server.IsClosed())
+	// time.Sleep(1000e9)
+	// server.Close()
+	// assert.True(t, server.IsClosed())
 }
