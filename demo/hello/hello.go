@@ -21,9 +21,7 @@ import (
 	"github.com/apache/dubbo-getty"
 )
 
-var (
-	Sessions []getty.Session
-)
+var Sessions []getty.Session
 
 func ClientRequest() {
 	for _, session := range Sessions {
@@ -40,5 +38,4 @@ func ClientRequest() {
 			log.Infof("after loop %d times", echoTimes)
 		}()
 	}
-
 }

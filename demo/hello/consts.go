@@ -26,6 +26,4 @@ const (
 	WritePkgTimeout = 1e8
 )
 
-var (
-	log = getty.GetLogger()
-)
+var log = getty.GetLogger()

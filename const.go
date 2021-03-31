@@ -21,8 +21,10 @@ import (
 	"strconv"
 )
 
-type EndPointID = int32
-type EndPointType int32
+type (
+	EndPointID   = int32
+	EndPointType int32
+)
 
 const (
 	UDP_ENDPOINT EndPointType = 0

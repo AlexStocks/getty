@@ -34,19 +34,13 @@ import (
 	perrors "github.com/pkg/errors"
 )
 
-var (
-	launchTime = time.Now()
-
-	// ErrInvalidConnection = perrors.New("connection has been closed.")
-)
+var launchTime = time.Now() // ErrInvalidConnection = perrors.New("connection has been closed.")
 
 /////////////////////////////////////////
 // getty connection
 /////////////////////////////////////////
 
-var (
-	connID uint32
-)
+var connID uint32
 
 type gettyConn struct {
 	id            uint32
@@ -260,7 +254,7 @@ func (t *gettyTCPConn) recv(p []byte) (int, error) {
 	// log.Debugf("now:%s, length:%d, err:%v", currentTime, length, err)
 	atomic.AddUint32(&t.readBytes, uint32(length))
 	return length, perrors.WithStack(err)
-	//return length, err
+	// return length, err
 }
 
 // tcp connection write
@@ -330,7 +324,6 @@ func (t *gettyTCPConn) close(waitSec int) {
 			_ = conn.Close()
 		} else {
 			_ = t.conn.(*tls.Conn).Close()
-
 		}
 		t.conn = nil
 	}
@@ -422,7 +415,7 @@ func (u *gettyUDPConn) recv(p []byte) (int, *net.UDPAddr, error) {
 		atomic.AddUint32(&u.readBytes, uint32(length))
 	}
 
-	//return length, addr, err
+	// return length, addr, err
 	return length, addr, perrors.WithStack(err)
 }
 
@@ -568,7 +561,7 @@ func (w *gettyWSConn) recv() ([]byte, error) {
 	}
 
 	return b, perrors.WithStack(e)
-	//return b, e
+	// return b, e
 }
 
 func (w *gettyWSConn) updateWriteDeadline() error {

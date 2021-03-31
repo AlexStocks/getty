@@ -42,9 +42,7 @@ var (
 	pprofPort    = flag.Int("pprof_port", 65431, "pprof http port")
 )
 
-var (
-	taskPool gxsync.GenericTaskPool
-)
+var taskPool gxsync.GenericTaskPool
 
 func main() {
 	flag.Parse()

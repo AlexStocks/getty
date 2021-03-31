@@ -54,9 +54,7 @@ var (
 // getty tcp client
 /////////////////////////////////////////
 
-var (
-	clientID = EndPointID(0)
-)
+var clientID = EndPointID(0)
 
 type client struct {
 	ClientOptions
@@ -225,7 +223,7 @@ func (c *client) dialUDP() Session {
 			<-wheel.After(connectInterval)
 			continue
 		}
-		//if err == nil {
+		// if err == nil {
 		return newUDPSession(conn, c)
 		//}
 	}
