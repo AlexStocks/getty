@@ -26,9 +26,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-)
 
-import (
 	"github.com/golang/snappy"
 	"github.com/gorilla/websocket"
 	perrors "github.com/pkg/errors"
@@ -36,9 +34,9 @@ import (
 
 var launchTime = time.Now() // ErrInvalidConnection = perrors.New("connection has been closed.")
 
-/////////////////////////////////////////
+// ///////////////////////////////////////
 // getty connection
-/////////////////////////////////////////
+// ///////////////////////////////////////
 
 var connID uint32
 
@@ -54,10 +52,10 @@ type gettyConn struct {
 	active        int64         // last active, in milliseconds
 	rTimeout      time.Duration // network current limiting
 	wTimeout      time.Duration
-	rLastDeadline time.Time // lastest network read time
-	wLastDeadline time.Time // lastest network write time
-	local         string    // local address
-	peer          string    // peer address
+	rLastDeadline int64  // lastest network read time
+	wLastDeadline int64  // lastest network write time
+	local         string // local address
+	peer          string // peer address
 	ss            Session
 }
 
@@ -241,12 +239,12 @@ func (t *gettyTCPConn) recv(p []byte) (int, error) {
 		// of the last read deadline exceeded.
 		// See https://github.com/golang/go/issues/15133 for details.
 		currentTime = time.Now()
-		if currentTime.Sub(t.rLastDeadline) > (t.rTimeout >> 2) {
+		if currentTime.Unix()-t.rLastDeadline > int64(t.rTimeout>>2) {
 			if err = t.conn.SetReadDeadline(currentTime.Add(t.rTimeout)); err != nil {
 				// just a timeout error
 				return 0, perrors.WithStack(err)
 			}
-			t.rLastDeadline = currentTime
+			t.rLastDeadline = currentTime.Unix()
 		}
 	}
 
@@ -273,11 +271,11 @@ func (t *gettyTCPConn) send(pkg interface{}) (int, error) {
 		// of the last write deadline exceeded.
 		// See https://github.com/golang/go/issues/15133 for details.
 		currentTime = time.Now()
-		if currentTime.Sub(t.wLastDeadline) > (t.wTimeout >> 2) {
+		if currentTime.Unix() - t.wLastDeadline > int64(t.wTimeout >> 2) {
 			if err = t.conn.SetWriteDeadline(currentTime.Add(t.wTimeout)); err != nil {
 				return 0, perrors.WithStack(err)
 			}
-			t.wLastDeadline = currentTime
+			t.wLastDeadline = currentTime.Unix()
 		}
 	}
 
@@ -329,9 +327,9 @@ func (t *gettyTCPConn) close(waitSec int) {
 	}
 }
 
-/////////////////////////////////////////
+// ///////////////////////////////////////
 // getty udp connection
-/////////////////////////////////////////
+// ///////////////////////////////////////
 
 type UDPContext struct {
 	Pkg      interface{}
@@ -401,11 +399,11 @@ func (u *gettyUDPConn) recv(p []byte) (int, *net.UDPAddr, error) {
 		// of the last read deadline exceeded.
 		// See https://github.com/golang/go/issues/15133 for details.
 		currentTime = time.Now()
-		if currentTime.Sub(u.rLastDeadline) > (u.rTimeout >> 2) {
+		if currentTime.Unix() - u.rLastDeadline > int64(u.rTimeout >> 2) {
 			if err = u.conn.SetReadDeadline(currentTime.Add(u.rTimeout)); err != nil {
 				return 0, nil, perrors.WithStack(err)
 			}
-			u.rLastDeadline = currentTime
+			u.rLastDeadline = currentTime.Unix()
 		}
 	}
 
@@ -449,11 +447,11 @@ func (u *gettyUDPConn) send(udpCtx interface{}) (int, error) {
 		// of the last write deadline exceeded.
 		// See https://github.com/golang/go/issues/15133 for details.
 		currentTime = time.Now()
-		if currentTime.Sub(u.wLastDeadline) > (u.wTimeout >> 2) {
+		if currentTime.Unix() - u.wLastDeadline > int64(u.wTimeout >> 2) {
 			if err = u.conn.SetWriteDeadline(currentTime.Add(u.wTimeout)); err != nil {
 				return 0, perrors.WithStack(err)
 			}
-			u.wLastDeadline = currentTime
+			u.wLastDeadline = currentTime.Unix()
 		}
 	}
 
@@ -474,9 +472,9 @@ func (u *gettyUDPConn) close(_ int) {
 	}
 }
 
-/////////////////////////////////////////
+// ///////////////////////////////////////
 // getty websocket connection
-/////////////////////////////////////////
+// ///////////////////////////////////////
 
 type gettyWSConn struct {
 	gettyConn
@@ -575,11 +573,11 @@ func (w *gettyWSConn) updateWriteDeadline() error {
 		// of the last write deadline exceeded.
 		// See https://github.com/golang/go/issues/15133 for details.
 		currentTime = time.Now()
-		if currentTime.Sub(w.wLastDeadline) > (w.wTimeout >> 2) {
+		if currentTime.Unix() - w.wLastDeadline > int64(w.wTimeout >> 2) {
 			if err = w.conn.SetWriteDeadline(currentTime.Add(w.wTimeout)); err != nil {
 				return perrors.WithStack(err)
 			}
-			w.wLastDeadline = currentTime
+			w.wLastDeadline = currentTime.Unix()
 		}
 	}
 
