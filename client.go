@@ -34,6 +34,7 @@ import (
 	"github.com/dubbogo/gost/bytes"
 	"github.com/dubbogo/gost/net"
 	gxsync "github.com/dubbogo/gost/sync"
+	gxtime "github.com/dubbogo/gost/time"
 	"github.com/gorilla/websocket"
 	perrors "github.com/pkg/errors"
 )
@@ -168,7 +169,7 @@ func (c *client) dialTCP() Session {
 		}
 
 		log.Infof("net.DialTimeout(addr:%s, timeout:%v) = error:%+v", c.addr, connectTimeout, perrors.WithStack(err))
-		<-wheel.After(connectInterval)
+		<-gxtime.After(connectInterval)
 	}
 }
 
@@ -200,7 +201,7 @@ func (c *client) dialUDP() Session {
 		}
 		if err != nil {
 			log.Warnf("net.DialTimeout(addr:%s, timeout:%v) = error:%+v", c.addr, perrors.WithStack(err))
-			<-wheel.After(connectInterval)
+			<-gxtime.After(connectInterval)
 			continue
 		}
 
@@ -209,7 +210,7 @@ func (c *client) dialUDP() Session {
 		if length, err = conn.Write(connectPingPackage[:]); err != nil {
 			conn.Close()
 			log.Warnf("conn.Write(%s) = {length:%d, err:%+v}", string(connectPingPackage), length, perrors.WithStack(err))
-			<-wheel.After(connectInterval)
+			<-gxtime.After(connectInterval)
 			continue
 		}
 		conn.SetReadDeadline(time.Now().Add(1e9))
@@ -220,7 +221,7 @@ func (c *client) dialUDP() Session {
 		if err != nil {
 			log.Infof("conn{%#v}.Read() = {length:%d, err:%+v}", conn, length, perrors.WithStack(err))
 			conn.Close()
-			<-wheel.After(connectInterval)
+			<-gxtime.After(connectInterval)
 			continue
 		}
 		// if err == nil {
@@ -258,7 +259,7 @@ func (c *client) dialWS() Session {
 		}
 
 		log.Infof("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, perrors.WithStack(err))
-		<-wheel.After(connectInterval)
+		<-gxtime.After(connectInterval)
 	}
 }
 
@@ -336,7 +337,7 @@ func (c *client) dialWSS() Session {
 		}
 
 		log.Infof("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, perrors.WithStack(err))
-		<-wheel.After(connectInterval)
+		<-gxtime.After(connectInterval)
 	}
 }
 
@@ -443,7 +444,7 @@ func (c *client) reConnect() {
 		if maxTimes < times {
 			times = maxTimes
 		}
-		<-wheel.After(time.Duration(int64(times) * int64(interval)))
+		<-gxtime.After(time.Duration(int64(times) * int64(interval)))
 	}
 }
 

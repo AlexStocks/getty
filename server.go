@@ -27,21 +27,23 @@ import (
 	"net/http"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
 import (
 	gxnet "github.com/dubbogo/gost/net"
 	gxsync "github.com/dubbogo/gost/sync"
+	gxtime "github.com/dubbogo/gost/time"
 	"github.com/gorilla/websocket"
 	perrors "github.com/pkg/errors"
+	uatomic "go.uber.org/atomic"
 )
 
 var (
 	errSelfConnect        = perrors.New("connect self!")
 	serverFastFailTimeout = time.Second * 1
-	serverID              = EndPointID(0)
+
+	serverID uatomic.Int32
 )
 
 type server struct {
@@ -69,7 +71,7 @@ func (s *server) init(opts ...ServerOption) {
 
 func newServer(t EndPointType, opts ...ServerOption) *server {
 	s := &server{
-		endPointID:   atomic.AddInt32(&serverID, 1),
+		endPointID:   serverID.Add(1),
 		endPointType: t,
 		done:         make(chan struct{}),
 	}
@@ -264,11 +266,11 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 		)
 		for {
 			if s.IsClosed() {
-				log.Warnf("server{%s} stop accepting client connect request.", s.addr)
+				log.Infof("server{%s} stop accepting client connect request.", s.addr)
 				return
 			}
 			if delay != 0 {
-				<-wheel.After(delay)
+				<-gxtime.After(delay)
 			}
 			client, err = s.accept(newSession)
 			if err != nil {
