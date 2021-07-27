@@ -32,7 +32,6 @@ import (
 	gxbytes "github.com/dubbogo/gost/bytes"
 	gxcontext "github.com/dubbogo/gost/context"
 	gxtime "github.com/dubbogo/gost/time"
-
 	"github.com/gorilla/websocket"
 	perrors "github.com/pkg/errors"
 	uatomic "go.uber.org/atomic"

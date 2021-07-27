@@ -28,8 +28,11 @@ import (
 )
 
 import (
-	getty "github.com/apache/dubbo-getty"
 	"github.com/dubbogo/gost/sync"
+)
+
+import (
+	getty "github.com/apache/dubbo-getty"
 )
 
 var (

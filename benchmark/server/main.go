@@ -33,8 +33,11 @@ import (
 )
 
 import (
-	getty "github.com/apache/dubbo-getty"
 	gxsync "github.com/dubbogo/gost/sync"
+)
+
+import (
+	getty "github.com/apache/dubbo-getty"
 )
 
 var (

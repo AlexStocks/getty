@@ -24,9 +24,6 @@ import (
 
 import (
 	"github.com/apache/dubbo-getty"
-)
-
-import (
 	"github.com/apache/dubbo-getty/demo/hello"
 )
 

@@ -17,11 +17,9 @@
 
 package getty
 
-import gxsync "github.com/dubbogo/gost/sync"
-
-/////////////////////////////////////////
-// Server Options
-/////////////////////////////////////////
+import (
+	gxsync "github.com/dubbogo/gost/sync"
+)
 
 type ServerOption func(*ServerOptions)
 
