@@ -25,7 +25,9 @@ import (
 	"net"
 	"sync"
 	"time"
+)
 
+import (
 	"github.com/golang/snappy"
 	"github.com/gorilla/websocket"
 	perrors "github.com/pkg/errors"
