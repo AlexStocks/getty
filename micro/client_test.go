@@ -42,7 +42,6 @@ func buildClientConf() *rpc.ClientConfig {
 			SessionName:      "getty-micro-server",
 			TcpReadTimeout:   "2s",
 			TcpWriteTimeout:  "5s",
-			PkgWQSize:        512,
 			WaitTimeout:      "1s",
 			TcpKeepAlive:     true,
 			KeepAlivePeriod:  "120s",

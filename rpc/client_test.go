@@ -53,7 +53,6 @@ func buildClientConfig() *ClientConfig {
 			TcpWriteTimeout:  "5s",
 			TcpRBufSize:      262144,
 			TcpWBufSize:      524288,
-			PkgWQSize:        10,
 			WaitTimeout:      "1s",
 			MaxMsgLen:        8388608,
 			SessionName:      "getty-rpc-client",

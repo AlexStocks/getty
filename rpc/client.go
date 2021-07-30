@@ -25,6 +25,7 @@ import (
 )
 
 import (
+	gxtime "github.com/dubbogo/gost/time"
 	jerrors "github.com/juju/errors"
 )
 
@@ -209,7 +210,7 @@ func (c *Client) call(ct CallType, typ CodecType, addr, service, method string,
 	}
 
 	select {
-	case <-getty.GetTimeWheel().After(opts.ResponseTimeout):
+	case <-gxtime.After(opts.ResponseTimeout):
 		// do not close connection
 		// err = errClientReadTimeout
 		c.removePendingResponse(rsp.seq)
@@ -267,7 +268,7 @@ func (c *Client) transfer(session getty.Session, typ CodecType, req *GettyRPCReq
 		c.addPendingResponse(rsp)
 	}
 
-	err = session.WritePkg(pkg, opts.RequestTimeout)
+	_, _, err = session.WritePkg(pkg, opts.RequestTimeout)
 	if err != nil {
 		c.removePendingResponse(rsp.seq)
 	} else if rsp != nil { // cond2

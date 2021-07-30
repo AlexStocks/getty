@@ -206,7 +206,8 @@ func (h *RpcServerHandler) callService(session getty.Session, req GettyRPCReques
 		body: replyv.Interface(),
 	}
 
-	return jerrors.Trace(session.WritePkg(resp, 5*time.Second))
+	_, _, err := session.WritePkg(resp, 5*time.Second)
+	return jerrors.Trace(err)
 }
 
 ////////////////////////////////////////////
