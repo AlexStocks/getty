@@ -321,7 +321,6 @@ func (t *gettyTCPConn) close(waitSec int) {
 			_ = conn.Close()
 		} else {
 			_ = t.conn.(*tls.Conn).Close()
-
 		}
 		t.conn = nil
 	}

@@ -134,9 +134,7 @@ type Codec interface {
 
 type JSONCodec struct{}
 
-var (
-	jsonstd = jsoniter.ConfigCompatibleWithStandardLibrary
-)
+var jsonstd = jsoniter.ConfigCompatibleWithStandardLibrary
 
 func (c JSONCodec) Encode(i interface{}) ([]byte, error) {
 	// return json.Marshal(i)
@@ -203,9 +201,7 @@ var (
 	ErrIllegalMagic    = jerrors.New("package magic is not right.")
 )
 
-var (
-	gettyPackageHeaderLen = (int)((uint)(unsafe.Sizeof(GettyPackageHeader{})))
-)
+var gettyPackageHeaderLen = (int)((uint)(unsafe.Sizeof(GettyPackageHeader{})))
 
 type RPCPackage interface {
 	Marshal(CodecType, *bytes.Buffer) (int, error)
@@ -252,8 +248,8 @@ func (p *GettyPackage) Marshal() (*bytes.Buffer, error) {
 	)
 
 	buf = bytes.NewBuffer(make([]byte, gettyPackageHeaderLen, gettyPackageHeaderLen<<2))
-	//buf = gxbytes.GetBytesBuffer()
-	//defer gxbytes.PutBytesBuffer(buf)
+	// buf = gxbytes.GetBytesBuffer()
+	// defer gxbytes.PutBytesBuffer(buf)
 
 	// body
 	if p.B != nil {
@@ -376,9 +372,7 @@ func (req *GettyRPCRequest) Unmarshal(ct CodecType, buf *bytes.Buffer) error {
 		return jerrors.Trace(err)
 	}
 
-	var (
-		headerp, bodyp *[]byte
-	)
+	var headerp, bodyp *[]byte
 	// header := make([]byte, headerLen)
 	headerp = gxbytes.GetBytes(int(headerLen))
 	defer func() {
@@ -398,7 +392,7 @@ func (req *GettyRPCRequest) Unmarshal(ct CodecType, buf *bytes.Buffer) error {
 		return jerrors.Trace(err)
 	}
 
-	//body := make([]byte, bodyLen)
+	// body := make([]byte, bodyLen)
 	bodyp = gxbytes.GetBytes(int(bodyLen))
 	body := *bodyp
 
@@ -500,9 +494,7 @@ func (resp *GettyRPCResponse) Unmarshal(sz CodecType, buf *bytes.Buffer) error {
 		return jerrors.Trace(err)
 	}
 
-	var (
-		headerp, bodyp *[]byte
-	)
+	var headerp, bodyp *[]byte
 	// header := make([]byte, headerLen)
 	headerp = gxbytes.GetBytes(int(headerLen))
 	defer func() {
@@ -522,7 +514,7 @@ func (resp *GettyRPCResponse) Unmarshal(sz CodecType, buf *bytes.Buffer) error {
 		return jerrors.Trace(err)
 	}
 
-	//body := make([]byte, bodyLen)
+	// body := make([]byte, bodyLen)
 	bodyp = gxbytes.GetBytes(int(bodyLen))
 	body := *bodyp
 

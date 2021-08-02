@@ -38,10 +38,10 @@ import (
 )
 
 const (
-	maxReadBufLen    = 4 * 1024
-	netIOTimeout     = 1e9      // 1s
-	period           = 60 * 1e9 // 1 minute
-	pendingDuration  = 3e9
+	maxReadBufLen   = 4 * 1024
+	netIOTimeout    = 1e9      // 1s
+	period          = 60 * 1e9 // 1 minute
+	pendingDuration = 3e9
 	// MaxWheelTimeSpan 900s, 15 minute
 	MaxWheelTimeSpan = 900e9
 

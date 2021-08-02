@@ -18,13 +18,14 @@
 package rpc
 
 import (
-	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"runtime"
 	"strconv"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func randKey(r *rand.Rand) string {

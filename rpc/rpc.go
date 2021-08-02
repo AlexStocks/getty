@@ -28,9 +28,7 @@ import (
 	log "github.com/AlexStocks/log4go"
 )
 
-var (
-	typeOfError = reflect.TypeOf((*error)(nil)).Elem()
-)
+var typeOfError = reflect.TypeOf((*error)(nil)).Elem()
 
 type GettyRPCService interface {
 	Service() string // Service Interface

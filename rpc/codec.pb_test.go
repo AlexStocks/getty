@@ -39,7 +39,6 @@ func TestCallType(t *testing.T) {
 }
 
 func Test(t *testing.T) {
-
 }
 
 func TestGettyRPCRequestHeader(t *testing.T) {

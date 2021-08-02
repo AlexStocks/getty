@@ -22,7 +22,7 @@ import (
 )
 
 type (
-	EndPointID = int32
+	EndPointID   = int32
 	EndPointType int32
 )
 

@@ -184,7 +184,7 @@ func (c *client) dialUDP() Session {
 		buf       []byte
 	)
 
-	//buf = make([]byte, 128)
+	// buf = make([]byte, 128)
 	bufp = gxbytes.GetBytes(128)
 	defer gxbytes.PutBytes(bufp)
 	buf = *bufp
@@ -224,7 +224,7 @@ func (c *client) dialUDP() Session {
 			<-gxtime.After(connectInterval)
 			continue
 		}
-		//if err == nil {
+		// if err == nil {
 		return newUDPSession(conn, c)
 		//}
 	}

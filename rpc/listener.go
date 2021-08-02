@@ -33,9 +33,7 @@ import (
 	"github.com/AlexStocks/getty/transport"
 )
 
-var (
-	errTooManySessions = jerrors.New("too many sessions")
-)
+var errTooManySessions = jerrors.New("too many sessions")
 
 type rpcSession struct {
 	session getty.Session

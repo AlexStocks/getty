@@ -30,9 +30,7 @@ const (
 	ErrIllegalConf = "illegal conf "
 )
 
-var (
-	registryArray = strset.New("zookeeper", "etcd")
-)
+var registryArray = strset.New("zookeeper", "etcd")
 
 type ServiceConfig struct {
 	LocalHost string `default:"127.0.0.1" yaml:"local_host" json:"local_host,omitempty"`

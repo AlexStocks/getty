@@ -123,9 +123,7 @@ func (p *RpcServerPackageHandler) Write(ss getty.Session, pkg interface{}) ([]by
 // RpcClientPackageHandler
 ////////////////////////////////////////////
 
-var (
-	rpcClientPackageHandler = &RpcClientPackageHandler{}
-)
+var rpcClientPackageHandler = &RpcClientPackageHandler{}
 
 type RpcClientPackageHandler struct{}
 
