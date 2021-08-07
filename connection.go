@@ -122,7 +122,7 @@ func (c gettyConn) writeTimeout() time.Duration {
 	return c.wTimeout
 }
 
-// Pls do not set write deadline for websocket connection. AlexStocks 20180310
+// SetWriteTimeout Pls do not set write deadline for websocket connection. AlexStocks 20180310
 // gorilla/websocket/conn.go:NextWriter will always fail when got a timeout error.
 //
 // Pls do not set write deadline when using compression. AlexStocks 20180314.
@@ -201,7 +201,7 @@ func (t *writeFlusher) Write(p []byte) (int, error) {
 	return n, nil
 }
 
-// set compress type(tcp: zip/snappy, websocket:zip)
+// SetCompressType set compress type(tcp: zip/snappy, websocket:zip)
 func (t *gettyTCPConn) SetCompressType(c CompressType) {
 	switch c {
 	case CompressNone, CompressZip, CompressBestSpeed, CompressBestCompression, CompressHuffman:
@@ -505,7 +505,7 @@ func newGettyWSConn(conn *websocket.Conn) *gettyWSConn {
 	return gettyWSConn
 }
 
-// set compress type
+// SetCompressType set compress type
 func (w *gettyWSConn) SetCompressType(c CompressType) {
 	switch c {
 	case CompressNone, CompressZip, CompressBestSpeed, CompressBestCompression, CompressHuffman:

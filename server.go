@@ -87,7 +87,7 @@ func NewTCPServer(opts ...ServerOption) Server {
 }
 
 // NewUDPEndPoint builds a unconnected udp server.
-func NewUDPPEndPoint(opts ...ServerOption) Server {
+func NewUDPEndPoint(opts ...ServerOption) Server {
 	return newServer(UDP_ENDPOINT, opts...)
 }
 
@@ -255,7 +255,7 @@ func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 	return ss, nil
 }
 
-func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
+func (s *server) runTCPEventLoop(newSession NewSessionCallback) {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
@@ -469,7 +469,7 @@ func (s *server) RunEventLoop(newSession NewSessionCallback) {
 
 	switch s.endPointType {
 	case TCP_SERVER:
-		s.runTcpEventLoop(newSession)
+		s.runTCPEventLoop(newSession)
 	case UDP_ENDPOINT:
 		s.runUDPEventLoop(newSession)
 	case WS_SERVER:

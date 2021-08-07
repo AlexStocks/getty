@@ -53,10 +53,6 @@ const (
 	outputFormat          = "session %s, Read Bytes: %d, Write Bytes: %d, Read Pkgs: %d, Write Pkgs: %d"
 )
 
-/////////////////////////////////////////
-// session
-/////////////////////////////////////////
-
 var defaultTimerWheel *gxtime.TimerWheel
 
 func init() {
@@ -156,7 +152,6 @@ func (s *session) Reset() {
 	}
 }
 
-// func (s *session) SetConn(conn net.Conn) { s.gettyConn = newGettyConn(conn) }
 func (s *session) Conn() net.Conn {
 	if tc, ok := s.Connection.(*gettyTCPConn); ok {
 		return tc.conn
@@ -193,7 +188,7 @@ func (s *session) gettyConn() *gettyConn {
 	return nil
 }
 
-// return the connect statistic data
+// Stat get the connect statistic data
 func (s *session) Stat() string {
 	var conn *gettyConn
 	if conn = s.gettyConn(); conn == nil {
@@ -209,7 +204,7 @@ func (s *session) Stat() string {
 	)
 }
 
-// check whether the session has been closed.
+// IsClosed check whether the session has been closed.
 func (s *session) IsClosed() bool {
 	select {
 	case <-s.done:
@@ -220,7 +215,7 @@ func (s *session) IsClosed() bool {
 	}
 }
 
-// set maximum package length of every package in (EventListener)OnMessage(@pkgs)
+// SetMaxMsgLen set maximum package length of every package in (EventListener)OnMessage(@pkgs)
 func (s *session) SetMaxMsgLen(length int) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -228,7 +223,7 @@ func (s *session) SetMaxMsgLen(length int) {
 	s.maxMsgLen = int32(length)
 }
 
-// set session name
+// SetName set session name
 func (s *session) SetName(name string) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -236,7 +231,7 @@ func (s *session) SetName(name string) {
 	s.name = name
 }
 
-// set EventListener
+// SetEventListener set event listener
 func (s *session) SetEventListener(listener EventListener) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -244,7 +239,7 @@ func (s *session) SetEventListener(listener EventListener) {
 	s.listener = listener
 }
 
-// set package handler
+// SetPkgHandler set package handler
 func (s *session) SetPkgHandler(handler ReadWriter) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -253,7 +248,6 @@ func (s *session) SetPkgHandler(handler ReadWriter) {
 	s.writer = handler
 }
 
-// set Reader
 func (s *session) SetReader(reader Reader) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -261,7 +255,6 @@ func (s *session) SetReader(reader Reader) {
 	s.reader = reader
 }
 
-// set Writer
 func (s *session) SetWriter(writer Writer) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -269,7 +262,7 @@ func (s *session) SetWriter(writer Writer) {
 	s.writer = writer
 }
 
-// period is in millisecond. Websocket session will send ping frame automatically every peroid.
+// SetCronPeriod period is in millisecond. Websocket session will send ping frame automatically every peroid.
 func (s *session) SetCronPeriod(period int) {
 	if period < 1 {
 		panic("@period < 1")
@@ -280,7 +273,7 @@ func (s *session) SetCronPeriod(period int) {
 	s.period = time.Duration(period) * time.Millisecond
 }
 
-// set maximum wait time when session got error or got exit signal
+// SetWaitTime set maximum wait time when session got error or got exit signal
 func (s *session) SetWaitTime(waitTime time.Duration) {
 	if waitTime < 1 {
 		panic("@wait < 1")
@@ -291,7 +284,7 @@ func (s *session) SetWaitTime(waitTime time.Duration) {
 	s.wait = waitTime
 }
 
-// set attribute of key @session:key
+// GetAttribute get attribute of key @session:key
 func (s *session) GetAttribute(key interface{}) interface{} {
 	s.lock.RLock()
 	if s.attrs == nil {
@@ -308,7 +301,7 @@ func (s *session) GetAttribute(key interface{}) interface{} {
 	return ret
 }
 
-// get attribute of key @session:key
+// SetAttribute set attribute of key @session:key
 func (s *session) SetAttribute(key interface{}, value interface{}) {
 	s.lock.Lock()
 	if s.attrs != nil {
@@ -317,7 +310,7 @@ func (s *session) SetAttribute(key interface{}, value interface{}) {
 	s.lock.Unlock()
 }
 
-// delete attribute of key @session:key
+// RemoveAttribute remove attribute of key @session:key
 func (s *session) RemoveAttribute(key interface{}) {
 	s.lock.Lock()
 	if s.attrs != nil {
@@ -381,7 +374,7 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) (int, int, er
 	return len(pkgBytes), succssCount, nil
 }
 
-// for codecs
+// WriteBytes for codecs
 func (s *session) WriteBytes(pkg []byte) (int, error) {
 	if s.IsClosed() {
 		return 0, ErrSessionClosed
@@ -394,7 +387,7 @@ func (s *session) WriteBytes(pkg []byte) (int, error) {
 	return lg, nil
 }
 
-// Write multiple packages at once. so we invoke write sys.call just one time.
+// WriteBytesArray Write multiple packages at once. so we invoke write sys.call just one time.
 func (s *session) WriteBytesArray(pkgs ...[]byte) (int, error) {
 	if s.IsClosed() {
 		return 0, ErrSessionClosed

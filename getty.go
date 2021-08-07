@@ -35,7 +35,7 @@ type NewSessionCallback func(Session) error
 
 // Reader is used to unmarshal a complete pkg from buffer
 type Reader interface {
-	// Parse tcp/udp/websocket pkg from buffer and if possible return a complete pkg.
+	// Read Parse tcp/udp/websocket pkg from buffer and if possible return a complete pkg.
 	// When receiving a tcp network streaming segment, there are 4 cases as following:
 	// case 1: a error found in the streaming segment;
 	// case 2: can not unmarshal a pkg header from the streaming segment;
@@ -53,7 +53,7 @@ type Reader interface {
 
 // Writer is used to marshal pkg and write to session
 type Writer interface {
-	// if @Session is udpGettySession, the second parameter is UDPContext.
+	// Write if @Session is udpGettySession, the second parameter is UDPContext.
 	Write(Session, interface{}) ([]byte, error)
 }
 
@@ -65,20 +65,20 @@ type ReadWriter interface {
 
 // EventListener is used to process pkg that received from remote session
 type EventListener interface {
-	// invoked when session opened
+	// OnOpen invoked when session opened
 	// If the return error is not nil, @Session will be closed.
 	OnOpen(Session) error
 
-	// invoked when session closed.
+	// OnClose invoked when session closed.
 	OnClose(Session)
 
-	// invoked when got error.
+	// OnError invoked when got error.
 	OnError(Session, error)
 
-	// invoked periodically, its period can be set by (Session)SetCronPeriod
+	// OnCron invoked periodically, its period can be set by (Session)SetCronPeriod
 	OnCron(Session)
 
-	// invoked when getty received a package. Pls attention that do not handle long time
+	// OnMessage invoked when getty received a package. Pls attention that do not handle long time
 	// logic processing in this func. You'd better set the package's maximum length.
 	// If the message's length is greater than it, u should should return err in
 	// Reader{Read} and getty will close this connection soon.
@@ -92,10 +92,6 @@ type EventListener interface {
 	OnMessage(Session, interface{})
 }
 
-/////////////////////////////////////////
-// compress
-/////////////////////////////////////////
-
 type CompressType int
 
 const (
@@ -107,10 +103,7 @@ const (
 	CompressSnappy                       = 10
 )
 
-/////////////////////////////////////////
-// connection
-/////////////////////////////////////////
-
+// Connection wrap some connection params and operations
 type Connection interface {
 	ID() uint32
 	SetCompressType(CompressType)
@@ -118,9 +111,9 @@ type Connection interface {
 	RemoteAddr() string
 	incReadPkgNum()
 	incWritePkgNum()
-	// update session's active time
+	// UpdateActive update session's active time
 	UpdateActive()
-	// get session's active time
+	// GetActive get session's active time
 	GetActive() time.Time
 	readTimeout() time.Duration
 	// SetReadTimeout sets deadline for the future read calls.
@@ -152,7 +145,7 @@ type Session interface {
 	Conn() net.Conn
 	Stat() string
 	IsClosed() bool
-	// get endpoint type
+	// EndPoint get endpoint type
 	EndPoint() EndPoint
 
 	SetMaxMsgLen(int)
@@ -169,7 +162,7 @@ type Session interface {
 	SetAttribute(interface{}, interface{})
 	RemoveAttribute(interface{})
 
-	// the Writer will invoke this function. Pls attention that if timeout is less than 0, WritePkg will send @pkg asap.
+	// WritePkg the Writer will invoke this function. Pls attention that if timeout is less than 0, WritePkg will send @pkg asap.
 	// for udp session, the first parameter should be UDPContext.
 	// totalBytesLength: @pkg stream bytes length after encoding @pkg.
 	// sendBytesLength: stream bytes length that sent out successfully.
@@ -185,16 +178,17 @@ type Session interface {
 /////////////////////////////////////////
 
 type EndPoint interface {
-	// get EndPoint ID
+	// ID get EndPoint ID
 	ID() EndPointID
-	// get endpoint type
+	// EndPointType get endpoint type
 	EndPointType() EndPointType
-	// run event loop and serves client request.
+	// RunEventLoop run event loop and serves client request.
 	RunEventLoop(newSession NewSessionCallback)
-	// check the endpoint has been closed
+	// IsClosed check the endpoint has been closed
 	IsClosed() bool
-	// close the endpoint and free its resource
+	// Close close the endpoint and free its resource
 	Close()
+	// GetTaskPool get task pool implemented by dubbogo/gost
 	GetTaskPool() gxsync.GenericTaskPool
 }
 
@@ -210,13 +204,13 @@ type Server interface {
 // StreamServer is like tcp/websocket/wss server
 type StreamServer interface {
 	Server
-	// get the network listener
+	// Listener get the network listener
 	Listener() net.Listener
 }
 
 // PacketServer is like udp listen endpoint
 type PacketServer interface {
 	Server
-	// get the network listener
+	// PacketConn get the network listener
 	PacketConn() net.PacketConn
 }
