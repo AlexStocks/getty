@@ -18,7 +18,7 @@
 package getty
 
 import (
-	gxsync "github.com/dubbogo/gost/sync"
+	"github.com/dubbogo/gost/sync"
 )
 
 type ServerOption func(*ServerOptions)

@@ -18,22 +18,10 @@
 package getty
 
 import (
+	"github.com/dubbogo/gost/log"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
-
-// Logger for user who want to customize logger of getty
-type Logger interface {
-	Info(args ...interface{})
-	Warn(args ...interface{})
-	Error(args ...interface{})
-	Debug(args ...interface{})
-
-	Infof(fmt string, args ...interface{})
-	Warnf(fmt string, args ...interface{})
-	Errorf(fmt string, args ...interface{})
-	Debugf(fmt string, args ...interface{})
-}
 
 type LoggerLevel int8
 
@@ -59,7 +47,7 @@ const (
 )
 
 var (
-	log       Logger
+	log       gxlog.Logger
 	zapLogger *zap.Logger
 
 	zapLoggerConfig        = zap.NewDevelopmentConfig()
@@ -98,12 +86,12 @@ func init() {
 }
 
 // SetLogger: customize yourself logger.
-func SetLogger(logger Logger) {
+func SetLogger(logger gxlog.Logger) {
 	log = logger
 }
 
 // GetLogger get getty logger
-func GetLogger() Logger {
+func GetLogger() gxlog.Logger {
 	return log
 }
 
