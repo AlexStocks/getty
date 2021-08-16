@@ -32,7 +32,7 @@ import (
 import (
 	gxbytes "github.com/dubbogo/gost/bytes"
 	"github.com/gorilla/websocket"
-	jerrors "github.com/juju/errors"
+	perrors "github.com/pkg/errors"
 
 	log "github.com/AlexStocks/log4go"
 	"github.com/dubbogo/gost/context"
@@ -384,7 +384,7 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 		pkgBytes, err := s.writer.Write(s, pkg)
 		if err != nil {
 			log.Warn("%s, [session.WritePkg] session.writer.Write(@pkg:%#v) = error:%+v", s.Stat(), pkg, err)
-			return jerrors.Trace(err)
+			return perrors.WithStack(err)
 		}
 
 		var udpCtxPtr *UDPContext
@@ -402,7 +402,7 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 		_, err = s.Connection.send(pkg)
 		if err != nil {
 			log.Warn("%s, [session.WritePkg] @s.Connection.Write(pkg:%#v) = err:%+v", s.Stat(), pkg, err)
-			return jerrors.Trace(err)
+			return perrors.WithStack(err)
 		}
 		return nil
 	}
@@ -426,7 +426,7 @@ func (s *session) WriteBytes(pkg []byte) error {
 
 	// s.conn.SetWriteTimeout(time.Now().Add(s.wTimeout))
 	if _, err := s.Connection.send(pkg); err != nil {
-		return jerrors.Annotatef(err, "s.Connection.Write(pkg len:%d)", len(pkg))
+		return perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
 	}
 	return nil
 }
@@ -445,7 +445,7 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 	// reduce syscall and memcopy for multiple packages
 	if _, ok := s.Connection.(*gettyTCPConn); ok {
 		if _, err := s.Connection.send(pkgs); err != nil {
-			return jerrors.Annotatef(err, "s.Connection.Write(pkgs num:%d)", len(pkgs))
+			return perrors.Wrapf(err, "s.Connection.Write(pkgs num:%d)", len(pkgs))
 		}
 		return nil
 	}
@@ -476,7 +476,7 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 	}
 
 	if err = s.WriteBytes(arr); err != nil {
-		return jerrors.Trace(err)
+		return perrors.WithStack(err)
 	}
 
 	num := len(pkgs) - 1
@@ -578,7 +578,7 @@ LOOP:
 			if udpFlag || wsFlag {
 				err = s.WritePkg(outPkg, 0)
 				if err != nil {
-					log.Error("%s, [session.handleLoop] = error:%+v", s.sessionToken(), jerrors.ErrorStack(err))
+					log.Error("%s, [session.handleLoop] = error:%+v", s.sessionToken(), perrors.WithStack(err))
 					s.stop()
 					// break LOOP
 					flag = false
@@ -591,7 +591,7 @@ LOOP:
 			for idx := 0; idx < maxIovecNum; idx++ {
 				pkgBytes, err = s.writer.Write(s, outPkg)
 				if err != nil {
-					log.Error("%s, [session.handleLoop] = error:%+v", s.sessionToken(), jerrors.ErrorStack(err))
+					log.Error("%s, [session.handleLoop] = error:%+v", s.sessionToken(), perrors.WithStack(err))
 					s.stop()
 					// break LOOP
 					flag = false
@@ -619,7 +619,7 @@ LOOP:
 			err = s.WriteBytesArray(iovec[:]...)
 			if err != nil {
 				log.Error("%s, [session.handleLoop]s.WriteBytesArray(iovec len:%d) = error:%+v",
-					s.sessionToken(), len(iovec), jerrors.ErrorStack(err))
+					s.sessionToken(), len(iovec), perrors.WithStack(err))
 				s.stop()
 				// break LOOP
 				flag = false
@@ -630,7 +630,7 @@ LOOP:
 				if wsFlag {
 					err := wsConn.writePing()
 					if err != nil {
-						log.Warn("wsConn.writePing() = error:%+v", jerrors.ErrorStack(err))
+						log.Warn("wsConn.writePing() = error:%+v", perrors.WithStack(err))
 					}
 				}
 				s.listener.OnCron(s)
@@ -671,7 +671,7 @@ func (s *session) handlePackage() {
 		log.Info("%s, [session.handlePackage] gr will exit now, left gr num %d", s.sessionToken(), grNum)
 		s.stop()
 		if err != nil {
-			log.Error("%s, [session.handlePackage] error:%+v", s.sessionToken(), jerrors.ErrorStack(err))
+			log.Error("%s, [session.handlePackage] error:%+v", s.sessionToken(), perrors.WithStack(err))
 			if s != nil || s.listener != nil {
 				s.listener.OnError(s, err)
 			}
@@ -738,16 +738,16 @@ func (s *session) handleTCPPackage() error {
 			// s.conn.SetReadTimeout(time.Now().Add(s.rTimeout))
 			bufLen, err = conn.recv(buf)
 			if err != nil {
-				if netError, ok = jerrors.Cause(err).(net.Error); ok && netError.Timeout() {
+				if netError, ok = perrors.Cause(err).(net.Error); ok && netError.Timeout() {
 					break
 				}
-				if jerrors.Cause(err) == io.EOF {
-					log.Info("%s, [session.conn.read] = error:%+v", s.sessionToken(), jerrors.ErrorStack(err))
+				if perrors.Cause(err) == io.EOF {
+					log.Info("%s, [session.conn.read] = error:%+v", s.sessionToken(), perrors.WithStack(err))
 					err = nil
 					exit = true
 					break
 				}
-				log.Error("%s, [session.conn.read] = error:%+v", s.sessionToken(), jerrors.ErrorStack(err))
+				log.Error("%s, [session.conn.read] = error:%+v", s.sessionToken(), perrors.WithStack(err))
 				exit = true
 			}
 			break
@@ -766,12 +766,12 @@ func (s *session) handleTCPPackage() error {
 			pkg, pkgLen, err = s.reader.Read(s, pktBuf.Bytes())
 			// for case 3/case 4
 			if err == nil && s.maxMsgLen > 0 && pkgLen > int(s.maxMsgLen) {
-				err = jerrors.Errorf("pkgLen %d > session max message len %d", pkgLen, s.maxMsgLen)
+				err = perrors.Errorf("pkgLen %d > session max message len %d", pkgLen, s.maxMsgLen)
 			}
 			// handle case 1
 			if err != nil {
 				log.Warn("%s, [session.handleTCPPackage] = len{%d}, error:%+v",
-					s.sessionToken(), pkgLen, jerrors.ErrorStack(err))
+					s.sessionToken(), pkgLen, perrors.WithStack(err))
 				exit = true
 				break
 			}
@@ -790,7 +790,7 @@ func (s *session) handleTCPPackage() error {
 		}
 	}
 
-	return jerrors.Trace(err)
+	return perrors.WithStack(err)
 }
 
 // get package from udp packet
@@ -823,19 +823,19 @@ func (s *session) handleUDPPackage() error {
 		}
 
 		bufLen, addr, err = conn.recv(buf)
-		log.Debug("conn.read() = bufLen:%d, addr:%#v, err:%+v", bufLen, addr, jerrors.ErrorStack(err))
-		if netError, ok = jerrors.Cause(err).(net.Error); ok && netError.Timeout() {
+		log.Debug("conn.read() = bufLen:%d, addr:%#v, err:%+v", bufLen, addr, perrors.WithStack(err))
+		if netError, ok = perrors.Cause(err).(net.Error); ok && netError.Timeout() {
 			continue
 		}
 		if err != nil {
 			log.Error("%s, [session.handleUDPPackage] = len:%d, error:%+v",
-				s.sessionToken(), bufLen, jerrors.ErrorStack(err))
-			err = jerrors.Annotatef(err, "conn.read()")
+				s.sessionToken(), bufLen, perrors.WithStack(err))
+			err = perrors.Wrapf(err, "conn.read()")
 			break
 		}
 
 		if bufLen == 0 {
-			log.Error("conn.read() = bufLen:%d, addr:%s, err:%+v", bufLen, addr, jerrors.ErrorStack(err))
+			log.Error("conn.read() = bufLen:%d, addr:%s, err:%+v", bufLen, addr, perrors.WithStack(err))
 			continue
 		}
 
@@ -845,17 +845,17 @@ func (s *session) handleUDPPackage() error {
 		}
 
 		pkg, pkgLen, err = s.reader.Read(s, buf[:bufLen])
-		log.Debug("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%+v", pkg, pkgLen, jerrors.ErrorStack(err))
+		log.Debug("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%+v", pkg, pkgLen, perrors.WithStack(err))
 		if err == nil && s.maxMsgLen > 0 && bufLen > int(s.maxMsgLen) {
-			err = jerrors.Errorf("Message Too Long, bufLen %d, session max message len %d", bufLen, s.maxMsgLen)
+			err = perrors.Errorf("Message Too Long, bufLen %d, session max message len %d", bufLen, s.maxMsgLen)
 		}
 		if err != nil {
 			log.Warn("%s, [session.handleUDPPackage] = len:%d, error:%+v",
-				s.sessionToken(), pkgLen, jerrors.ErrorStack(err))
+				s.sessionToken(), pkgLen, perrors.WithStack(err))
 			continue
 		}
 		if pkgLen == 0 {
-			log.Error("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%+v", pkg, pkgLen, jerrors.ErrorStack(err))
+			log.Error("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%+v", pkg, pkgLen, perrors.WithStack(err))
 			continue
 		}
 
@@ -863,7 +863,7 @@ func (s *session) handleUDPPackage() error {
 		s.addTask(UDPContext{Pkg: pkg, PeerAddr: addr})
 	}
 
-	return jerrors.Trace(err)
+	return perrors.WithStack(err)
 }
 
 // get package from websocket stream
@@ -884,23 +884,23 @@ func (s *session) handleWSPackage() error {
 			break
 		}
 		pkg, err = conn.recv()
-		if netError, ok = jerrors.Cause(err).(net.Error); ok && netError.Timeout() {
+		if netError, ok = perrors.Cause(err).(net.Error); ok && netError.Timeout() {
 			continue
 		}
 		if err != nil {
 			log.Warn("%s, [session.handleWSPackage] = error:%+v",
-				s.sessionToken(), jerrors.ErrorStack(err))
-			return jerrors.Trace(err)
+				s.sessionToken(), perrors.WithStack(err))
+			return perrors.WithStack(err)
 		}
 		s.UpdateActive()
 		if s.reader != nil {
 			unmarshalPkg, length, err = s.reader.Read(s, pkg)
 			if err == nil && s.maxMsgLen > 0 && length > int(s.maxMsgLen) {
-				err = jerrors.Errorf("Message Too Long, length %d, session max message len %d", length, s.maxMsgLen)
+				err = perrors.Errorf("Message Too Long, length %d, session max message len %d", length, s.maxMsgLen)
 			}
 			if err != nil {
 				log.Warn("%s, [session.handleWSPackage] = len:%d, error:%+v",
-					s.sessionToken(), length, jerrors.ErrorStack(err))
+					s.sessionToken(), length, perrors.WithStack(err))
 				continue
 			}
 
