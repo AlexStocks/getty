@@ -32,7 +32,6 @@ import (
 )
 
 import (
-	log "github.com/AlexStocks/log4go"
 	"github.com/dubbogo/gost/net"
 	gxsync "github.com/dubbogo/gost/sync"
 	"github.com/gorilla/websocket"

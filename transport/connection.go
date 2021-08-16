@@ -29,7 +29,6 @@ import (
 )
 
 import (
-	log "github.com/AlexStocks/log4go"
 	"github.com/golang/snappy"
 	"github.com/gorilla/websocket"
 	jerrors "github.com/juju/errors"
@@ -319,7 +318,7 @@ func (t *gettyTCPConn) close(waitSec int) {
 	if t.conn != nil {
 		if writer, ok := t.writer.(*snappy.Writer); ok {
 			if err := writer.Close(); err != nil {
-				log.Error("snappy.Writer.Close() = error{%s}", jerrors.ErrorStack(err))
+				log.Errorf("snappy.Writer.Close() = error{%s}", jerrors.ErrorStack(err))
 			}
 		}
 		if conn, ok := t.conn.(*net.TCPConn); ok {
@@ -414,7 +413,7 @@ func (u *gettyUDPConn) recv(p []byte) (int, *net.UDPAddr, error) {
 	}
 
 	length, addr, err = u.conn.ReadFromUDP(p) // connected udp also can get return @addr
-	log.Debug("ReadFromUDP() = {length:%d, peerAddr:%s, error:%s}", length, addr, err)
+	log.Debugf("ReadFromUDP() = {length:%d, peerAddr:%s, error:%s}", length, addr, err)
 	if err == nil {
 		atomic.AddUint32(&u.readBytes, uint32(length))
 	}
@@ -465,7 +464,7 @@ func (u *gettyUDPConn) send(udpCtx interface{}) (int, error) {
 		atomic.AddUint32(&u.writeBytes, (uint32)(len(buf)))
 		atomic.AddUint32(&u.writePkgNum, 1)
 	}
-	log.Debug("WriteMsgUDP(peerAddr:%s) = {length:%d, error:%s}", peerAddr, length, err)
+	log.Debugf("WriteMsgUDP(peerAddr:%s) = {length:%d, error:%s}", peerAddr, length, err)
 
 	return length, jerrors.Trace(err)
 	//return length, err
@@ -561,7 +560,7 @@ func (w *gettyWSConn) recv() ([]byte, error) {
 		atomic.AddUint32(&w.readBytes, (uint32)(len(b)))
 	} else {
 		if websocket.IsUnexpectedCloseError(e, websocket.CloseGoingAway) {
-			log.Warn("websocket unexpected close error: %v", e)
+			log.Warnf("websocket unexpected close error: %v", e)
 		}
 	}
 

@@ -34,7 +34,6 @@ import (
 	"github.com/gorilla/websocket"
 	jerrors "github.com/juju/errors"
 
-	log "github.com/AlexStocks/log4go"
 	"github.com/dubbogo/gost/context"
 	gxtime "github.com/dubbogo/gost/time"
 )

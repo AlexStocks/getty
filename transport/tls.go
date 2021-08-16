@@ -24,7 +24,6 @@ import (
 	"io/ioutil"
 )
 import (
-	log "github.com/AlexStocks/log4go"
 	perrors "github.com/pkg/errors"
 )
 
