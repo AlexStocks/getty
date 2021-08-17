@@ -25,7 +25,7 @@ import (
 
 import (
 	gxsync "github.com/dubbogo/gost/sync"
-	jerrors "github.com/juju/errors"
+	perrors "github.com/pkg/errors"
 )
 
 // NewSessionCallback will be invoked when server accepts a new client connection or client connects to server successfully.
@@ -141,9 +141,9 @@ type Connection interface {
 /////////////////////////////////////////
 
 var (
-	ErrSessionClosed  = jerrors.New("session Already Closed")
-	ErrSessionBlocked = jerrors.New("session Full Blocked")
-	ErrNullPeerAddr   = jerrors.New("peer address is nil")
+	ErrSessionClosed  = perrors.New("session Already Closed")
+	ErrSessionBlocked = perrors.New("session Full Blocked")
+	ErrNullPeerAddr   = perrors.New("peer address is nil")
 )
 
 type Session interface {
