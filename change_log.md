@@ -14,6 +14,16 @@
 ## develop history ##
 ---
 
+- 2020/01/11
+    > Feature
+    * Imp: enlarge time wheel span from 2 mimutes to 15 minutes
+    * version: v1.1.2
+   
+- 2019/09/05
+    > Feature
+    * add writev
+    * version: v1.1.2
+   
 - 2018/10/16
     > Feature
     * add rpc/micro CallOneway/AsyncCall

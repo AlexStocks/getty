@@ -1,15 +1,35 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package rpc
 
 import (
 	"math/rand"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 import (
-	"github.com/AlexStocks/getty"
-	"github.com/AlexStocks/goext/sync/atomic"
 	jerrors "github.com/juju/errors"
+)
+
+import (
+	"github.com/AlexStocks/getty/transport"
 )
 
 var (
@@ -66,9 +86,10 @@ type CallResponse struct {
 type AsyncCallback func(response CallResponse)
 
 type Client struct {
-	conf     ClientConfig
-	pool     *gettyRPCClientPool
-	sequence gxatomic.Uint64
+	conf ClientConfig
+	pool *gettyRPCClientPool
+	// the sequence sent to server must be an odd number
+	sequence uint64
 
 	pendingLock      sync.RWMutex
 	pendingResponses map[SequenceType]*PendingResponse
@@ -79,9 +100,15 @@ func NewClient(conf *ClientConfig) (*Client, error) {
 		return nil, jerrors.Trace(err)
 	}
 
+	initSequence := uint64(rand.Int63n(time.Now().UnixNano()))
+	if initSequence%2 == 0 {
+		initSequence++
+	}
+
 	c := &Client{
 		pendingResponses: make(map[SequenceType]*PendingResponse),
 		conf:             *conf,
+		sequence:         initSequence,
 	}
 	c.pool = newGettyRPCClientConnPool(c, conf.PoolSize, time.Duration(int(time.Second)*conf.PoolTTL))
 
@@ -159,10 +186,19 @@ func (c *Client) call(ct CallType, typ CodecType, addr, service, method string,
 		conn    *gettyRPCClient
 	)
 	conn, session, err = c.selectSession(typ, addr)
-	if err != nil || session == nil {
+	if err != nil {
+		return jerrors.Trace(err)
+	}
+	if session == nil {
 		return errSessionNotExist
 	}
-	defer c.pool.release(conn, err)
+	defer func() {
+		if err == nil {
+			c.pool.put(conn)
+			return
+		}
+		conn.close()
+	}()
 
 	if err = c.transfer(session, typ, b, rsp, opts); err != nil {
 		return jerrors.Trace(err)
@@ -174,8 +210,10 @@ func (c *Client) call(ct CallType, typ CodecType, addr, service, method string,
 
 	select {
 	case <-getty.GetTimeWheel().After(opts.ResponseTimeout):
-		err = errClientReadTimeout
-		c.removePendingResponse(SequenceType(rsp.seq))
+		// do not close connection
+		// err = errClientReadTimeout
+		c.removePendingResponse(rsp.seq)
+		return jerrors.Trace(errClientReadTimeout)
 	case <-rsp.done:
 		err = rsp.err
 	}
@@ -191,7 +229,7 @@ func (c *Client) Close() {
 }
 
 func (c *Client) selectSession(typ CodecType, addr string) (*gettyRPCClient, getty.Session, error) {
-	rpcConn, err := c.pool.getConn(typ.String(), addr)
+	rpcConn, err := c.pool.get(typ.String(), addr)
 	if err != nil {
 		return nil, nil, jerrors.Trace(err)
 	}
@@ -211,7 +249,8 @@ func (c *Client) transfer(session getty.Session, typ CodecType, req *GettyRPCReq
 		pkg      GettyPackage
 	)
 
-	sequence = c.sequence.Add(1)
+	// it should be an odd number
+	sequence = atomic.AddUint64(&(c.sequence), 2)
 	pkg.H.Magic = MagicType(gettyPackageMagic)
 	pkg.H.LogID = LogIDType(randomID())
 	pkg.H.Sequence = SequenceType(sequence)
@@ -224,13 +263,13 @@ func (c *Client) transfer(session getty.Session, typ CodecType, req *GettyRPCReq
 
 	// cond1
 	if rsp != nil {
-		rsp.seq = sequence
+		rsp.seq = SequenceType(sequence)
 		c.addPendingResponse(rsp)
 	}
 
 	err = session.WritePkg(pkg, opts.RequestTimeout)
 	if err != nil {
-		c.removePendingResponse(SequenceType(rsp.seq))
+		c.removePendingResponse(rsp.seq)
 	} else if rsp != nil { // cond2
 		// cond2 should not merged with cond1. cause the response package may be returned very
 		// soon and it will be handled by other goroutine.
@@ -240,16 +279,10 @@ func (c *Client) transfer(session getty.Session, typ CodecType, req *GettyRPCReq
 	return jerrors.Trace(err)
 }
 
-// func (c *Client) PendingResponseCount() int {
-// 	c.pendingLock.RLock()
-// 	defer c.pendingLock.RUnlock()
-// 	return len(c.pendingResponses)
-// }
-
 func (c *Client) addPendingResponse(pr *PendingResponse) {
 	c.pendingLock.Lock()
 	defer c.pendingLock.Unlock()
-	c.pendingResponses[SequenceType(pr.seq)] = pr
+	c.pendingResponses[pr.seq] = pr
 }
 
 func (c *Client) removePendingResponse(seq SequenceType) *PendingResponse {
@@ -264,11 +297,3 @@ func (c *Client) removePendingResponse(seq SequenceType) *PendingResponse {
 	}
 	return nil
 }
-
-// func (c *Client) ClearPendingResponses() map[SequenceType]*PendingResponse {
-// 	c.pendingLock.Lock()
-// 	defer c.pendingLock.Unlock()
-// 	presps := c.pendingResponses
-// 	c.pendingResponses = nil
-// 	return presps
-// }

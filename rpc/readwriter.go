@@ -1,3 +1,20 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package rpc
 
 import (
@@ -6,9 +23,12 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/getty"
 	log "github.com/AlexStocks/log4go"
 	jerrors "github.com/juju/errors"
+)
+
+import (
+	"github.com/AlexStocks/getty/transport"
 )
 
 ////////////////////////////////////////////
@@ -83,20 +103,20 @@ func (p *RpcServerPackageHandler) Read(ss getty.Session, data []byte) (interface
 	return req, length, nil
 }
 
-func (p *RpcServerPackageHandler) Write(ss getty.Session, pkg interface{}) error {
+func (p *RpcServerPackageHandler) Write(ss getty.Session, pkg interface{}) ([]byte, error) {
 	resp, ok := pkg.(GettyPackage)
 	if !ok {
 		log.Error("illegal pkg:%+v\n", pkg)
-		return jerrors.New("invalid rpc response")
+		return nil, jerrors.New("invalid rpc response")
 	}
 
 	buf, err := resp.Marshal()
 	if err != nil {
 		log.Warn("binary.Write(resp{%#v}) = err{%#v}", resp, err)
-		return jerrors.Trace(err)
+		return nil, jerrors.Trace(err)
 	}
 
-	return jerrors.Trace(ss.WriteBytes(buf.Bytes()))
+	return buf.Bytes(), nil
 }
 
 ////////////////////////////////////////////
@@ -133,18 +153,18 @@ func (p *RpcClientPackageHandler) Read(ss getty.Session, data []byte) (interface
 	return resp, length, nil
 }
 
-func (p *RpcClientPackageHandler) Write(ss getty.Session, pkg interface{}) error {
+func (p *RpcClientPackageHandler) Write(ss getty.Session, pkg interface{}) ([]byte, error) {
 	req, ok := pkg.(GettyPackage)
 	if !ok {
 		log.Error("illegal pkg:%+v\n", pkg)
-		return jerrors.New("invalid rpc request")
+		return nil, jerrors.New("invalid rpc request")
 	}
 
 	buf, err := req.Marshal()
 	if err != nil {
 		log.Warn("binary.Write(req{%#v}) = err{%#v}", req, jerrors.ErrorStack(err))
-		return jerrors.Trace(err)
+		return nil, jerrors.Trace(err)
 	}
 
-	return jerrors.Trace(ss.WriteBytes(buf.Bytes()))
+	return buf.Bytes(), nil
 }

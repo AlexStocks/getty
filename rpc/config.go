@@ -1,3 +1,20 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package rpc
 
 import (
@@ -6,6 +23,10 @@ import (
 
 import (
 	jerrors "github.com/juju/errors"
+)
+
+import (
+	"github.com/AlexStocks/getty/transport"
 )
 
 type (
@@ -17,7 +38,6 @@ type (
 		keepAlivePeriod  time.Duration
 		TcpRBufSize      int    `default:"262144" yaml:"tcp_r_buf_size" json:"tcp_r_buf_size,omitempty"`
 		TcpWBufSize      int    `default:"65536" yaml:"tcp_w_buf_size" json:"tcp_w_buf_size,omitempty"`
-		PkgRQSize        int    `default:"1024" yaml:"pkg_rq_size" json:"pkg_rq_size,omitempty"`
 		PkgWQSize        int    `default:"1024" yaml:"pkg_wq_size" json:"pkg_wq_size,omitempty"`
 		TcpReadTimeout   string `default:"1s" yaml:"tcp_read_timeout" json:"tcp_read_timeout,omitempty"`
 		tcpReadTimeout   time.Duration
@@ -110,6 +130,11 @@ func (c *ClientConfig) CheckValidity() error {
 		return jerrors.Annotatef(err, "time.ParseDuration(HeartbeatPeroid{%#v})", c.HeartbeatPeriod)
 	}
 
+	if c.heartbeatPeriod >= time.Duration(getty.MaxWheelTimeSpan) {
+		return jerrors.Annotatef(err, "heartbeat_period %s should be less than %s",
+			c.HeartbeatPeriod, time.Duration(getty.MaxWheelTimeSpan))
+	}
+
 	if c.sessionTimeout, err = time.ParseDuration(c.SessionTimeout); err != nil {
 		return jerrors.Annotatef(err, "time.ParseDuration(SessionTimeout{%#v})", c.SessionTimeout)
 	}
@@ -126,6 +151,11 @@ func (c *ServerConfig) CheckValidity() error {
 
 	if c.sessionTimeout, err = time.ParseDuration(c.SessionTimeout); err != nil {
 		return jerrors.Annotatef(err, "time.ParseDuration(SessionTimeout{%#v})", c.SessionTimeout)
+	}
+
+	if c.sessionTimeout >= time.Duration(getty.MaxWheelTimeSpan) {
+		return jerrors.Annotatef(err, "session_timeout %s should be less than %s",
+			c.SessionTimeout, time.Duration(getty.MaxWheelTimeSpan))
 	}
 
 	if c.failFastTimeout, err = time.ParseDuration(c.FailFastTimeout); err != nil {

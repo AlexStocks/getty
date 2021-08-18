@@ -1,3 +1,20 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package rpc
 
 import (
@@ -7,10 +24,12 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/getty"
-	gxnet "github.com/AlexStocks/goext/net"
 	log "github.com/AlexStocks/log4go"
 	jerrors "github.com/juju/errors"
+)
+
+import (
+	"github.com/AlexStocks/getty/transport"
 )
 
 type Server struct {
@@ -102,7 +121,6 @@ func (s *Server) newSession(session getty.Session) error {
 	session.SetMaxMsgLen(s.conf.GettySessionParam.MaxMsgLen)
 	session.SetPkgHandler(s.pkgHandler)
 	session.SetEventListener(s.rpcHandler)
-	session.SetRQLen(s.conf.GettySessionParam.PkgRQSize)
 	session.SetWQLen(s.conf.GettySessionParam.PkgWQSize)
 	session.SetReadTimeout(s.conf.GettySessionParam.tcpReadTimeout)
 	session.SetWriteTimeout(s.conf.GettySessionParam.tcpWriteTimeout)
@@ -125,8 +143,9 @@ func (s *Server) Start() {
 		panic("portList is nil")
 	}
 	for _, port := range portList {
-		addr = gxnet.HostAddress2(s.conf.Host, port)
+		addr = net.JoinHostPort(s.conf.Host, port)
 		tcpServer = getty.NewTCPServer(
+			getty.WithServerTaskPool(taskPool),
 			getty.WithLocalAddress(addr),
 		)
 		tcpServer.RunEventLoop(s.newSession)

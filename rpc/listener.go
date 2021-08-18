@@ -1,16 +1,36 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package rpc
 
 import (
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 import (
-	"github.com/AlexStocks/getty"
-	jerrors "github.com/juju/errors"
-
 	log "github.com/AlexStocks/log4go"
+	jerrors "github.com/juju/errors"
+)
+
+import (
+	"github.com/AlexStocks/getty/transport"
 )
 
 var (
@@ -20,6 +40,14 @@ var (
 type rpcSession struct {
 	session getty.Session
 	reqNum  int32
+}
+
+func (s *rpcSession) AddReqNum(num int32) {
+	atomic.AddInt32(&s.reqNum, num)
+}
+
+func (s *rpcSession) GetReqNum() int32 {
+	return atomic.LoadInt32(&s.reqNum)
 }
 
 ////////////////////////////////////////////
@@ -52,7 +80,7 @@ func (h *RpcServerHandler) OnOpen(session getty.Session) error {
 		return jerrors.Trace(err)
 	}
 
-	log.Info("got session:%s", session.Stat())
+	log.Debug("got session:%s", session.Stat())
 	h.rwlock.Lock()
 	h.sessionMap[session] = &rpcSession{session: session}
 	h.rwlock.Unlock()
@@ -60,25 +88,34 @@ func (h *RpcServerHandler) OnOpen(session getty.Session) error {
 }
 
 func (h *RpcServerHandler) OnError(session getty.Session, err error) {
-	log.Info("session{%s} got error{%v}, will be closed.", session.Stat(), err)
+	log.Debug("session{%s} got error{%v}, will be closed.", session.Stat(), err)
 	h.rwlock.Lock()
 	delete(h.sessionMap, session)
 	h.rwlock.Unlock()
 }
 
 func (h *RpcServerHandler) OnClose(session getty.Session) {
-	log.Info("session{%s} is closing......", session.Stat())
+	log.Debug("session{%s} is closing......", session.Stat())
 	h.rwlock.Lock()
 	delete(h.sessionMap, session)
 	h.rwlock.Unlock()
 }
 
 func (h *RpcServerHandler) OnMessage(session getty.Session, pkg interface{}) {
-	h.rwlock.Lock()
-	if _, ok := h.sessionMap[session]; ok {
-		h.sessionMap[session].reqNum++
+	var rs *rpcSession
+	if session != nil {
+		func() {
+			h.rwlock.RLock()
+			defer h.rwlock.RUnlock()
+
+			if _, ok := h.sessionMap[session]; ok {
+				rs = h.sessionMap[session]
+			}
+		}()
+		if rs != nil {
+			rs.AddReqNum(1)
+		}
 	}
-	h.rwlock.Unlock()
 
 	req, ok := pkg.(GettyRPCRequestPackage)
 	if !ok {
@@ -119,7 +156,7 @@ func (h *RpcServerHandler) OnCron(session getty.Session) {
 		if h.sessionTimeout.Nanoseconds() < time.Since(active).Nanoseconds() {
 			flag = true
 			log.Warn("session{%s} timeout{%s}, reqNum{%d}",
-				session.Stat(), time.Since(active).String(), h.sessionMap[session].reqNum)
+				session.Stat(), time.Since(active).String(), h.sessionMap[session].GetReqNum())
 		}
 	}
 	h.rwlock.RUnlock()
@@ -190,7 +227,7 @@ func (h *RpcClientHandler) OnOpen(session getty.Session) error {
 }
 
 func (h *RpcClientHandler) OnError(session getty.Session, err error) {
-	log.Info("session{%s} got error{%v}, will be closed.", session.Stat(), err)
+	log.Error("session{%s} got error{%v}, will be closed.", session.Stat(), err)
 	h.conn.removeSession(session)
 }
 
@@ -205,11 +242,12 @@ func (h *RpcClientHandler) OnMessage(session getty.Session, pkg interface{}) {
 		log.Error("illegal package{%#v}", pkg)
 		return
 	}
-	log.Debug("get rpc response{%#v}", p)
+	// log.Debug("get rpc response{%#v}", p)
 	h.conn.updateSession(session)
 
 	pendingResponse := h.conn.pool.rpcClient.removePendingResponse(p.H.Sequence)
 	if pendingResponse == nil {
+		log.Error("failed to get pending response context for response package %s", *p)
 		return
 	}
 	if p.H.Command == gettyCmdHbResponse {
@@ -218,7 +256,7 @@ func (h *RpcClientHandler) OnMessage(session getty.Session, pkg interface{}) {
 	if p.H.Code == GettyFail && len(p.header.Error) > 0 {
 		pendingResponse.err = jerrors.New(p.header.Error)
 		if pendingResponse.callback == nil {
-			pendingResponse.done <- struct{}{}
+			close(pendingResponse.done)
 		} else {
 			pendingResponse.callback(pendingResponse.GetCallResponse())
 		}
@@ -227,13 +265,13 @@ func (h *RpcClientHandler) OnMessage(session getty.Session, pkg interface{}) {
 	codec := Codecs[p.H.CodecType]
 	if codec == nil {
 		pendingResponse.err = jerrors.Errorf("can not find codec for %d", p.H.CodecType)
-		pendingResponse.done <- struct{}{}
+		close(pendingResponse.done)
 		return
 	}
 	err := codec.Decode(p.body, pendingResponse.reply)
 	pendingResponse.err = err
 	if pendingResponse.callback == nil {
-		pendingResponse.done <- struct{}{}
+		close(pendingResponse.done)
 	} else {
 		pendingResponse.callback(pendingResponse.GetCallResponse())
 	}
@@ -248,7 +286,7 @@ func (h *RpcClientHandler) OnCron(session getty.Session) {
 	}
 	if h.conn.pool.rpcClient.conf.sessionTimeout.Nanoseconds() < time.Since(session.GetActive()).Nanoseconds() {
 		log.Warn("session{%s} timeout{%s}, reqNum{%d}",
-			session.Stat(), time.Since(session.GetActive()).String(), rpcSession.reqNum)
+			session.Stat(), time.Since(session.GetActive()).String(), rpcSession.GetReqNum())
 		h.conn.removeSession(session) // -> h.conn.close() -> h.conn.pool.remove(h.conn)
 		return
 	}

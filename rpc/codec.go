@@ -1,3 +1,20 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package rpc
 
 import (
@@ -10,14 +27,11 @@ import (
 )
 
 import (
+	log "github.com/AlexStocks/log4go"
 	gxbytes "github.com/dubbogo/gost/bytes"
 	"github.com/gogo/protobuf/proto"
 	jsoniter "github.com/json-iterator/go"
 	jerrors "github.com/juju/errors"
-)
-
-import (
-	log "github.com/AlexStocks/log4go"
 )
 
 ////////////////////////////////////////////
@@ -27,11 +41,11 @@ import (
 type gettyCommand int16
 
 const (
-	gettyDefaultCmd     gettyCommand = 0x00
-	gettyCmdHbRequest                = 0x01
-	gettyCmdHbResponse               = 0x02
-	gettyCmdRPCRequest               = 0x03
-	gettyCmdRPCResponse              = 0x04
+	gettyDefaultCmd     = gettyCommand(0x00)
+	gettyCmdHbRequest   = gettyCommand(0x01)
+	gettyCmdHbResponse  = gettyCommand(0x02)
+	gettyCmdRPCRequest  = gettyCommand(0x03)
+	gettyCmdRPCResponse = gettyCommand(0x04)
 )
 
 var gettyCommandStrings = [...]string{
@@ -53,8 +67,8 @@ func (c gettyCommand) String() string {
 type ErrorCode int16
 
 const (
-	GettyOK   ErrorCode = 0x00
-	GettyFail           = 0x01
+	GettyOK   = ErrorCode(0x00)
+	GettyFail = ErrorCode(0x01)
 )
 
 ////////////////////////////////////////////
@@ -64,9 +78,9 @@ const (
 type CodecType int16
 
 const (
-	CodecUnknown  CodecType = 0x00
-	CodecJson               = 0x01
-	CodecProtobuf           = 0x02
+	CodecUnknown  = CodecType(0x00)
+	CodecJson     = CodecType(0x01)
+	CodecProtobuf = CodecType(0x02)
 )
 
 var (
@@ -544,7 +558,7 @@ func (resp *GettyRPCResponse) GetHeader() interface{} {
 ////////////////////////////////////////////
 
 type PendingResponse struct {
-	seq       uint64
+	seq       SequenceType
 	err       error
 	start     time.Time
 	readStart time.Time

@@ -1,3 +1,20 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package rpc
 
 import (
@@ -11,16 +28,20 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/getty"
 	log "github.com/AlexStocks/log4go"
+	gxsync "github.com/dubbogo/gost/sync"
 	jerrors "github.com/juju/errors"
+)
+
+import (
+	"github.com/AlexStocks/getty/transport"
 )
 
 type gettyRPCClient struct {
 	once     sync.Once
 	protocol string
 	addr     string
-	active  int64 // 为0，则说明没有被创建或者被销毁了
+	active   int64 // 为0，则说明没有被创建或者被销毁了
 
 	pool *gettyRPCClientPool
 
@@ -30,6 +51,8 @@ type gettyRPCClient struct {
 }
 
 var (
+	taskPool = gxsync.NewTaskPoolSimple(0)
+
 	errClientPoolClosed = jerrors.New("client pool closed")
 )
 
@@ -40,10 +63,11 @@ func newGettyRPCClient(pool *gettyRPCClientPool, protocol, addr string) (*gettyR
 		pool:     pool,
 		gettyClient: getty.NewTCPClient(
 			getty.WithServerAddress(addr),
-			getty.WithConnectionNumber((int)(pool.rpcClient.conf.ConnectionNum)),
+			getty.WithClientTaskPool(taskPool),
+			getty.WithConnectionNumber(pool.rpcClient.conf.ConnectionNum),
 		),
 	}
-	c.gettyClient.RunEventLoop(c.newSession)
+	go c.gettyClient.RunEventLoop(c.newSession)
 	idx := 1
 	for {
 		idx++
@@ -51,8 +75,9 @@ func newGettyRPCClient(pool *gettyRPCClientPool, protocol, addr string) (*gettyR
 			break
 		}
 
-		if idx > 5000 {
-			return nil, jerrors.New(fmt.Sprintf("failed to create client connection to %s in 5 seconds", addr))
+		if idx > 2000 {
+			c.gettyClient.Close()
+			return nil, jerrors.New(fmt.Sprintf("failed to create client connection to %s in 3 seconds", addr))
 		}
 		time.Sleep(1e6)
 	}
@@ -98,7 +123,6 @@ func (c *gettyRPCClient) newSession(session getty.Session) error {
 	session.SetMaxMsgLen(conf.GettySessionParam.MaxMsgLen)
 	session.SetPkgHandler(rpcClientPackageHandler)
 	session.SetEventListener(NewRpcClientHandler(c))
-	session.SetRQLen(conf.GettySessionParam.PkgRQSize)
 	session.SetWQLen(conf.GettySessionParam.PkgWQSize)
 	session.SetReadTimeout(conf.GettySessionParam.tcpReadTimeout)
 	session.SetWriteTimeout(conf.GettySessionParam.tcpWriteTimeout)
@@ -127,8 +151,8 @@ func (c *gettyRPCClient) addSession(session getty.Session) {
 	}
 
 	c.lock.Lock()
+	defer c.lock.Unlock()
 	c.sessions = append(c.sessions, &rpcSession{session: session})
-	c.lock.Unlock()
 }
 
 func (c *gettyRPCClient) removeSession(session getty.Session) {
@@ -136,23 +160,29 @@ func (c *gettyRPCClient) removeSession(session getty.Session) {
 		return
 	}
 
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	if c.sessions == nil {
-		return
-	}
-
-	for i, s := range c.sessions {
-		if s.session == session {
-			c.sessions = append(c.sessions[:i], c.sessions[i+1:]...)
-			log.Debug("delete session{%s}, its index{%d}", session.Stat(), i)
-			break
+	var removeFlag bool
+	func() {
+		c.lock.Lock()
+		defer c.lock.Unlock()
+		if len(c.sessions) == 0 {
+			return
 		}
-	}
-	log.Info("after remove session{%s}, left session number:%d", session.Stat(), len(c.sessions))
-	if len(c.sessions) == 0 {
-		c.pool.remove(c)
-		c.close()
+
+		for i, s := range c.sessions {
+			if s.session == session {
+				c.sessions = append(c.sessions[:i], c.sessions[i+1:]...)
+				log.Debug("delete session{%s}, its index{%d}", session.Stat(), i)
+				break
+			}
+		}
+
+		log.Info("after remove session{%s}, left session number:%d", session.Stat(), len(c.sessions))
+		if len(c.sessions) == 0 {
+			removeFlag = true
+		}
+	}()
+	if removeFlag {
+		c.close() // -> pool.remove(c)
 	}
 }
 
@@ -160,17 +190,24 @@ func (c *gettyRPCClient) updateSession(session getty.Session) {
 	if session == nil {
 		return
 	}
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	if c.sessions == nil {
-		return
-	}
 
-	for i, s := range c.sessions {
-		if s.session == session {
-			c.sessions[i].reqNum++
-			break
+	var rs *rpcSession
+	func() {
+		c.lock.RLock()
+		defer c.lock.RUnlock()
+		if c.sessions == nil {
+			return
 		}
+
+		for i, s := range c.sessions {
+			if s.session == session {
+				rs = c.sessions[i]
+				break
+			}
+		}
+	}()
+	if rs != nil {
+		rs.AddReqNum(1)
 	}
 }
 
@@ -181,7 +218,7 @@ func (c *gettyRPCClient) getClientRpcSession(session getty.Session) (rpcSession,
 	)
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	if c.sessions == nil {
+	if len(c.sessions) == 0 {
 		return rpcSession, errClientClosed
 	}
 
@@ -208,30 +245,48 @@ func (c *gettyRPCClient) isAvailable() bool {
 func (c *gettyRPCClient) close() error {
 	closeErr := jerrors.Errorf("close gettyRPCClient{%#v} again", c)
 	c.once.Do(func() {
-		c.gettyClient.Close()
-		c.gettyClient = nil
-		for _, s := range c.sessions {
-			log.Info("close client session{%s, last active:%s, request number:%d}",
-				s.session.Stat(), s.session.GetActive().String(), s.reqNum)
-			s.session.Close()
-		}
-		c.sessions = c.sessions[:0]
+		// delete @c from client pool
+		c.pool.remove(c)
+
+		var (
+			gettyClient getty.Client
+			sessions    []*rpcSession
+		)
+		func() {
+			c.lock.Lock()
+			defer c.lock.Unlock()
+
+			gettyClient = c.gettyClient
+			c.gettyClient = nil
+
+			sessions = make([]*rpcSession, 0, len(c.sessions))
+			for _, s := range c.sessions {
+				sessions = append(sessions, s)
+			}
+			c.sessions = c.sessions[:0]
+		}()
 
 		c.updateActive(0)
-		closeErr = nil
+
+		go func() {
+			if gettyClient != nil {
+				gettyClient.Close()
+			}
+			for _, s := range sessions {
+				log.Info("close client session{%s, last active:%s, request number:%d}",
+					s.session.Stat(), s.session.GetActive().String(), s.GetReqNum())
+				s.session.Close()
+			}
+		}()
+
+		err = nil
 	})
-	return closeErr
-}
 
-func (c *gettyRPCClient) safeClose() error {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-
-	return c.close()
+	return err
 }
 
 type rpcClientArray struct {
-	lock  sync.Mutex
+	lock  sync.RWMutex
 	array []*gettyRPCClient
 }
 
@@ -242,6 +297,9 @@ func newRpcClientArray() *rpcClientArray {
 }
 
 func (a *rpcClientArray) Size() int {
+	a.lock.RLock()
+	defer a.lock.RUnlock()
+
 	return len(a.array)
 }
 
@@ -249,10 +307,29 @@ func (a *rpcClientArray) Put(clt *gettyRPCClient) {
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
+	for i := range a.array {
+		if a.array[i] == clt {
+			return
+		}
+	}
+
 	a.array = append(a.array, clt)
 }
 
 func (a *rpcClientArray) Get(key string, pool *gettyRPCClientPool) *gettyRPCClient {
+	now := time.Now().Unix()
+
+	var array []*gettyRPCClient
+	defer func() {
+		go func() {
+			if len(array) != 0 {
+				for i := range array {
+					array[i].close() // -> pool.remove(c)
+				}
+			}
+		}()
+	}()
+
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
@@ -263,8 +340,7 @@ func (a *rpcClientArray) Get(key string, pool *gettyRPCClientPool) *gettyRPCClie
 		pool.connMap.Store(key, a)
 
 		if d := now - conn.getActive(); d > pool.ttl {
-			pool.remove(conn)
-			conn.safeClose()
+			array = append(array, conn)
 			continue
 		}
 
@@ -293,14 +369,21 @@ func (a *rpcClientArray) Remove(key string, conn *gettyRPCClient, p *gettyRPCCli
 }
 
 func (a *rpcClientArray) Close() {
-	a.lock.Lock()
-	defer a.lock.Unlock()
+	var array []*gettyRPCClient
+	func() {
+		a.lock.Lock()
+		defer a.lock.Unlock()
 
-	for i := range a.array {
-		a.array[i].safeClose()
+		array = make([]*gettyRPCClient, 0, len(a.array))
+		for i := range a.array {
+			array = append(array, a.array[i])
+		}
+
+		a.array = a.array[:0]
+	}()
+	for i := range array {
+		array[i].close()
 	}
-
-	a.array = a.array[:0]
 }
 
 type gettyRPCClientPool struct {
@@ -326,7 +409,7 @@ func (p *gettyRPCClientPool) close() {
 	})
 }
 
-func (p *gettyRPCClientPool) getConn(protocol, addr string) (*gettyRPCClient, error) {
+func (p *gettyRPCClientPool) get(protocol, addr string) (*gettyRPCClient, error) {
 	var builder strings.Builder
 
 	builder.WriteString(addr)
@@ -335,25 +418,20 @@ func (p *gettyRPCClientPool) getConn(protocol, addr string) (*gettyRPCClient, er
 
 	key := builder.String()
 	connArray, ok := p.connMap.Load(key)
-	if !ok {
-		return nil, errClientPoolClosed
-	}
-
-	clt := connArray.Get(key, p)
-	if clt != nil {
-		return clt, nil
+	if ok {
+		clt := connArray.Get(key, p)
+		if clt != nil {
+			return clt, nil
+		}
 	}
 
 	// create new conn
-	return newGettyRPCClient(p, protocol, addr)
+	rpcClient, err := newGettyRPCClient(p, protocol, addr)
+	return rpcClient, jerrors.Trace(err)
 }
 
-func (p *gettyRPCClientPool) release(conn *gettyRPCClient, err error) {
+func (p *gettyRPCClientPool) put(conn *gettyRPCClient) {
 	if conn == nil || conn.getActive() == 0 {
-		return
-	}
-	if err != nil {
-		conn.safeClose()
 		return
 	}
 
@@ -374,9 +452,9 @@ func (p *gettyRPCClientPool) release(conn *gettyRPCClient, err error) {
 	}
 
 	connArray.Put(conn)
-	connArray, loaded := p.connMap.LoadOrStore(key, connArray)
+	oldConnArray, loaded := p.connMap.LoadOrStore(key, connArray)
 	if loaded {
-		connArray.Put(conn)
+		oldConnArray.Put(conn)
 	}
 }
 

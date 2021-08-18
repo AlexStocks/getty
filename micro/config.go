@@ -1,9 +1,29 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package micro
 
 import (
-	"github.com/AlexStocks/getty/rpc"
 	"github.com/AlexStocks/goext/container/set/strset"
 	jerrors "github.com/juju/errors"
+)
+
+import (
+	"github.com/AlexStocks/getty/rpc"
 )
 
 const (
@@ -15,8 +35,8 @@ var (
 )
 
 type ServiceConfig struct {
-	LocalHost string `default:"127.0.0.1" yaml:"local_host" json:"local_host, omitempty"`
-	LocalPort int    `default:"10001" yaml:"local_port" json:"local_port, omitempty"`
+	LocalHost string `default:"127.0.0.1" yaml:"local_host" json:"local_host,omitempty"`
+	LocalPort int    `default:"10001" yaml:"local_port" json:"local_port,omitempty"`
 	Group     string `default:"idc-bj" yaml:"group" json:"group,omitempty"`
 	NodeID    string `default:"node0" yaml:"node_id" json:"node_id,omitempty"`
 	Protocol  string `default:"json" yaml:"protocol" json:"protocol,omitempty"`
@@ -32,7 +52,7 @@ func (c *ServiceConfig) CheckValidity() error {
 	}
 
 	if c.LocalPort <= 0 || 65535 < c.LocalPort {
-		return jerrors.Errorf(ErrIllegalConf+"local port %s", c.LocalPort)
+		return jerrors.Errorf(ErrIllegalConf+"local port %d", c.LocalPort)
 	}
 
 	if len(c.Group) == 0 {
