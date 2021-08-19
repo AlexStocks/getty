@@ -60,18 +60,15 @@ const (
 // session
 /////////////////////////////////////////
 
-var (
-	wheel *gxtime.Wheel
-)
+var defaultTimerWheel *gxtime.TimerWheel
 
 func init() {
-	span := 100e6 // 100ms
-	buckets := MaxWheelTimeSpan / span
-	wheel = gxtime.NewWheel(time.Duration(span), int(buckets)) // wheel longest span is 15 minute
+	gxtime.InitDefaultTimerWheel()
+	defaultTimerWheel = gxtime.GetDefaultTimerWheel()
 }
 
-func GetTimeWheel() *gxtime.Wheel {
-	return wheel
+func GetTimeWheel() *gxtime.TimerWheel {
+	return defaultTimerWheel
 }
 
 // getty base session
@@ -410,7 +407,7 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) error {
 	case s.wQ <- pkg:
 		break // for possible gen a new pkg
 
-	case <-wheel.After(timeout):
+	case <-gxtime.After(timeout):
 		log.Warn("%s, [session.WritePkg] wQ{len:%d, cap:%d}", s.Stat(), len(s.wQ), cap(s.wQ))
 		return ErrSessionBlocked
 	}
@@ -464,7 +461,7 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) error {
 	}
 
 	// merge the pkgs
-	//arr = make([]byte, length)
+	// arr = make([]byte, length)
 	arrp = gxbytes.GetBytes(length)
 	defer gxbytes.PutBytes(arrp)
 	arr = *arrp
@@ -625,7 +622,7 @@ LOOP:
 				flag = false
 			}
 
-		case <-wheel.After(s.period):
+		case <-gxtime.After(s.period):
 			if flag {
 				if wsFlag {
 					err := wsConn.writePing()
@@ -654,9 +651,7 @@ func (s *session) addTask(pkg interface{}) {
 }
 
 func (s *session) handlePackage() {
-	var (
-		err error
-	)
+	var err error
 
 	defer func() {
 		if r := recover(); r != nil {

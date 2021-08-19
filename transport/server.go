@@ -35,6 +35,7 @@ import (
 	log "github.com/AlexStocks/log4go"
 	"github.com/dubbogo/gost/net"
 	gxsync "github.com/dubbogo/gost/sync"
+	gxtime "github.com/dubbogo/gost/time"
 	"github.com/gorilla/websocket"
 	perrors "github.com/pkg/errors"
 )
@@ -177,17 +178,14 @@ func (s *server) listenTCP() error {
 		}
 	} else {
 		if s.sslEnabled {
-			if sslConfig, err := s.tlsConfigBuilder.BuildTlsConfig(); err == nil && sslConfig != nil {
+			if sslConfig, buildTlsConfErr := s.tlsConfigBuilder.BuildTlsConfig(); buildTlsConfErr == nil && sslConfig != nil {
 				streamListener, err = tls.Listen("tcp", s.addr, sslConfig)
-				if err != nil {
-					return perrors.Wrapf(err, "net.Listen(tcp, addr:%s)", s.addr)
-				}
 			}
 		} else {
 			streamListener, err = net.Listen("tcp", s.addr)
-			if err != nil {
-				return perrors.Wrapf(err, "net.Listen(tcp, addr:%s)", s.addr)
-			}
+		}
+		if err != nil {
+			return perrors.Wrapf(err, "net.Listen(tcp, addr:%s)", s.addr)
 		}
 	}
 
@@ -273,7 +271,7 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 				return
 			}
 			if delay != 0 {
-				<-wheel.After(delay)
+				<-gxtime.After(delay)
 			}
 			client, err = s.accept(newSession)
 			if err != nil {
