@@ -18,14 +18,15 @@
 package getty
 
 import (
-	"compress/flate"
-	"net"
-	"time"
+	gxsync "github.com/dubbogo/gost/sync"
+
+	perrors "github.com/pkg/errors"
 )
 
-import (
-	gxsync "github.com/dubbogo/gost/sync"
-	perrors "github.com/pkg/errors"
+var (
+	ErrSessionClosed  = perrors.New("session Already Closed")
+	ErrSessionBlocked = perrors.New("session Full Blocked")
+	ErrNullPeerAddr   = perrors.New("peer address is nil")
 )
 
 // NewSessionCallback will be invoked when server accepts a new client connection or client connects to server successfully.
@@ -92,91 +93,7 @@ type EventListener interface {
 	OnMessage(Session, interface{})
 }
 
-type CompressType int
-
-const (
-	CompressNone            CompressType = flate.NoCompression      // 0
-	CompressZip                          = flate.DefaultCompression // -1
-	CompressBestSpeed                    = flate.BestSpeed          // 1
-	CompressBestCompression              = flate.BestCompression    // 9
-	CompressHuffman                      = flate.HuffmanOnly        // -2
-	CompressSnappy                       = 10
-)
-
-// Connection wrap some connection params and operations
-type Connection interface {
-	ID() uint32
-	SetCompressType(CompressType)
-	LocalAddr() string
-	RemoteAddr() string
-	incReadPkgNum()
-	incWritePkgNum()
-	// UpdateActive update session's active time
-	UpdateActive()
-	// GetActive get session's active time
-	GetActive() time.Time
-	readTimeout() time.Duration
-	// SetReadTimeout sets deadline for the future read calls.
-	SetReadTimeout(time.Duration)
-	writeTimeout() time.Duration
-	// SetWriteTimeout sets deadline for the future read calls.
-	SetWriteTimeout(time.Duration)
-	send(interface{}) (int, error)
-	// don't distinguish between tcp connection and websocket connection. Because
-	// gorilla/websocket/conn.go:(Conn)Close also invoke net.Conn.Close
-	close(int)
-	// set related session
-	setSession(Session)
-}
-
-/////////////////////////////////////////
-// Session
-/////////////////////////////////////////
-
-var (
-	ErrSessionClosed  = perrors.New("session Already Closed")
-	ErrSessionBlocked = perrors.New("session Full Blocked")
-	ErrNullPeerAddr   = perrors.New("peer address is nil")
-)
-
-type Session interface {
-	Connection
-	Reset()
-	Conn() net.Conn
-	Stat() string
-	IsClosed() bool
-	// EndPoint get endpoint type
-	EndPoint() EndPoint
-
-	SetMaxMsgLen(int)
-	SetName(string)
-	SetEventListener(EventListener)
-	SetPkgHandler(ReadWriter)
-	SetReader(Reader)
-	SetWriter(Writer)
-	SetCronPeriod(int)
-
-	SetWaitTime(time.Duration)
-
-	GetAttribute(interface{}) interface{}
-	SetAttribute(interface{}, interface{})
-	RemoveAttribute(interface{})
-
-	// WritePkg the Writer will invoke this function. Pls attention that if timeout is less than 0, WritePkg will send @pkg asap.
-	// for udp session, the first parameter should be UDPContext.
-	// totalBytesLength: @pkg stream bytes length after encoding @pkg.
-	// sendBytesLength: stream bytes length that sent out successfully.
-	// err: maybe it has illegal data, encoding error, or write out system error.
-	WritePkg(pkg interface{}, timeout time.Duration) (totalBytesLength int, sendBytesLength int, err error)
-	WriteBytes([]byte) (int, error)
-	WriteBytesArray(...[]byte) (int, error)
-	Close()
-}
-
-/////////////////////////////////////////
-// EndPoint
-/////////////////////////////////////////
-
+// EndPoint represents the identity of the client/server
 type EndPoint interface {
 	// ID get EndPoint ID
 	ID() EndPointID
@@ -190,27 +107,4 @@ type EndPoint interface {
 	Close()
 	// GetTaskPool get task pool implemented by dubbogo/gost
 	GetTaskPool() gxsync.GenericTaskPool
-}
-
-type Client interface {
-	EndPoint
-}
-
-// Server interface
-type Server interface {
-	EndPoint
-}
-
-// StreamServer is like tcp/websocket/wss server
-type StreamServer interface {
-	Server
-	// Listener get the network listener
-	Listener() net.Listener
-}
-
-// PacketServer is like udp listen endpoint
-type PacketServer interface {
-	Server
-	// PacketConn get the network listener
-	PacketConn() net.PacketConn
 }

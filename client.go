@@ -35,7 +35,9 @@ import (
 	"github.com/dubbogo/gost/net"
 	gxsync "github.com/dubbogo/gost/sync"
 	gxtime "github.com/dubbogo/gost/time"
+
 	"github.com/gorilla/websocket"
+
 	perrors "github.com/pkg/errors"
 )
 
@@ -49,13 +51,13 @@ const (
 var (
 	sessionClientKey   = "session-client-owner"
 	connectPingPackage = []byte("connect-ping")
+
+	clientID = EndPointID(0)
 )
 
-/////////////////////////////////////////
-// getty tcp client
-/////////////////////////////////////////
-
-var clientID = EndPointID(0)
+type Client interface {
+	EndPoint
+}
 
 type client struct {
 	ClientOptions

@@ -34,8 +34,11 @@ import (
 	gxnet "github.com/dubbogo/gost/net"
 	gxsync "github.com/dubbogo/gost/sync"
 	gxtime "github.com/dubbogo/gost/time"
+
 	"github.com/gorilla/websocket"
+
 	perrors "github.com/pkg/errors"
+
 	uatomic "go.uber.org/atomic"
 )
 
@@ -45,6 +48,25 @@ var (
 
 	serverID uatomic.Int32
 )
+
+// Server interface
+type Server interface {
+	EndPoint
+}
+
+// StreamServer is like tcp/websocket/wss server
+type StreamServer interface {
+	Server
+	// Listener get the network listener
+	Listener() net.Listener
+}
+
+// PacketServer is like udp listen endpoint
+type PacketServer interface {
+	Server
+	// PacketConn get the network listener
+	PacketConn() net.PacketConn
+}
 
 type server struct {
 	ServerOptions

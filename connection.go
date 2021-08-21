@@ -29,18 +29,48 @@ import (
 
 import (
 	"github.com/golang/snappy"
+
 	"github.com/gorilla/websocket"
+
 	perrors "github.com/pkg/errors"
+
 	uatomic "go.uber.org/atomic"
 )
 
-var launchTime = time.Now()
+var (
+	launchTime = time.Now()
+	connID     uatomic.Uint32
+)
+
+// Connection wrap some connection params and operations
+type Connection interface {
+	ID() uint32
+	SetCompressType(CompressType)
+	LocalAddr() string
+	RemoteAddr() string
+	incReadPkgNum()
+	incWritePkgNum()
+	// UpdateActive update session's active time
+	UpdateActive()
+	// GetActive get session's active time
+	GetActive() time.Time
+	readTimeout() time.Duration
+	// SetReadTimeout sets deadline for the future read calls.
+	SetReadTimeout(time.Duration)
+	writeTimeout() time.Duration
+	// SetWriteTimeout sets deadline for the future read calls.
+	SetWriteTimeout(time.Duration)
+	send(interface{}) (int, error)
+	// don't distinguish between tcp connection and websocket connection. Because
+	// gorilla/websocket/conn.go:(Conn)Close also invoke net.Conn.Close
+	close(int)
+	// set related session
+	setSession(Session)
+}
 
 // ///////////////////////////////////////
 // getty connection
 // ///////////////////////////////////////
-
-var connID uatomic.Uint32
 
 type gettyConn struct {
 	id            uint32
@@ -103,7 +133,7 @@ func (c *gettyConn) setSession(ss Session) {
 	c.ss = ss
 }
 
-// Pls do not set read deadline for websocket connection. AlexStocks 20180310
+// SetReadTimeout Pls do not set read deadline for websocket connection. AlexStocks 20180310
 // gorilla/websocket/conn.go:NextReader will always fail when got a timeout error.
 //
 // Pls do not set read deadline when using compression. AlexStocks 20180314.
@@ -154,7 +184,7 @@ func newGettyTCPConn(conn net.Conn) *gettyTCPConn {
 		panic("newGettyTCPConn(conn):@conn is nil")
 	}
 	var localAddr, peerAddr string
-	//  check conn.LocalAddr or conn.RemoetAddr is nil to defeat panic on 2016/09/27
+	//  check conn.LocalAddr or conn.RemoteAddr is nil to defeat panic on 2016/09/27
 	if conn.LocalAddr() != nil {
 		localAddr = conn.LocalAddr().String()
 	}

@@ -32,8 +32,11 @@ import (
 	gxbytes "github.com/dubbogo/gost/bytes"
 	gxcontext "github.com/dubbogo/gost/context"
 	gxtime "github.com/dubbogo/gost/time"
+
 	"github.com/gorilla/websocket"
+
 	perrors "github.com/pkg/errors"
+
 	uatomic "go.uber.org/atomic"
 )
 
@@ -58,6 +61,41 @@ var defaultTimerWheel *gxtime.TimerWheel
 func init() {
 	gxtime.InitDefaultTimerWheel()
 	defaultTimerWheel = gxtime.GetDefaultTimerWheel()
+}
+
+// Session wrap connection between the server and the client
+type Session interface {
+	Connection
+	Reset()
+	Conn() net.Conn
+	Stat() string
+	IsClosed() bool
+	// EndPoint get endpoint type
+	EndPoint() EndPoint
+
+	SetMaxMsgLen(int)
+	SetName(string)
+	SetEventListener(EventListener)
+	SetPkgHandler(ReadWriter)
+	SetReader(Reader)
+	SetWriter(Writer)
+	SetCronPeriod(int)
+
+	SetWaitTime(time.Duration)
+
+	GetAttribute(interface{}) interface{}
+	SetAttribute(interface{}, interface{})
+	RemoveAttribute(interface{})
+
+	// WritePkg the Writer will invoke this function. Pls attention that if timeout is less than 0, WritePkg will send @pkg asap.
+	// for udp session, the first parameter should be UDPContext.
+	// totalBytesLength: @pkg stream bytes length after encoding @pkg.
+	// sendBytesLength: stream bytes length that sent out successfully.
+	// err: maybe it has illegal data, encoding error, or write out system error.
+	WritePkg(pkg interface{}, timeout time.Duration) (totalBytesLength int, sendBytesLength int, err error)
+	WriteBytes([]byte) (int, error)
+	WriteBytesArray(...[]byte) (int, error)
+	Close()
 }
 
 // getty base session
