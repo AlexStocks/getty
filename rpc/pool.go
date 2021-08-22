@@ -243,7 +243,7 @@ func (c *gettyRPCClient) isAvailable() bool {
 }
 
 func (c *gettyRPCClient) close() error {
-	closeErr := jerrors.Errorf("close gettyRPCClient{%#v} again", c)
+	err := jerrors.Errorf("close gettyRPCClient{%#v} again", c)
 	c.once.Do(func() {
 		// delete @c from client pool
 		c.pool.remove(c)
@@ -333,7 +333,6 @@ func (a *rpcClientArray) Get(key string, pool *gettyRPCClientPool) *gettyRPCClie
 	a.lock.Lock()
 	defer a.lock.Unlock()
 
-	now := time.Now().Unix()
 	for len(a.array) > 0 {
 		conn := a.array[len(a.array)-1]
 		a.array = a.array[:len(a.array)-1]
@@ -447,7 +446,7 @@ func (p *gettyRPCClientPool) put(conn *gettyRPCClient) {
 		connArray = newRpcClientArray()
 	}
 	if connArray.Size() >= p.size {
-		conn.safeClose()
+		conn.close()
 		return
 	}
 
