@@ -35,7 +35,9 @@ import (
 	"github.com/dubbogo/gost/net"
 	gxsync "github.com/dubbogo/gost/sync"
 	gxtime "github.com/dubbogo/gost/time"
+
 	"github.com/gorilla/websocket"
+
 	perrors "github.com/pkg/errors"
 )
 
@@ -49,13 +51,13 @@ const (
 var (
 	sessionClientKey   = "session-client-owner"
 	connectPingPackage = []byte("connect-ping")
+
+	clientID = EndPointID(0)
 )
 
-/////////////////////////////////////////
-// getty tcp client
-/////////////////////////////////////////
-
-var clientID = EndPointID(0)
+type Client interface {
+	EndPoint
+}
 
 type client struct {
 	ClientOptions
@@ -99,17 +101,17 @@ func newClient(t EndPointType, opts ...ClientOption) *client {
 	return c
 }
 
-// NewTcpClient function builds a tcp client.
+// NewTCPClient builds a tcp client.
 func NewTCPClient(opts ...ClientOption) Client {
 	return newClient(TCP_CLIENT, opts...)
 }
 
-// NewUdpClient function builds a connected udp client
+// NewUDPClient builds a connected udp client
 func NewUDPClient(opts ...ClientOption) Client {
 	return newClient(UDP_CLIENT, opts...)
 }
 
-// NewWsClient function builds a ws client.
+// NewWSClient builds a ws client.
 func NewWSClient(opts ...ClientOption) Client {
 	c := newClient(WS_CLIENT, opts...)
 
@@ -184,7 +186,6 @@ func (c *client) dialUDP() Session {
 		buf       []byte
 	)
 
-	// buf = make([]byte, 128)
 	bufp = gxbytes.GetBytes(128)
 	defer gxbytes.PutBytes(bufp)
 	buf = *bufp
@@ -224,9 +225,7 @@ func (c *client) dialUDP() Session {
 			<-gxtime.After(connectInterval)
 			continue
 		}
-		// if err == nil {
 		return newUDPSession(conn, c)
-		//}
 	}
 }
 

@@ -34,8 +34,11 @@ import (
 	gxnet "github.com/dubbogo/gost/net"
 	gxsync "github.com/dubbogo/gost/sync"
 	gxtime "github.com/dubbogo/gost/time"
+
 	"github.com/gorilla/websocket"
+
 	perrors "github.com/pkg/errors"
+
 	uatomic "go.uber.org/atomic"
 )
 
@@ -45,6 +48,25 @@ var (
 
 	serverID uatomic.Int32
 )
+
+// Server interface
+type Server interface {
+	EndPoint
+}
+
+// StreamServer is like tcp/websocket/wss server
+type StreamServer interface {
+	Server
+	// Listener get the network listener
+	Listener() net.Listener
+}
+
+// PacketServer is like udp listen endpoint
+type PacketServer interface {
+	Server
+	// PacketConn get the network listener
+	PacketConn() net.PacketConn
+}
 
 type server struct {
 	ServerOptions
@@ -87,7 +109,7 @@ func NewTCPServer(opts ...ServerOption) Server {
 }
 
 // NewUDPEndPoint builds a unconnected udp server.
-func NewUDPPEndPoint(opts ...ServerOption) Server {
+func NewUDPEndPoint(opts ...ServerOption) Server {
 	return newServer(UDP_ENDPOINT, opts...)
 }
 
@@ -255,7 +277,7 @@ func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 	return ss, nil
 }
 
-func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
+func (s *server) runTCPEventLoop(newSession NewSessionCallback) {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
@@ -469,7 +491,7 @@ func (s *server) RunEventLoop(newSession NewSessionCallback) {
 
 	switch s.endPointType {
 	case TCP_SERVER:
-		s.runTcpEventLoop(newSession)
+		s.runTCPEventLoop(newSession)
 	case UDP_ENDPOINT:
 		s.runUDPEventLoop(newSession)
 	case WS_SERVER:

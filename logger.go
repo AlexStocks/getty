@@ -97,7 +97,7 @@ func init() {
 	// }()
 }
 
-// SetLogger: customize yourself logger.
+// SetLogger customize yourself logger.
 func SetLogger(logger Logger) {
 	log = logger
 }
@@ -107,7 +107,7 @@ func GetLogger() Logger {
 	return log
 }
 
-// SetLoggerLevel
+// SetLoggerLevel set logger level
 func SetLoggerLevel(level LoggerLevel) error {
 	var err error
 	zapLoggerConfig.Level = zap.NewAtomicLevelAt(zapcore.Level(level))
@@ -119,7 +119,7 @@ func SetLoggerLevel(level LoggerLevel) error {
 	return nil
 }
 
-// SetLoggerCallerDisable: disable caller info in production env for performance improve.
+// SetLoggerCallerDisable disable caller info in production env for performance improve.
 // It is highly recommended that you execute this method in a production environment.
 func SetLoggerCallerDisable() error {
 	var err error

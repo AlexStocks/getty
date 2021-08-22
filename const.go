@@ -18,6 +18,7 @@
 package getty
 
 import (
+	"compress/flate"
 	"strconv"
 )
 
@@ -67,3 +68,14 @@ func (x EndPointType) String() string {
 
 	return strconv.Itoa(int(x))
 }
+
+type CompressType int
+
+const (
+	CompressNone            CompressType = flate.NoCompression      // 0
+	CompressZip                          = flate.DefaultCompression // -1
+	CompressBestSpeed                    = flate.BestSpeed          // 1
+	CompressBestCompression              = flate.BestCompression    // 9
+	CompressHuffman                      = flate.HuffmanOnly        // -2
+	CompressSnappy                       = 10
+)

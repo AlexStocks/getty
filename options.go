@@ -37,56 +37,56 @@ type ServerOptions struct {
 	tPool gxsync.GenericTaskPool
 }
 
-// @addr server listen address.
+// WithLocalAddress @addr server listen address.
 func WithLocalAddress(addr string) ServerOption {
 	return func(o *ServerOptions) {
 		o.addr = addr
 	}
 }
 
-// @path: websocket request url path
+// WithWebsocketServerPath @path: websocket request url path
 func WithWebsocketServerPath(path string) ServerOption {
 	return func(o *ServerOptions) {
 		o.path = path
 	}
 }
 
-// @cert: server certificate file
+// WithWebsocketServerCert @cert: server certificate file
 func WithWebsocketServerCert(cert string) ServerOption {
 	return func(o *ServerOptions) {
 		o.cert = cert
 	}
 }
 
-// @key: server private key(contains its public key)
+// WithWebsocketServerPrivateKey @key: server private key(contains its public key)
 func WithWebsocketServerPrivateKey(key string) ServerOption {
 	return func(o *ServerOptions) {
 		o.privateKey = key
 	}
 }
 
-// @cert is the root certificate file to verify the legitimacy of server
+// WithWebsocketServerRootCert @cert is the root certificate file to verify the legitimacy of server
 func WithWebsocketServerRootCert(cert string) ServerOption {
 	return func(o *ServerOptions) {
 		o.caCert = cert
 	}
 }
 
-// @pool server task pool.
+// WithServerTaskPool @pool server task pool.
 func WithServerTaskPool(pool gxsync.GenericTaskPool) ServerOption {
 	return func(o *ServerOptions) {
 		o.tPool = pool
 	}
 }
 
-// @WithSslEnabled enable use tls
+// WithServerSslEnabled enable use tls
 func WithServerSslEnabled(sslEnabled bool) ServerOption {
 	return func(o *ServerOptions) {
 		o.sslEnabled = sslEnabled
 	}
 }
 
-// @WithServerKeyCertChainPath sslConfig is tls config
+// WithServerTlsConfigBuilder sslConfig is tls config
 func WithServerTlsConfigBuilder(tlsConfigBuilder TlsConfigBuilder) ServerOption {
 	return func(o *ServerOptions) {
 		o.tlsConfigBuilder = tlsConfigBuilder
@@ -116,14 +116,14 @@ type ClientOptions struct {
 	tPool gxsync.GenericTaskPool
 }
 
-// @addr is server address.
+// WithServerAddress @addr is server address.
 func WithServerAddress(addr string) ClientOption {
 	return func(o *ClientOptions) {
 		o.addr = addr
 	}
 }
 
-// @reconnectInterval is server address.
+// WithReconnectInterval @reconnectInterval is server address.
 func WithReconnectInterval(reconnectInterval int) ClientOption {
 	return func(o *ClientOptions) {
 		if 0 < reconnectInterval {
@@ -132,14 +132,14 @@ func WithReconnectInterval(reconnectInterval int) ClientOption {
 	}
 }
 
-// @pool client task pool.
+// WithClientTaskPool @pool client task pool.
 func WithClientTaskPool(pool gxsync.GenericTaskPool) ClientOption {
 	return func(o *ClientOptions) {
 		o.tPool = pool
 	}
 }
 
-// @num is connection number.
+// WithConnectionNumber @num is connection number.
 func WithConnectionNumber(num int) ClientOption {
 	return func(o *ClientOptions) {
 		if 0 < num {
@@ -148,21 +148,21 @@ func WithConnectionNumber(num int) ClientOption {
 	}
 }
 
-// @certs is client certificate file. it can be empty.
+// WithRootCertificateFile @certs is client certificate file. it can be empty.
 func WithRootCertificateFile(cert string) ClientOption {
 	return func(o *ClientOptions) {
 		o.cert = cert
 	}
 }
 
-// @WithSslEnabled enable use tls
+// WithClientSslEnabled enable use tls
 func WithClientSslEnabled(sslEnabled bool) ClientOption {
 	return func(o *ClientOptions) {
 		o.sslEnabled = sslEnabled
 	}
 }
 
-// @WithClientKeyCertChainPath sslConfig is tls config
+// WithClientTlsConfigBuilder sslConfig is tls config
 func WithClientTlsConfigBuilder(tlsConfigBuilder TlsConfigBuilder) ClientOption {
 	return func(o *ClientOptions) {
 		o.tlsConfigBuilder = tlsConfigBuilder
