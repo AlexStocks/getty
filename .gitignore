@@ -20,3 +20,6 @@ classes
 *.swp
 
 vendor/
+
+# vscode
+.vscode/
