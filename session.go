@@ -638,38 +638,34 @@ func (s *session) handleTCPPackage() error {
 			}
 			break
 		}
-		if exit {
-			break
-		}
-		if 0 == bufLen {
-			continue // just continue if session can not read no more stream bytes.
-		}
-		pktBuf.Write(buf[:bufLen])
-		for {
-			if pktBuf.Len() <= 0 {
-				break
+		if 0 != bufLen {
+			pktBuf.Write(buf[:bufLen])
+			for {
+				if pktBuf.Len() <= 0 {
+					break
+				}
+				pkg, pkgLen, err = s.reader.Read(s, pktBuf.Bytes())
+				// for case 3/case 4
+				if err == nil && s.maxMsgLen > 0 && pkgLen > int(s.maxMsgLen) {
+					err = perrors.Errorf("pkgLen %d > session max message len %d", pkgLen, s.maxMsgLen)
+				}
+				// handle case 1
+				if err != nil {
+					log.Warnf("%s, [session.handleTCPPackage] = len{%d}, error:%+v",
+						s.sessionToken(), pkgLen, perrors.WithStack(err))
+					exit = true
+					break
+				}
+				// handle case 2/case 3
+				if pkg == nil {
+					break
+				}
+				// handle case 4
+				s.UpdateActive()
+				s.addTask(pkg)
+				pktBuf.Next(pkgLen)
+				// continue to handle case 5
 			}
-			pkg, pkgLen, err = s.reader.Read(s, pktBuf.Bytes())
-			// for case 3/case 4
-			if err == nil && s.maxMsgLen > 0 && pkgLen > int(s.maxMsgLen) {
-				err = perrors.Errorf("pkgLen %d > session max message len %d", pkgLen, s.maxMsgLen)
-			}
-			// handle case 1
-			if err != nil {
-				log.Warnf("%s, [session.handleTCPPackage] = len{%d}, error:%+v",
-					s.sessionToken(), pkgLen, perrors.WithStack(err))
-				exit = true
-				break
-			}
-			// handle case 2/case 3
-			if pkg == nil {
-				break
-			}
-			// handle case 4
-			s.UpdateActive()
-			s.addTask(pkg)
-			pktBuf.Next(pkgLen)
-			// continue to handle case 5
 		}
 		if exit {
 			break
