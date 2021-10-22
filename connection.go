@@ -29,11 +29,8 @@ import (
 
 import (
 	"github.com/golang/snappy"
-
 	"github.com/gorilla/websocket"
-
 	perrors "github.com/pkg/errors"
-
 	uatomic "go.uber.org/atomic"
 )
 
