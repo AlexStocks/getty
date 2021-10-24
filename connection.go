@@ -74,17 +74,17 @@ type gettyConn struct {
 	compress      CompressType
 	padding1      uint8
 	padding2      uint16
-	readBytes     uatomic.Uint32 // read bytes
-	writeBytes    uatomic.Uint32 // write bytes
-	readPkgNum    uatomic.Uint32 // send pkg number
-	writePkgNum   uatomic.Uint32 // recv pkg number
-	active        uatomic.Int64  // last active, in milliseconds
+	readBytes     uatomic.Uint32   // read bytes
+	writeBytes    uatomic.Uint32   // write bytes
+	readPkgNum    uatomic.Uint32   // send pkg number
+	writePkgNum   uatomic.Uint32   // recv pkg number
+	active        uatomic.Int64    // last active, in milliseconds
 	rTimeout      uatomic.Duration // network current limiting
 	wTimeout      uatomic.Duration
 	rLastDeadline uatomic.Time // last network read time
 	wLastDeadline uatomic.Time // last network write time
-	local         string    // local address
-	peer          string    // peer address
+	local         string       // local address
+	peer          string       // peer address
 	ss            Session
 }
 
