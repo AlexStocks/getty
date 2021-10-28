@@ -597,17 +597,12 @@ func (s *session) handleTCPPackage() error {
 		exit     bool
 		bufLen   int
 		pkgLen   int
-		bufp     *[]byte
 		buf      []byte
-		pktBuf   *bytes.Buffer
+		pktBuf   *gxbytes.Buffer
 		pkg      interface{}
 	)
 
-	// buf = make([]byte, maxReadBufLen)
-	bufp = gxbytes.GetBytes(maxReadBufLen)
-	buf = *bufp
-
-	pktBuf = new(bytes.Buffer)
+	pktBuf = gxbytes.NewBuffer(nil)
 
 	conn = s.Connection.(*gettyTCPConn)
 	for {
@@ -622,6 +617,7 @@ func (s *session) handleTCPPackage() error {
 		for {
 			// for clause for the network timeout condition check
 			// s.conn.SetReadTimeout(time.Now().Add(s.rTimeout))
+			buf = pktBuf.WriteNextBegin(maxReadBufLen)
 			bufLen, err = conn.recv(buf)
 			if err != nil {
 				if netError, ok = perrors.Cause(err).(net.Error); ok && netError.Timeout() {
@@ -646,7 +642,7 @@ func (s *session) handleTCPPackage() error {
 			break
 		}
 		if 0 != bufLen {
-			pktBuf.Write(buf[:bufLen])
+			pktBuf.WriteNextEnd(bufLen)
 			for {
 				if pktBuf.Len() <= 0 {
 					break
