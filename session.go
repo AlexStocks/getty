@@ -130,6 +130,7 @@ type session struct {
 	// goroutines sync
 	grNum uatomic.Int32
 	lock  sync.RWMutex
+	wlock sync.Mutex
 }
 
 func newSession(endPoint EndPoint, conn Connection) *session {
@@ -419,20 +420,20 @@ func (s *session) WriteBytes(pkg []byte) (int, error) {
 		return 0, ErrSessionClosed
 	}
 
-	totalSize := len(pkg)
-	writeSize := 0
+	s.wlock.Lock()
+	defer s.wlock.Unlock()
+	totalSize, writeSize := len(pkg), 0
 	for totalSize >= maxPacketLen {
-		lg, err := s.Connection.send(pkg[writeSize:(writeSize + maxPacketLen)])
+		_, err := s.Connection.send(pkg[writeSize:(writeSize + maxPacketLen)])
 		if err != nil {
 			return writeSize, perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
 		}
-		totalSize -= lg
-		writeSize += lg
+		totalSize -= maxPacketLen
+		writeSize += maxPacketLen
 	}
-
 	lg, err := s.Connection.send(pkg[writeSize:])
 	if err != nil {
-		return writeSize + lg, perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
+		return writeSize, perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
 	}
 
 	return writeSize + lg, nil
