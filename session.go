@@ -47,7 +47,7 @@ const (
 	pendingDuration = 3e9
 	// MaxWheelTimeSpan 900s, 15 minute
 	MaxWheelTimeSpan = 900e9
-	maxPacketLen = 16*1024
+	maxPacketLen     = 16 * 1024
 
 	defaultSessionName    = "session"
 	defaultTCPSessionName = "tcp-session"
@@ -422,7 +422,7 @@ func (s *session) WriteBytes(pkg []byte) (int, error) {
 	totalSize := len(pkg)
 	writeSize := 0
 	for totalSize >= maxPacketLen {
-		lg, err := s.Connection.send(pkg[writeSize:(writeSize+maxPacketLen)])
+		lg, err := s.Connection.send(pkg[writeSize:(writeSize + maxPacketLen)])
 		if err != nil {
 			return writeSize, perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
 		}
@@ -432,10 +432,10 @@ func (s *session) WriteBytes(pkg []byte) (int, error) {
 
 	lg, err := s.Connection.send(pkg[writeSize:])
 	if err != nil {
-		return writeSize+lg, perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
+		return writeSize + lg, perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
 	}
 
-	return writeSize+lg, nil
+	return writeSize + lg, nil
 }
 
 // WriteBytesArray Write multiple packages at once. so we invoke write sys.call just one time.
