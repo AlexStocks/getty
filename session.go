@@ -402,6 +402,8 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) (int, int, er
 	} else {
 		pkg = pkgBytes
 	}
+	s.wlock.Lock()
+	defer s.wlock.Unlock()
 	if 0 < timeout {
 		s.Connection.SetWriteTimeout(timeout)
 	}
@@ -450,6 +452,8 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) (int, error) {
 
 	// reduce syscall and memcopy for multiple packages
 	if _, ok := s.Connection.(*gettyTCPConn); ok {
+		s.wlock.Lock()
+		defer s.wlock.Unlock()
 		lg, err := s.Connection.send(pkgs)
 		if err != nil {
 			return 0, perrors.Wrapf(err, "s.Connection.Write(pkgs num:%d)", len(pkgs))
