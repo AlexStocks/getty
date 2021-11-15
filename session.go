@@ -422,9 +422,13 @@ func (s *session) WriteBytes(pkg []byte) (int, error) {
 		return 0, ErrSessionClosed
 	}
 
+	totalSize := len(pkg)
+	if totalSize == 0 {
+		return 0, nil
+	}
+	writeSize := 0
 	s.wlock.Lock()
 	defer s.wlock.Unlock()
-	totalSize, writeSize := len(pkg), 0
 	for totalSize >= maxPacketLen {
 		_, err := s.Connection.send(pkg[writeSize:(writeSize + maxPacketLen)])
 		if err != nil {
