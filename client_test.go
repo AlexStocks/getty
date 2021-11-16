@@ -167,7 +167,7 @@ func TestTCPClient(t *testing.T) {
 	assert.Equal(t, beforeWriteBytes, conn.writeBytes)
 	assert.True(t, conn.compress == CompressSnappy)
 
-	batchSize := 30000000
+	batchSize := 128 * 1023
 	source := make([]byte, batchSize)
 	for i := 0; i < batchSize; i++ {
 		source[i] = 't'
@@ -177,6 +177,19 @@ func TestTCPClient(t *testing.T) {
 	assert.True(t, l == batchSize)
 	beforeWriteBytes.Add(uint32(batchSize))
 	beforeWritePkgNum.Add(uint32(batchSize/16/1024) + 1)
+	assert.Equal(t, beforeWriteBytes, conn.writeBytes)
+	assert.Equal(t, beforeWritePkgNum, conn.writePkgNum)
+
+	batchSize = 32 * 1024
+	source = make([]byte, batchSize)
+	for i := 0; i < batchSize; i++ {
+		source[i] = 't'
+	}
+	l, err = ss.WriteBytes(source)
+	assert.Nil(t, err)
+	assert.True(t, l == batchSize)
+	beforeWriteBytes.Add(uint32(batchSize))
+	beforeWritePkgNum.Add(2)
 	assert.Equal(t, beforeWriteBytes, conn.writeBytes)
 	assert.Equal(t, beforeWritePkgNum, conn.writePkgNum)
 

@@ -130,7 +130,7 @@ type session struct {
 	// goroutines sync
 	grNum uatomic.Int32
 	lock  sync.RWMutex
-	wlock sync.Mutex
+	packetLock sync.RWMutex
 }
 
 func newSession(endPoint EndPoint, conn Connection) *session {
@@ -402,8 +402,8 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) (int, int, er
 	} else {
 		pkg = pkgBytes
 	}
-	s.wlock.Lock()
-	defer s.wlock.Unlock()
+	s.packetLock.RLock()
+	defer s.packetLock.RUnlock()
 	if 0 < timeout {
 		s.Connection.SetWriteTimeout(timeout)
 	}
@@ -423,8 +423,14 @@ func (s *session) WriteBytes(pkg []byte) (int, error) {
 	}
 
 	leftPackageSize, totalSize, writeSize := len(pkg), len(pkg), 0
-	s.wlock.Lock()
-	defer s.wlock.Unlock()
+	if leftPackageSize >= maxPacketLen {
+		s.packetLock.Lock()
+		defer s.packetLock.Unlock()
+	} else {
+		s.packetLock.RLock()
+		defer s.packetLock.RUnlock()
+	}
+
 	for leftPackageSize >= maxPacketLen {
 		_, err := s.Connection.send(pkg[writeSize:(writeSize + maxPacketLen)])
 		if err != nil {
@@ -457,8 +463,8 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) (int, error) {
 
 	// reduce syscall and memcopy for multiple packages
 	if _, ok := s.Connection.(*gettyTCPConn); ok {
-		s.wlock.Lock()
-		defer s.wlock.Unlock()
+		s.packetLock.RLock()
+		defer s.packetLock.RUnlock()
 		lg, err := s.Connection.send(pkgs)
 		if err != nil {
 			return 0, perrors.Wrapf(err, "s.Connection.Write(pkgs num:%d)", len(pkgs))
