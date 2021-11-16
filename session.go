@@ -128,8 +128,8 @@ type session struct {
 	attrs *gxcontext.ValuesContext
 
 	// goroutines sync
-	grNum uatomic.Int32
-	lock  sync.RWMutex
+	grNum      uatomic.Int32
+	lock       sync.RWMutex
 	packetLock sync.RWMutex
 }
 
