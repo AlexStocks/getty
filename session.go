@@ -422,28 +422,28 @@ func (s *session) WriteBytes(pkg []byte) (int, error) {
 		return 0, ErrSessionClosed
 	}
 
-	totalSize, writeSize := len(pkg), 0
+	leftPackageSize, totalSize, writeSize := len(pkg), len(pkg), 0
 	s.wlock.Lock()
 	defer s.wlock.Unlock()
-	for totalSize >= maxPacketLen {
+	for leftPackageSize >= maxPacketLen {
 		_, err := s.Connection.send(pkg[writeSize:(writeSize + maxPacketLen)])
 		if err != nil {
 			return writeSize, perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
 		}
-		totalSize -= maxPacketLen
+		leftPackageSize -= maxPacketLen
 		writeSize += maxPacketLen
 	}
 
-	if totalSize == 0 {
+	if leftPackageSize == 0 {
 		return writeSize, nil
 	}
 
-	lg, err := s.Connection.send(pkg[writeSize:])
+	_, err := s.Connection.send(pkg[writeSize:])
 	if err != nil {
 		return writeSize, perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
 	}
 
-	return writeSize + lg, nil
+	return totalSize, nil
 }
 
 // WriteBytesArray Write multiple packages at once. so we invoke write sys.call just one time.
