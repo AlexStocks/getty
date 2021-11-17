@@ -47,6 +47,7 @@ const (
 	pendingDuration = 3e9
 	// MaxWheelTimeSpan 900s, 15 minute
 	MaxWheelTimeSpan = 900e9
+	maxPacketLen     = 16 * 1024
 
 	defaultSessionName    = "session"
 	defaultTCPSessionName = "tcp-session"
@@ -127,8 +128,9 @@ type session struct {
 	attrs *gxcontext.ValuesContext
 
 	// goroutines sync
-	grNum uatomic.Int32
-	lock  sync.RWMutex
+	grNum      uatomic.Int32
+	lock       sync.RWMutex
+	packetLock sync.RWMutex
 }
 
 func newSession(endPoint EndPoint, conn Connection) *session {
@@ -400,6 +402,8 @@ func (s *session) WritePkg(pkg interface{}, timeout time.Duration) (int, int, er
 	} else {
 		pkg = pkgBytes
 	}
+	s.packetLock.RLock()
+	defer s.packetLock.RUnlock()
 	if 0 < timeout {
 		s.Connection.SetWriteTimeout(timeout)
 	}
@@ -418,11 +422,34 @@ func (s *session) WriteBytes(pkg []byte) (int, error) {
 		return 0, ErrSessionClosed
 	}
 
-	lg, err := s.Connection.send(pkg)
-	if err != nil {
-		return 0, perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
+	leftPackageSize, totalSize, writeSize := len(pkg), len(pkg), 0
+	if leftPackageSize > maxPacketLen {
+		s.packetLock.Lock()
+		defer s.packetLock.Unlock()
+	} else {
+		s.packetLock.RLock()
+		defer s.packetLock.RUnlock()
 	}
-	return lg, nil
+
+	for leftPackageSize > maxPacketLen {
+		_, err := s.Connection.send(pkg[writeSize:(writeSize + maxPacketLen)])
+		if err != nil {
+			return writeSize, perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
+		}
+		leftPackageSize -= maxPacketLen
+		writeSize += maxPacketLen
+	}
+
+	if leftPackageSize == 0 {
+		return writeSize, nil
+	}
+
+	_, err := s.Connection.send(pkg[writeSize:])
+	if err != nil {
+		return writeSize, perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
+	}
+
+	return totalSize, nil
 }
 
 // WriteBytesArray Write multiple packages at once. so we invoke write sys.call just one time.
@@ -436,6 +463,8 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) (int, error) {
 
 	// reduce syscall and memcopy for multiple packages
 	if _, ok := s.Connection.(*gettyTCPConn); ok {
+		s.packetLock.RLock()
+		defer s.packetLock.RUnlock()
 		lg, err := s.Connection.send(pkgs)
 		if err != nil {
 			return 0, perrors.Wrapf(err, "s.Connection.Write(pkgs num:%d)", len(pkgs))
