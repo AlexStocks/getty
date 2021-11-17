@@ -423,7 +423,7 @@ func (s *session) WriteBytes(pkg []byte) (int, error) {
 	}
 
 	leftPackageSize, totalSize, writeSize := len(pkg), len(pkg), 0
-	if leftPackageSize >= maxPacketLen {
+	if leftPackageSize > maxPacketLen {
 		s.packetLock.Lock()
 		defer s.packetLock.Unlock()
 	} else {
@@ -431,7 +431,7 @@ func (s *session) WriteBytes(pkg []byte) (int, error) {
 		defer s.packetLock.RUnlock()
 	}
 
-	for leftPackageSize >= maxPacketLen {
+	for leftPackageSize > maxPacketLen {
 		_, err := s.Connection.send(pkg[writeSize:(writeSize + maxPacketLen)])
 		if err != nil {
 			return writeSize, perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
