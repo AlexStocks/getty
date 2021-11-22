@@ -7,7 +7,7 @@ Host                    = "127.0.0.1"
 # Host                    = "192.168.35.1"
 # Host                    = "192.168.8.3"
 # Ports                   = ["10000", "20000"]
-Ports                   = "10000"
+Ports                   = ["10000"]
 ProfilePort             = 10086
 
 # session

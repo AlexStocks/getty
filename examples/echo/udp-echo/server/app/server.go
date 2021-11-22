@@ -60,9 +60,9 @@ func main() {
 	initProfiling()
 
 	initServer()
-	gxlog.CInfo("%s starts successfull! its version=%s, its listen ends=%s:%s\n",
+	gxlog.CInfo("%s starts successfull! its listen ends=%s:%s\n",
 		conf.AppName, conf.Host, conf.Ports)
-	log.Info("%s starts successfull! its version=%s, its listen ends=%s:%s\n",
+	log.Info("%s starts successfull! its listen ends=%s:%s\n",
 		conf.AppName, conf.Host, conf.Ports)
 
 	initSignal()

@@ -7,8 +7,8 @@ AppName                 = "ECHO-SERVER"
 # Host                    = "127.0.0.1"
 # Host                    = "192.168.35.1"
 Host                    = "localhost"
-Ports                   = "10000"
-Paths                   = "/echo"
+Ports                   = ["10000", "20000"]
+Paths                   = ["/echo", "/echo"]
 ProfilePort             = 10086
 
 # session
