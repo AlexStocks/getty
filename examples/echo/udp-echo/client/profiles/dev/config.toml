@@ -1,0 +1,44 @@
+# toml configure file
+# toml中key的首字母可以小写，但是对应的golang中的struct成员首字母必须大写
+
+AppName                 = "ECHO-CLIENT"
+
+# host
+LocalHost               = "127.0.0.1"
+
+# server
+# ServerHost              = "192.168.8.3"
+ServerHost              = "127.0.0.1"
+ServerPort              = 10000
+ProfilePort             = 10080
+
+# connection pool
+# 连接池连接数目
+ConnectionNum           = 2
+
+# session
+# client与server之间连接的心跳周期
+HeartbeatPeriod         = "10s"
+# client与server之间连接的超时时间
+SessionTimeout          = "20s"
+
+# client
+# client echo request string
+EchoString              = "Hello, getty!"
+# 发送echo请求次数
+EchoTimes               = 100000
+
+# app fail fast
+FailFastTimeout         = "3s"
+
+# tcp
+[GettySessionParam]
+    CompressEncoding    = true
+    UdpRBufSize         = 262144
+    UdpWBufSize         = 65536
+    PkgWQSize           = 256
+    UdpReadTimeout      = "10s"
+    UdpWriteTimeout     = "5s"
+    WaitTimeout         = "1s"
+    MaxMsgLen           = 128
+    SessionName         = "echo-client"
