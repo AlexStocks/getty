@@ -25,7 +25,7 @@ import (
 )
 
 import (
-	log "github.com/AlexStocks/log4go"
+	log "go.uber.org/zap"
 	getty "github.com/apache/dubbo-getty"
 )
 
