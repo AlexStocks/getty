@@ -24,7 +24,6 @@ import (
 	"time"
 
 	log "github.com/AlexStocks/log4go"
-
 	getty "github.com/apache/dubbo-getty"
 )
 

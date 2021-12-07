@@ -16,7 +16,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.7.0
 	go.uber.org/atomic v1.9.0
-	go.uber.org/zap v1.16.0
+	go.uber.org/zap v1.19.1
 	golang.org/x/sys v0.0.0-20211117180635-dee7805ff2e1 // indirect
 	gopkg.in/yaml.v2 v2.4.0
 )
