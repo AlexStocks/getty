@@ -22,10 +22,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-)
 
-import (
-	log "go.uber.org/zap"
+	log "github.com/AlexStocks/log4go"
+
 	getty "github.com/apache/dubbo-getty"
 )
 
