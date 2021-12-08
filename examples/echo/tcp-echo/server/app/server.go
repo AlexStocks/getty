@@ -32,9 +32,7 @@ import (
 )
 
 import (
-	gxlog "github.com/AlexStocks/goext/log"
 	gxnet "github.com/AlexStocks/goext/net"
-	log "github.com/AlexStocks/log4go"
 	getty "github.com/apache/dubbo-getty"
 	"github.com/dubbogo/gost/sync"
 )
@@ -51,6 +49,7 @@ var (
 var (
 	serverList []getty.Server
 	taskPool   gxsync.GenericTaskPool
+	log        = getty.GetLogger()
 )
 
 func main() {
@@ -65,9 +64,7 @@ func main() {
 
 	taskPool = gxsync.NewTaskPoolSimple(0)
 	initServer()
-	gxlog.CInfo("%s starts successfull! its listen ends=%s:%s\n",
-		conf.AppName, conf.Host, conf.Ports)
-	log.Info("%s starts successfull! its listen ends=%s:%s\n",
+	log.Infof("%s starts successfull! its listen ends=%s:%s",
 		conf.AppName, conf.Host, conf.Ports)
 
 	initSignal()
@@ -78,7 +75,7 @@ func initProfiling() {
 
 	// addr = *host + ":" + "10000"
 	addr = gxnet.HostAddress(conf.Host, conf.ProfilePort)
-	log.Info("App Profiling startup on address{%v}", addr+pprofPath)
+	log.Infof("App Profiling startup on address{%v}", addr+pprofPath)
 	go func() {
 		log.Info(http.ListenAndServe(addr, nil))
 	}()
@@ -115,7 +112,7 @@ func newSession(session getty.Session) error {
 	session.SetCronPeriod((int)(conf.sessionTimeout.Nanoseconds() / 1e6))
 	session.SetWaitTime(conf.GettySessionParam.waitTimeout)
 	// session.SetTaskPool(taskPool)
-	log.Debug("app accepts new session:%s\n", session.Stat())
+	log.Debugf("app accepts new session:%s", session.Stat())
 
 	return nil
 }
@@ -147,7 +144,7 @@ func initServer() {
 		server = getty.NewTCPServer(serverOpts...)
 		// run server
 		server.RunEventLoop(newSession)
-		log.Debug("server bind addr{%s} ok!", addr)
+		log.Debugf("server bind addr{%s} ok!", addr)
 		serverList = append(serverList, server)
 	}
 }
@@ -168,7 +165,7 @@ func initSignal() {
 	signal.Notify(signals, os.Interrupt, os.Kill, syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGINT)
 	for {
 		sig := <-signals
-		log.Info("get signal %s", sig.String())
+		log.Infof("get signal %s", sig.String())
 		switch sig {
 		case syscall.SIGHUP:
 		// reload()
@@ -176,15 +173,13 @@ func initSignal() {
 			go time.AfterFunc(conf.failFastTimeout, func() {
 				// log.Warn("app exit now by force...")
 				// os.Exit(1)
-				log.Exit("app exit now by force...")
-				log.Close()
+				log.Info("app exit now by force...")
 			})
 
 			// 要么fastFailTimeout时间内执行完毕下面的逻辑然后程序退出，要么执行上面的超时函数程序强行退出
 			uninitServer()
 			// fmt.Println("app exit now...")
-			log.Exit("app exit now...")
-			log.Close()
+			log.Info("app exit now...")
 			return
 		}
 	}

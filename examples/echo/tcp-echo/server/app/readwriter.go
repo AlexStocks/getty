@@ -24,7 +24,6 @@ import (
 )
 
 import (
-	log "github.com/AlexStocks/log4go"
 	getty "github.com/apache/dubbo-getty"
 )
 
@@ -68,17 +67,17 @@ func (h *EchoPackageHandler) Write(ss getty.Session, pkg interface{}) ([]byte, e
 
 	startTime = time.Now()
 	if echoPkg, ok = pkg.(*EchoPackage); !ok {
-		log.Error("illegal pkg:%+v\n", pkg)
+		log.Errorf("illegal pkg:%+v", pkg)
 		return nil, errors.New("invalid echo package!")
 	}
 
 	buf, err = echoPkg.Marshal()
 	if err != nil {
-		log.Warn("binary.Write(echoPkg{%#v}) = err{%#v}", echoPkg, err)
+		log.Warnf("binary.Write(echoPkg{%#v}) = err{%#v}", echoPkg, err)
 		return nil, err
 	}
 
-	log.Debug("WriteEchoPkgTimeMs = %s", time.Since(startTime).String())
+	log.Debugf("WriteEchoPkgTimeMs = %s", time.Since(startTime).String())
 
 	return buf.Bytes(), nil
 }
