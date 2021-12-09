@@ -24,8 +24,8 @@ import (
 )
 
 import (
-	log "github.com/AlexStocks/log4go"
 	getty "github.com/apache/dubbo-getty"
+	log "github.com/apache/dubbo-go/common/logger"
 )
 
 const (

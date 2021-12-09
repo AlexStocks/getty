@@ -25,7 +25,7 @@ import (
 )
 
 import (
-	log "github.com/AlexStocks/log4go"
+	log "github.com/apache/dubbo-go/common/logger"
 	config "github.com/koding/multiconfig"
 )
 

@@ -25,8 +25,7 @@ import (
 )
 
 import (
-	// "github.com/AlexStocks/goext/log"
-	log "github.com/AlexStocks/log4go"
+	log "github.com/apache/dubbo-go/common/logger"
 	config "github.com/koding/multiconfig"
 )
 

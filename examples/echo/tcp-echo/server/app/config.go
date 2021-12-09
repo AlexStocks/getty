@@ -26,7 +26,7 @@ import (
 )
 
 import (
-	log "github.com/AlexStocks/log4go"
+	log "github.com/apache/dubbo-go/common/logger"
 	yaml "gopkg.in/yaml.v2"
 )
 

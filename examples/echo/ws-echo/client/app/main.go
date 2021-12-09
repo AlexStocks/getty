@@ -37,8 +37,8 @@ import (
 	gxlog "github.com/AlexStocks/goext/log"
 	gxnet "github.com/AlexStocks/goext/net"
 	gxtime "github.com/AlexStocks/goext/time"
-	log "github.com/AlexStocks/log4go"
-	getty "github.com/apache/dubbo-getty"
+	getty "github.com/apache/dubbo-go/common/logger"
+	log "github.com/apache/dubbo-go/common/logger"
 )
 
 const (
