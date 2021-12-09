@@ -18,13 +18,11 @@
 package main
 
 import (
+	getty "github.com/apache/dubbo-getty"
 	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	log "github.com/AlexStocks/log4go"
-	getty "github.com/apache/dubbo-getty"
 )
 
 var (
@@ -34,6 +32,7 @@ var (
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
+	defer log.Sync()
 }
 
 ////////////////////////////////////////////////////////////////////
