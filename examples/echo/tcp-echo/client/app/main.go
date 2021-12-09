@@ -36,8 +36,8 @@ import (
 	gxlog "github.com/AlexStocks/goext/log"
 	gxnet "github.com/AlexStocks/goext/net"
 	gxtime "github.com/AlexStocks/goext/time"
-	log "github.com/AlexStocks/log4go"
 	getty "github.com/apache/dubbo-getty"
+	log "github.com/apache/dubbo-go/common/logger"
 	"github.com/dubbogo/gost/sync"
 )
 
@@ -52,6 +52,7 @@ const (
 var (
 	client   EchoClient
 	taskPool gxsync.GenericTaskPool
+	log      *zap.Logger
 )
 
 ////////////////////////////////////////////////////////////////////
@@ -59,6 +60,7 @@ var (
 ////////////////////////////////////////////////////////////////////
 
 func main() {
+	log, _ = zap.NewProduction()
 	initConf()
 
 	initProfiling()
