@@ -25,13 +25,13 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/getty/transport"
-	log "github.com/AlexStocks/log4go"
+	getty "github.com/apache/dubbo-getty"
 )
 
 var (
 	reqID uint32
 	src   = rand.NewSource(time.Now().UnixNano())
+	log   = getty.GetLogger()
 )
 
 func init() {
@@ -63,7 +63,7 @@ func (c *EchoClient) close() {
 		c.gettyClient.Close()
 		c.gettyClient = nil
 		for _, s := range c.sessions {
-			log.Info("close client session{%s, last active:%s, request number:%d}",
+			log.Infof("close client session{%s, last active:%s, request number:%d}",
 				s.session.Stat(), s.session.GetActive().String(), s.reqNum)
 			s.session.Close()
 		}
@@ -85,7 +85,7 @@ func (c *EchoClient) selectSession() getty.Session {
 }
 
 func (c *EchoClient) addSession(session getty.Session) {
-	log.Debug("add session{%s}", session.Stat())
+	log.Debugf("add session{%s}", session.Stat())
 	if session == nil {
 		return
 	}
@@ -105,11 +105,11 @@ func (c *EchoClient) removeSession(session getty.Session) {
 	for i, s := range c.sessions {
 		if s.session == session {
 			c.sessions = append(c.sessions[:i], c.sessions[i+1:]...)
-			log.Debug("delete session{%s}, its index{%d}", session.Stat(), i)
+			log.Debugf("delete session{%s}, its index{%d}", session.Stat(), i)
 			break
 		}
 	}
-	log.Info("after remove session{%s}, left session number:%d", session.Stat(), len(c.sessions))
+	log.Infof("after remove session{%s}, left session number:%d", session.Stat(), len(c.sessions))
 
 	c.lock.Unlock()
 }
@@ -163,8 +163,8 @@ func (c *EchoClient) heartbeat(session getty.Session) {
 	pkg.B = echoHeartbeatRequestString
 	pkg.H.Len = (uint16)(len(pkg.B) + 1)
 
-	if err := session.WritePkg(&pkg, WritePkgTimeout); err != nil {
-		log.Warn("session.WritePkg(session{%s}, pkg{%s}) = error{%v}", session.Stat(), pkg, err)
+	if _, _, err := session.WritePkg(&pkg, WritePkgTimeout); err != nil {
+		log.Warnf("session.WritePkg(session{%s}, pkg{%s}) = error{%v}", session.Stat(), pkg, err)
 		session.Close()
 
 		c.removeSession(session)

@@ -25,13 +25,10 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/getty/transport"
-	log "github.com/AlexStocks/log4go"
+	getty "github.com/apache/dubbo-getty"
 )
 
-var (
-	echoPkgHandler = NewEchoPackageHandler()
-)
+var echoPkgHandler = NewEchoPackageHandler()
 
 type EchoPackageHandler struct{}
 
@@ -72,23 +69,23 @@ func (h *EchoPackageHandler) Write(ss getty.Session, udpCtx interface{}) ([]byte
 
 	ctx, ok = udpCtx.(getty.UDPContext)
 	if !ok {
-		log.Error("illegal UDPContext{%#v}", udpCtx)
+		log.Errorf("illegal UDPContext{%#v}", udpCtx)
 		return nil, fmt.Errorf("illegal @udpCtx{%#v}", udpCtx)
 	}
 
 	startTime = time.Now()
 	if echoPkg, ok = ctx.Pkg.(*EchoPackage); !ok {
-		log.Error("illegal pkg:%+v, its type:%T\n", ctx.Pkg, ctx.Pkg)
+		log.Errorf("illegal pkg:%+v, its type:%T\n", ctx.Pkg, ctx.Pkg)
 		return nil, errors.New("invalid echo package!")
 	}
 
 	buf, err = echoPkg.Marshal()
 	if err != nil {
-		log.Warn("binary.Write(echoPkg{%#v}) = err{%#v}", echoPkg, err)
+		log.Warnf("binary.Write(echoPkg{%#v}) = err{%#v}", echoPkg, err)
 		return nil, err
 	}
 
-	log.Debug("WriteEchoPkgTimeMs = %s", time.Since(startTime).String())
+	log.Debugf("WriteEchoPkgTimeMs = %s", time.Since(startTime).String())
 
 	return buf.Bytes(), nil
 }

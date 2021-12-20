@@ -33,15 +33,10 @@ import (
 )
 
 import (
-	gxlog "github.com/AlexStocks/goext/log"
 	gxnet "github.com/AlexStocks/goext/net"
 	gxtime "github.com/AlexStocks/goext/time"
-	log "github.com/AlexStocks/log4go"
+	getty "github.com/apache/dubbo-getty"
 	"github.com/dubbogo/gost/sync"
-)
-
-import (
-	"github.com/AlexStocks/getty/transport"
 )
 
 const (
@@ -68,8 +63,7 @@ func main() {
 
 	taskPool = gxsync.NewTaskPoolSimple(0)
 	initClient()
-	gxlog.CInfo("%s starts successfull! its version=%s\n", conf.AppName, getty.Version)
-	log.Info("%s starts successfull! its version=%s\n", conf.AppName, getty.Version)
+	log.Infof("%s starts successfull!", conf.AppName)
 
 	go test()
 
@@ -77,12 +71,10 @@ func main() {
 }
 
 func initProfiling() {
-	var (
-		addr string
-	)
+	var addr string
 
 	addr = gxnet.HostAddress(conf.LocalHost, conf.ProfilePort)
-	log.Info("App Profiling startup on address{%v}", addr+pprofPath)
+	log.Infof("App Profiling startup on address{%v}", addr+pprofPath)
 	go func() {
 		log.Info(http.ListenAndServe(addr, nil))
 	}()
@@ -114,12 +106,11 @@ func newSession(session getty.Session) error {
 	session.SetMaxMsgLen(conf.GettySessionParam.MaxMsgLen)
 	session.SetPkgHandler(echoPkgHandler)
 	session.SetEventListener(echoMsgHandler)
-	session.SetWQLen(conf.GettySessionParam.PkgWQSize)
 	session.SetReadTimeout(conf.GettySessionParam.tcpReadTimeout)
 	session.SetWriteTimeout(conf.GettySessionParam.tcpWriteTimeout)
 	session.SetCronPeriod((int)(conf.heartbeatPeriod.Nanoseconds() / 1e6))
 	session.SetWaitTime(conf.GettySessionParam.waitTimeout)
-	log.Debug("client new session:%s\n", session.Stat())
+	log.Debugf("client new session:%s", session.Stat())
 
 	return nil
 }
@@ -150,7 +141,7 @@ func initSignal() {
 	signal.Notify(signals, os.Interrupt, os.Kill, syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGINT)
 	for {
 		sig := <-signals
-		log.Info("get signal %s", sig.String())
+		log.Infof("get signal %s", sig.String())
 		switch sig {
 		case syscall.SIGHUP:
 		// reload()
@@ -158,15 +149,11 @@ func initSignal() {
 			go time.AfterFunc(conf.failFastTimeout, func() {
 				// log.Warn("app exit now by force...")
 				// os.Exit(1)
-				log.Exit("app exit now by force...")
-				log.Close()
 			})
 
 			// 要么fastFailTimeout时间内执行完毕下面的逻辑然后程序退出，要么执行上面的超时函数程序强行退出
 			uninitClient()
 			// fmt.Println("app exit now...")
-			log.Exit("app exit now...")
-			log.Close()
 			return
 		}
 	}
@@ -183,7 +170,7 @@ func echo() {
 	pkg.H.Len = (uint16)(len(pkg.B)) + 1
 
 	if session := client.selectSession(); session != nil {
-		err := session.WritePkg(&pkg, WritePkgTimeout)
+		_, _, err := session.WritePkg(&pkg, WritePkgTimeout)
 		if err != nil {
 			log.Warn("session.WritePkg(session{%s}, pkg{%s}) = error{%v}", session.Stat(), pkg, err)
 			session.Close()
@@ -209,6 +196,5 @@ func test() {
 		echo()
 	}
 	cost = counter.Count()
-	log.Info("after loop %d times, echo cost %d ms", conf.EchoTimes, cost/1e6)
-	gxlog.CInfo("after loop %d times, echo cost %d ms", conf.EchoTimes, cost/1e6)
+	log.Infof("after loop %d times, echo cost %d ms", conf.EchoTimes, cost/1e6)
 }

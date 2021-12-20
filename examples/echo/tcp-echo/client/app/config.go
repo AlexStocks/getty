@@ -26,7 +26,6 @@ import (
 )
 
 import (
-	log "github.com/AlexStocks/log4go"
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -35,9 +34,7 @@ const (
 	APP_LOG_CONF_FILE = "APP_LOG_CONF_FILE"
 )
 
-var (
-	conf *Config
-)
+var conf *Config
 
 type (
 	GettySessionParam struct {
@@ -158,7 +155,6 @@ func initConf() {
 		panic(fmt.Sprintf("time.ParseDuration(WaitTimeout{%#v}) = error{%v}", conf.GettySessionParam.WaitTimeout, err))
 		return
 	}
-	// gxlog.CInfo("config{%#v}\n", conf)
 
 	// log
 	confFile = os.Getenv(APP_LOG_CONF_FILE)
@@ -170,7 +166,6 @@ func initConf() {
 		panic(fmt.Sprintf("log configure file name{%v} suffix must be .xml", confFile))
 		return
 	}
-	log.LoadConfiguration(confFile)
 	log.Info("config{%#v}", conf)
 
 	return

@@ -25,10 +25,6 @@ import (
 	"unsafe"
 )
 
-import (
-	log "github.com/AlexStocks/log4go"
-)
-
 ////////////////////////////////////////////
 //  echo command
 ////////////////////////////////////////////
@@ -62,9 +58,7 @@ var (
 	ErrIllegalMagic    = errors.New("package magic is not right.")
 )
 
-var (
-	echoPkgHeaderLen int
-)
+var echoPkgHeaderLen int
 
 func init() {
 	echoPkgHeaderLen = (int)((uint)(unsafe.Sizeof(EchoPkgHeader{})))
@@ -128,7 +122,7 @@ func (p *EchoPackage) Unmarshal(buf *bytes.Buffer) (int, error) {
 		return 0, err
 	}
 	if p.H.Magic != echoPkgMagic {
-		log.Error("@p.H.Magic{%x}, right magic{%x}", p.H.Magic, echoPkgMagic)
+		log.Errorf("@p.H.Magic{%x}, right magic{%x}", p.H.Magic, echoPkgMagic)
 		return 0, ErrIllegalMagic
 	}
 	if buf.Len() < (int)(p.H.Len) {

@@ -23,8 +23,7 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/getty/transport"
-	log "github.com/AlexStocks/log4go"
+	getty "github.com/apache/dubbo-getty"
 )
 
 var (
@@ -54,34 +53,34 @@ func (h *EchoMessageHandler) OnOpen(session getty.Session) error {
 }
 
 func (h *EchoMessageHandler) OnError(session getty.Session, err error) {
-	log.Info("session{%s} got error{%v}, will be closed.", session.Stat(), err)
+	log.Infof("session{%s} got error{%v}, will be closed.", session.Stat(), err)
 	client.removeSession(session)
 }
 
 func (h *EchoMessageHandler) OnClose(session getty.Session) {
-	log.Info("session{%s} is closing......", session.Stat())
+	log.Infof("session{%s} is closing......", session.Stat())
 	client.removeSession(session)
 }
 
 func (h *EchoMessageHandler) OnMessage(session getty.Session, pkg interface{}) {
 	p, ok := pkg.(*EchoPackage)
 	if !ok {
-		log.Error("illegal packge{%#v}", pkg)
+		log.Errorf("illegal packge{%#v}", pkg)
 		return
 	}
 
-	log.Debug("get echo package{%s}", p)
+	log.Debugf("get echo package{%s}", p)
 	client.updateSession(session)
 }
 
 func (h *EchoMessageHandler) OnCron(session getty.Session) {
 	clientEchoSession, err := client.getClientEchoSession(session)
 	if err != nil {
-		log.Error("client.getClientSession(session{%s}) = error{%#v}", session.Stat(), err)
+		log.Errorf("client.getClientSession(session{%s}) = error{%#v}", session.Stat(), err)
 		return
 	}
 	if conf.sessionTimeout.Nanoseconds() < time.Since(session.GetActive()).Nanoseconds() {
-		log.Warn("session{%s} timeout{%s}, reqNum{%d}",
+		log.Warnf("session{%s} timeout{%s}, reqNum{%d}",
 			session.Stat(), time.Since(session.GetActive()).String(), clientEchoSession.reqNum)
 		client.removeSession(session)
 		return
