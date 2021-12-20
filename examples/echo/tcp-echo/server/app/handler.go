@@ -24,7 +24,6 @@ import (
 )
 
 import (
-	log "github.com/AlexStocks/log4go"
 	getty "github.com/apache/dubbo-getty"
 )
 
@@ -50,7 +49,7 @@ type PackageHandler interface {
 type HeartbeatHandler struct{}
 
 func (h *HeartbeatHandler) Handle(session getty.Session, pkg *EchoPackage) error {
-	log.Debug("get echo heartbeat package{%s}", pkg)
+	log.Debugf("get echo heartbeat package{%s}", pkg)
 
 	var rspPkg EchoPackage
 	rspPkg.H = pkg.H
@@ -67,11 +66,11 @@ func (h *HeartbeatHandler) Handle(session getty.Session, pkg *EchoPackage) error
 type MessageHandler struct{}
 
 func (h *MessageHandler) Handle(session getty.Session, pkg *EchoPackage) error {
-	log.Debug("get echo package{%s}", pkg)
+	log.Debugf("get echo package{%s}", pkg)
 	// write echo message handle logic here.
 	_, _, err := session.WritePkg(pkg, WritePkgTimeout)
 	if err != nil {
-		log.Warn("session.WritePkg(session{%s}, pkg{%s}) = error{%v}", session.Stat(), pkg, err)
+		log.Warnf("session.WritePkg(session{%s}, pkg{%s}) = error{%v}", session.Stat(), pkg, err)
 		session.Close()
 	}
 	return err
@@ -113,7 +112,7 @@ func (h *EchoMessageHandler) OnOpen(session getty.Session) error {
 		return err
 	}
 
-	log.Info("got session:%s", session.Stat())
+	log.Infof("got session:%s", session.Stat())
 	h.rwlock.Lock()
 	h.sessionMap[session] = &clientEchoSession{session: session}
 	h.rwlock.Unlock()
@@ -121,14 +120,14 @@ func (h *EchoMessageHandler) OnOpen(session getty.Session) error {
 }
 
 func (h *EchoMessageHandler) OnError(session getty.Session, err error) {
-	log.Info("session{%s} got error{%v}, will be closed.", session.Stat(), err)
+	log.Infof("session{%s} got error{%v}, will be closed.", session.Stat(), err)
 	h.rwlock.Lock()
 	delete(h.sessionMap, session)
 	h.rwlock.Unlock()
 }
 
 func (h *EchoMessageHandler) OnClose(session getty.Session) {
-	log.Info("session{%s} is closing......", session.Stat())
+	log.Infof("session{%s} is closing......", session.Stat())
 	h.rwlock.Lock()
 	delete(h.sessionMap, session)
 	h.rwlock.Unlock()
@@ -137,13 +136,13 @@ func (h *EchoMessageHandler) OnClose(session getty.Session) {
 func (h *EchoMessageHandler) OnMessage(session getty.Session, pkg interface{}) {
 	p, ok := pkg.(*EchoPackage)
 	if !ok {
-		log.Error("illegal packge{%#v}", pkg)
+		log.Errorf("illegal packge{%#v}", pkg)
 		return
 	}
 
 	handler, ok := h.handlers[p.H.Command]
 	if !ok {
-		log.Error("illegal command{%d}", p.H.Command)
+		log.Errorf("illegal command{%d}", p.H.Command)
 		return
 	}
 	err := handler.Handle(session, p)
@@ -166,7 +165,7 @@ func (h *EchoMessageHandler) OnCron(session getty.Session) {
 		active = session.GetActive()
 		if conf.sessionTimeout.Nanoseconds() < time.Since(active).Nanoseconds() {
 			flag = true
-			log.Warn("session{%s} timeout{%s}, reqNum{%d}",
+			log.Warnf("session{%s} timeout{%s}, reqNum{%d}",
 				session.Stat(), time.Since(active).String(), h.sessionMap[session].reqNum)
 		}
 	}

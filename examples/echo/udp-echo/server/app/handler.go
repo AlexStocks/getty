@@ -25,7 +25,6 @@ import (
 )
 
 import (
-	log "github.com/AlexStocks/log4go"
 	getty "github.com/apache/dubbo-getty"
 )
 
@@ -58,7 +57,7 @@ func (h *HeartbeatHandler) Handle(session getty.Session, ctx getty.UDPContext) e
 		rspPkg EchoPackage
 	)
 
-	log.Debug("get echo heartbeat udp context{%#v}", ctx)
+	log.Debugf("get echo heartbeat udp context{%#v}", ctx)
 	if pkg, ok = ctx.Pkg.(*EchoPackage); !ok {
 		return fmt.Errorf("illegal @ctx.Pkg:%#v", ctx.Pkg)
 	}
@@ -70,7 +69,7 @@ func (h *HeartbeatHandler) Handle(session getty.Session, ctx getty.UDPContext) e
 	// return session.WritePkg(getty.UDPContext{Pkg: &rspPkg, PeerAddr: ctx.PeerAddr}, WritePkgTimeout)
 	_, _, err := session.WritePkg(getty.UDPContext{Pkg: &rspPkg, PeerAddr: ctx.PeerAddr}, WritePkgASAP)
 	if err != nil {
-		log.Warn("session.WritePkg(session{%s}, pkg{%s}) = error{%v}", session.Stat(), pkg, err)
+		log.Warnf("session.WritePkg(session{%s}, pkg{%s}) = error{%v}", session.Stat(), pkg, err)
 		session.Close()
 	}
 	return err
@@ -83,7 +82,7 @@ func (h *HeartbeatHandler) Handle(session getty.Session, ctx getty.UDPContext) e
 type MessageHandler struct{}
 
 func (h *MessageHandler) Handle(session getty.Session, ctx getty.UDPContext) error {
-	log.Debug("get echo ctx{%#v}", ctx)
+	log.Debugf("get echo ctx{%#v}", ctx)
 	// write echo message handle logic here.
 	// return session.WritePkg(ctx, WritePkgTimeout)
 	_, _, err := session.WritePkg(ctx, WritePkgASAP)
@@ -126,7 +125,7 @@ func (h *EchoMessageHandler) OnOpen(session getty.Session) error {
 		return err
 	}
 
-	log.Info("got session:%s", session.Stat())
+	log.Infof("got session:%s", session.Stat())
 	h.rwlock.Lock()
 	h.sessionMap[session] = &clientEchoSession{session: session}
 	h.rwlock.Unlock()
@@ -134,14 +133,14 @@ func (h *EchoMessageHandler) OnOpen(session getty.Session) error {
 }
 
 func (h *EchoMessageHandler) OnError(session getty.Session, err error) {
-	log.Info("session{%s} got error{%v}, will be closed.", session.Stat(), err)
+	log.Infof("session{%s} got error{%v}, will be closed.", session.Stat(), err)
 	h.rwlock.Lock()
 	delete(h.sessionMap, session)
 	h.rwlock.Unlock()
 }
 
 func (h *EchoMessageHandler) OnClose(session getty.Session) {
-	log.Info("session{%s} is closing......", session.Stat())
+	log.Infof("session{%s} is closing......", session.Stat())
 	h.rwlock.Lock()
 	delete(h.sessionMap, session)
 	h.rwlock.Unlock()
@@ -156,13 +155,13 @@ func (h *EchoMessageHandler) OnMessage(session getty.Session, udpCtx interface{}
 
 	p, ok := ctx.Pkg.(*EchoPackage)
 	if !ok {
-		log.Error("illegal pkg{%#v}", ctx.Pkg)
+		log.Errorf("illegal pkg{%#v}", ctx.Pkg)
 		return
 	}
 
 	handler, ok := h.handlers[p.H.Command]
 	if !ok {
-		log.Error("illegal command{%d}", p.H.Command)
+		log.Errorf("illegal command{%d}", p.H.Command)
 		return
 	}
 	err := handler.Handle(session, ctx)
@@ -176,7 +175,6 @@ func (h *EchoMessageHandler) OnMessage(session getty.Session, udpCtx interface{}
 }
 
 func (h *EchoMessageHandler) OnCron(session getty.Session) {
-
 	// flag   bool
 	var active time.Time
 	h.rwlock.RLock()
@@ -184,7 +182,7 @@ func (h *EchoMessageHandler) OnCron(session getty.Session) {
 		active = session.GetActive()
 		if conf.sessionTimeout.Nanoseconds() < time.Since(active).Nanoseconds() {
 			// flag = true
-			log.Error("session{%s} timeout{%s}, reqNum{%d}",
+			log.Errorf("session{%s} timeout{%s}, reqNum{%d}",
 				session.Stat(), time.Since(active).String(), h.sessionMap[session].reqNum)
 		}
 	}

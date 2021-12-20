@@ -33,9 +33,7 @@ import (
 )
 
 import (
-	gxlog "github.com/AlexStocks/goext/log"
 	gxnet "github.com/AlexStocks/goext/net"
-	log "github.com/AlexStocks/log4go"
 	getty "github.com/apache/dubbo-getty"
 )
 
@@ -48,7 +46,10 @@ var (
 // ports = flag.String("ports", "12345,12346,12347", "local host port list that the server app will bind")
 )
 
-var serverList []getty.Server
+var (
+	serverList []getty.Server
+	log        = getty.GetLogger()
+)
 
 func main() {
 	// flag.Parse()
@@ -61,9 +62,7 @@ func main() {
 	initProfiling()
 
 	initServer()
-	gxlog.CInfo("%s starts successfull! its listen ends=%s:%s:%s\n",
-		conf.AppName, conf.Host, conf.Ports, conf.Paths)
-	log.Info("%s starts successfull! its listen ends=%s:%s:%s\n",
+	log.Infof("%s starts successfull! its listen ends=%s:%s:%s",
 		conf.AppName, conf.Host, conf.Ports, conf.Paths)
 
 	initSignal()
@@ -74,7 +73,7 @@ func initProfiling() {
 
 	// addr = *host + ":" + "10000"
 	addr = gxnet.HostAddress(conf.Host, conf.ProfilePort)
-	log.Info("App Profiling startup on address{%v}", addr+pprofPath)
+	log.Infof("App Profiling startup on address{%v}", addr+pprofPath)
 	go func() {
 		log.Info(http.ListenAndServe(addr, nil))
 	}()
@@ -114,7 +113,7 @@ func newSession(session getty.Session) error {
 	session.SetWriteTimeout(conf.GettySessionParam.tcpWriteTimeout)
 	session.SetCronPeriod((int)(conf.heartbeatPeriod.Nanoseconds() / 1e6))
 	session.SetWaitTime(conf.GettySessionParam.waitTimeout)
-	log.Debug("app accepts new session:%s\n", session.Stat())
+	log.Debugf("app accepts new session:%s", session.Stat())
 
 	return nil
 }
@@ -156,7 +155,7 @@ func initServer() {
 			getty.WithWebsocketServerPath(pathList[idx]),
 		)
 		server.RunEventLoop(newSession)
-		log.Debug("server bind addr{ws://%s/%s} ok!", addr, pathList[idx])
+		log.Debugf("server bind addr{ws://%s/%s} ok!", addr, pathList[idx])
 		serverList = append(serverList, server)
 	}
 }
@@ -174,7 +173,7 @@ func initSignal() {
 	signal.Notify(signals, os.Interrupt, os.Kill, syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGTERM, syscall.SIGINT)
 	for {
 		sig := <-signals
-		log.Info("get signal %s", sig.String())
+		log.Infof("get signal %s", sig.String())
 		switch sig {
 		case syscall.SIGHUP:
 		// reload()
@@ -182,15 +181,13 @@ func initSignal() {
 			go time.AfterFunc(conf.failFastTimeout, func() {
 				// log.Warn("app exit now by force...")
 				// os.Exit(1)
-				log.Exit("app exit now by force...")
-				log.Close()
+				log.Info("app exit now by force...")
 			})
 
 			// 要么fastFailTimeout时间内执行完毕下面的逻辑然后程序退出，要么执行上面的超时函数程序强行退出
 			uninitServer()
 			// fmt.Println("app exit now...")
-			log.Exit("app exit now...")
-			log.Close()
+			log.Info("app exit now...")
 			return
 		}
 	}
