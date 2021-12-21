@@ -23,9 +23,7 @@ import (
 	"os"
 	"path"
 	"time"
-)
 
-import (
 	yaml "gopkg.in/yaml.v2"
 )
 
