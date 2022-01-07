@@ -565,6 +565,11 @@ func (s *session) run() {
 
 func (s *session) addTask(pkg interface{}) {
 	f := func() {
+		s.lock.RLock()
+		defer s.lock.RUnlock()
+		if s.Connection == nil {
+			return
+		}
 		s.listener.OnMessage(s, pkg)
 		s.incReadPkgNum()
 	}
