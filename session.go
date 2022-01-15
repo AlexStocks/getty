@@ -73,7 +73,6 @@ type Session interface {
 	IsClosed() bool
 	// EndPoint get endpoint type
 	EndPoint() EndPoint
-
 	SetMaxMsgLen(int)
 	SetName(string)
 	SetEventListener(EventListener)
@@ -81,9 +80,7 @@ type Session interface {
 	SetReader(Reader)
 	SetWriter(Writer)
 	SetCronPeriod(int)
-
 	SetWaitTime(time.Duration)
-
 	GetAttribute(interface{}) interface{}
 	SetAttribute(interface{}, interface{})
 	RemoveAttribute(interface{})
@@ -565,11 +562,6 @@ func (s *session) run() {
 
 func (s *session) addTask(pkg interface{}) {
 	f := func() {
-		s.lock.RLock()
-		defer s.lock.RUnlock()
-		if s.Connection == nil {
-			return
-		}
 		s.listener.OnMessage(s, pkg)
 		s.incReadPkgNum()
 	}
@@ -877,4 +869,123 @@ func (s *session) gc() {
 func (s *session) Close() {
 	s.stop()
 	log.Infof("%s closed now. its current gr num is %d", s.sessionToken(), s.grNum.Load())
+}
+
+// GetActive return connection's time
+func (s *session) GetActive() time.Time {
+	if s == nil {
+		return launchTime
+	}
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	if s.Connection != nil {
+		return s.Connection.GetActive()
+	}
+	return launchTime
+}
+
+// UpdateActive update connection's active time
+func (s *session) UpdateActive() {
+	if s == nil {
+		return
+	}
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+
+	if s.Connection != nil {
+		s.Connection.UpdateActive()
+	}
+}
+
+func (s *session) ID() uint32 {
+	if s == nil {
+		return 0
+	}
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	if s.Connection != nil {
+		return s.Connection.ID()
+	}
+	return 0
+}
+
+func (s *session) LocalAddr() string {
+	if s == nil {
+		return ""
+	}
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	if s.Connection != nil {
+		return s.Connection.LocalAddr()
+	}
+	return ""
+}
+
+func (s *session) RemoteAddr() string {
+	if s == nil {
+		return ""
+	}
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	if s.Connection != nil {
+		return s.Connection.RemoteAddr()
+	}
+	return ""
+}
+
+func (s *session) incReadPkgNum() {
+	if s == nil {
+		return
+	}
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	if s.Connection != nil {
+		s.Connection.incReadPkgNum()
+	}
+}
+
+func (s *session) incWritePkgNum() {
+	if s == nil {
+		return
+	}
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	if s.Connection != nil {
+		s.Connection.incWritePkgNum()
+	}
+}
+
+func (s *session) send(pkg interface{}) (int, error) {
+	if s == nil {
+		return 0, nil
+	}
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	if s.Connection != nil {
+		return s.Connection.send(pkg)
+	}
+	return 0, nil
+}
+
+func (s *session) readTimeout() time.Duration {
+	if s == nil {
+		return time.Duration(0)
+	}
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	if s.Connection != nil {
+		return s.Connection.readTimeout()
+	}
+	return time.Duration(0)
+}
+
+func (s *session) setSession(ss Session) {
+	if s == nil {
+		return
+	}
+	s.lock.RLock()
+	if s.Connection != nil {
+		s.Connection.setSession(ss)
+	}
+	s.lock.RUnlock()
 }
