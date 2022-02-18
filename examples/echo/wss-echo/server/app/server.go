@@ -32,8 +32,8 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/goext/net"
 	getty "github.com/apache/dubbo-getty"
+	"github.com/dubbogo/gost/net"
 )
 
 const (

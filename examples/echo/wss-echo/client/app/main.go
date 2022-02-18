@@ -33,9 +33,9 @@ import (
 )
 
 import (
-	"github.com/AlexStocks/goext/net"
-	"github.com/AlexStocks/goext/time"
 	getty "github.com/apache/dubbo-getty"
+	"github.com/dubbogo/gost/net"
+	"github.com/dubbogo/gost/time"
 )
 
 const (
