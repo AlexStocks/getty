@@ -25,15 +25,14 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
-
 	// "strings"
 	"syscall"
 	"time"
 )
 
 import (
-	gxnet "github.com/AlexStocks/goext/net"
 	getty "github.com/apache/dubbo-getty"
+	"github.com/dubbogo/gost/net"
 )
 
 const (
