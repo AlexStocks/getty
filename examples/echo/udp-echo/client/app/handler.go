@@ -24,12 +24,10 @@ import (
 
 import (
 	"github.com/AlexStocks/getty/transport"
-	log "github.com/AlexStocks/log4go"
+	log "github.com/AlexStocks/getty/util"
 )
 
-var (
-	errSessionNotExist = errors.New("session not exist!")
-)
+var errSessionNotExist = errors.New("session not exist!")
 
 ////////////////////////////////////////////
 // EchoMessageHandler

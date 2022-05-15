@@ -23,8 +23,12 @@ import (
 	"fmt"
 	"io/ioutil"
 )
+
 import (
-	log "github.com/AlexStocks/log4go"
+	log "github.com/AlexStocks/getty/util"
+)
+
+import (
 	perrors "github.com/pkg/errors"
 )
 
@@ -89,7 +93,6 @@ type ClientTlsConfigBuilder struct {
 
 // BuildTlsConfig impl TlsConfigBuilder method
 func (c *ClientTlsConfigBuilder) BuildTlsConfig() (*tls.Config, error) {
-
 	cert, err := tls.LoadX509KeyPair(c.ClientTrustCertCollectionPath, c.ClientPrivateKeyPath)
 	if err != nil {
 		log.Error(fmt.Sprintf("Unable to load X509 Key Pair %v", err))

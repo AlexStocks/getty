@@ -44,7 +44,8 @@ func testTCPServer(t *testing.T, address string) {
 		server.RunEventLoop(newServerSession)
 		assert.True(t, server.ID() > 0)
 		assert.True(t, server.EndPointType() == TCP_SERVER)
-		assert.NotNil(t, server.streamListener)
+		assert.NotNil(t, server.Listener())
+		assert.Nil(t, server.PacketConn())
 	}()
 	time.Sleep(500e6)
 
@@ -57,11 +58,9 @@ func testTCPServer(t *testing.T, address string) {
 	)
 	assert.NotNil(t, clt)
 	assert.True(t, clt.ID() > 0)
-	assert.Equal(t, clt.endPointType, TCP_CLIENT)
+	assert.Equal(t, clt.EndPointType(), TCP_CLIENT)
 
-	var (
-		msgHandler MessageHandler
-	)
+	var msgHandler MessageHandler
 	cb := func(session Session) error {
 		return newSessionCallback(session, &msgHandler)
 	}
@@ -76,6 +75,7 @@ func testTCPServer(t *testing.T, address string) {
 	server.Close()
 	assert.True(t, server.IsClosed())
 }
+
 func testTCPTlsServer(t *testing.T, address string) {
 	var (
 		server           *server
@@ -104,7 +104,8 @@ func testTCPTlsServer(t *testing.T, address string) {
 		server.RunEventLoop(newServerSession)
 		assert.True(t, server.ID() > 0)
 		assert.True(t, server.EndPointType() == TCP_SERVER)
-		assert.NotNil(t, server.streamListener)
+		assert.NotNil(t, server.Listener())
+		assert.Nil(t, server.PacketConn())
 	}()
 	time.Sleep(500e6)
 
@@ -126,11 +127,9 @@ func testTCPTlsServer(t *testing.T, address string) {
 	)
 	assert.NotNil(t, clt)
 	assert.True(t, clt.ID() > 0)
-	assert.Equal(t, clt.endPointType, TCP_CLIENT)
+	assert.Equal(t, clt.EndPointType(), TCP_CLIENT)
 
-	var (
-		msgHandler MessageHandler
-	)
+	var msgHandler MessageHandler
 	cb := func(session Session) error {
 		return newSessionCallback(session, &msgHandler)
 	}

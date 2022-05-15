@@ -26,7 +26,7 @@ import (
 
 import (
 	"github.com/AlexStocks/getty/transport"
-	log "github.com/AlexStocks/log4go"
+	log "github.com/AlexStocks/getty/util"
 )
 
 const (
@@ -68,7 +68,8 @@ func (h *HeartbeatHandler) Handle(session getty.Session, ctx getty.UDPContext) e
 	rspPkg.H.Len = uint16(len(rspPkg.B) + 1)
 
 	// return session.WritePkg(getty.UDPContext{Pkg: &rspPkg, PeerAddr: ctx.PeerAddr}, WritePkgTimeout)
-	return session.WritePkg(getty.UDPContext{Pkg: &rspPkg, PeerAddr: ctx.PeerAddr}, WritePkgASAP)
+	_, _, err := session.WritePkg(getty.UDPContext{Pkg: &rspPkg, PeerAddr: ctx.PeerAddr}, WritePkgASAP)
+	return err
 }
 
 ////////////////////////////////////////////
@@ -80,8 +81,9 @@ type MessageHandler struct{}
 func (h *MessageHandler) Handle(session getty.Session, ctx getty.UDPContext) error {
 	log.Debug("get echo ctx{%#v}", ctx)
 	// write echo message handle logic here.
-	//return session.WritePkg(ctx, WritePkgTimeout)
-	return session.WritePkg(ctx, WritePkgASAP)
+	// return session.WritePkg(ctx, WritePkgTimeout)
+	_, _, err := session.WritePkg(ctx, WritePkgASAP)
+	return err
 }
 
 ////////////////////////////////////////////
@@ -109,9 +111,7 @@ func newEchoMessageHandler() *EchoMessageHandler {
 }
 
 func (h *EchoMessageHandler) OnOpen(session getty.Session) error {
-	var (
-		err error
-	)
+	var err error
 
 	h.rwlock.RLock()
 	if conf.SessionNumber <= len(h.sessionMap) {
@@ -172,15 +172,13 @@ func (h *EchoMessageHandler) OnMessage(session getty.Session, udpCtx interface{}
 }
 
 func (h *EchoMessageHandler) OnCron(session getty.Session) {
-	var (
-		//flag   bool
-		active time.Time
-	)
+	// flag   bool
+	var active time.Time
 	h.rwlock.RLock()
 	if _, ok := h.sessionMap[session]; ok {
 		active = session.GetActive()
 		if conf.sessionTimeout.Nanoseconds() < time.Since(active).Nanoseconds() {
-			//flag = true
+			// flag = true
 			log.Error("session{%s} timeout{%s}, reqNum{%d}",
 				session.Stat(), time.Since(active).String(), h.sessionMap[session].reqNum)
 		}
