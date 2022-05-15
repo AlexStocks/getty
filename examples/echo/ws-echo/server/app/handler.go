@@ -25,7 +25,7 @@ import (
 
 import (
 	"github.com/AlexStocks/getty/transport"
-	log "github.com/AlexStocks/log4go"
+	log "github.com/AlexStocks/getty/util"
 )
 
 var (
@@ -47,7 +47,8 @@ type MessageHandler struct{}
 func (h *MessageHandler) Handle(session getty.Session, pkg *EchoPackage) error {
 	log.Debug("get echo package{%s}", pkg)
 	// write echo message handle logic here.
-	return session.WritePkg(pkg, conf.GettySessionParam.waitTimeout)
+	_, _, err := session.WritePkg(pkg, conf.GettySessionParam.waitTimeout)
+	return err
 }
 
 ////////////////////////////////////////////
@@ -74,9 +75,7 @@ func newEchoMessageHandler() *EchoMessageHandler {
 }
 
 func (h *EchoMessageHandler) OnOpen(session getty.Session) error {
-	var (
-		err error
-	)
+	var err error
 
 	h.rwlock.RLock()
 	if conf.SessionNumber <= len(h.sessionMap) {

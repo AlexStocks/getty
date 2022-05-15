@@ -33,9 +33,8 @@ import (
 
 import (
 	"github.com/AlexStocks/getty/transport"
-	gxlog "github.com/AlexStocks/goext/log"
+	log "github.com/AlexStocks/getty/util"
 	gxnet "github.com/AlexStocks/goext/net"
-	log "github.com/AlexStocks/log4go"
 )
 
 const (
@@ -47,9 +46,7 @@ var (
 // ports = flag.String("ports", "12345,12346,12347", "local host port list that the server app will bind")
 )
 
-var (
-	serverList []getty.Server
-)
+var serverList []getty.Server
 
 func main() {
 	// flag.Parse()
@@ -62,8 +59,6 @@ func main() {
 	initProfiling()
 
 	initServer()
-	gxlog.CInfo("%s starts successfull! its version=%s, its listen ends=%s:%s\n",
-		conf.AppName, getty.Version, conf.Host, conf.Ports)
 	log.Info("%s starts successfull! its version=%s, its listen ends=%s:%s\n",
 		conf.AppName, getty.Version, conf.Host, conf.Ports)
 
@@ -71,9 +66,7 @@ func main() {
 }
 
 func initProfiling() {
-	var (
-		addr string
-	)
+	var addr string
 
 	// addr = *host + ":" + "10000"
 	addr = gxnet.HostAddress(conf.Host, conf.ProfilePort)
@@ -93,7 +86,7 @@ func newSession(session getty.Session) error {
 		session.SetCompressType(getty.CompressZip)
 	}
 
-	gxlog.CInfo("session:%#v", session)
+	log.Infof("session:%#v", session)
 	if udpConn, ok = session.Conn().(*net.UDPConn); !ok {
 		panic(fmt.Sprintf("%s, session.conn{%#v} is not udp connection\n", session.Stat(), session.Conn()))
 	}
@@ -105,7 +98,6 @@ func newSession(session getty.Session) error {
 	session.SetMaxMsgLen(conf.GettySessionParam.MaxMsgLen)
 	session.SetPkgHandler(echoPkgHandler)
 	session.SetEventListener(echoMsgHandler)
-	session.SetWQLen(conf.GettySessionParam.PkgWQSize)
 	session.SetReadTimeout(conf.GettySessionParam.udpReadTimeout)
 	session.SetWriteTimeout(conf.GettySessionParam.udpWriteTimeout)
 	session.SetCronPeriod((int)(conf.sessionTimeout.Nanoseconds() / 1e6))
@@ -137,7 +129,7 @@ func initServer() {
 	}
 	for _, port := range portList {
 		addr = gxnet.HostAddress2(conf.Host, port)
-		server = getty.NewUDPPEndPoint(
+		server = getty.NewUDPEndPoint(
 			getty.WithLocalAddress(addr),
 		)
 		// run server
@@ -168,15 +160,13 @@ func initSignal() {
 			go time.AfterFunc(conf.failFastTimeout, func() {
 				// log.Warn("app exit now by force...")
 				// os.Exit(1)
-				log.Exit("app exit now by force...")
-				log.Close()
+				log.Info("app exit now by force...")
 			})
 
 			// 要么fastFailTimeout时间内执行完毕下面的逻辑然后程序退出，要么执行上面的超时函数程序强行退出
 			uninitServer()
 			// fmt.Println("app exit now...")
-			log.Exit("app exit now...")
-			log.Close()
+			log.Info("app exit now...")
 			return
 		}
 	}

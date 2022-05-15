@@ -27,23 +27,50 @@ import (
 	"net/http"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
 import (
-	log "github.com/AlexStocks/log4go"
-	"github.com/dubbogo/gost/net"
+	gxnet "github.com/dubbogo/gost/net"
 	gxsync "github.com/dubbogo/gost/sync"
+	gxtime "github.com/dubbogo/gost/time"
+
 	"github.com/gorilla/websocket"
+
 	perrors "github.com/pkg/errors"
+
+	uatomic "go.uber.org/atomic"
+)
+
+import (
+	log "github.com/AlexStocks/getty/util"
 )
 
 var (
 	errSelfConnect        = perrors.New("connect self!")
 	serverFastFailTimeout = time.Second * 1
-	serverID              = EndPointID(0)
+
+	serverID uatomic.Int32
 )
+
+// Server interface
+type Server interface {
+	EndPoint
+}
+
+// StreamServer is like tcp/websocket/wss server
+type StreamServer interface {
+	Server
+	// Listener get the network listener
+	Listener() net.Listener
+}
+
+// PacketServer is like udp listen endpoint
+type PacketServer interface {
+	Server
+	// PacketConn get the network listener
+	PacketConn() net.PacketConn
+}
 
 type server struct {
 	ServerOptions
@@ -57,7 +84,6 @@ type server struct {
 	lock           sync.Mutex // for server
 	endPointType   EndPointType
 	server         *http.Server // for ws or wss server
-
 	sync.Once
 	done chan struct{}
 	wg   sync.WaitGroup
@@ -71,7 +97,7 @@ func (s *server) init(opts ...ServerOption) {
 
 func newServer(t EndPointType, opts ...ServerOption) *server {
 	s := &server{
-		endPointID:   atomic.AddInt32(&serverID, 1),
+		endPointID:   serverID.Add(1),
 		endPointType: t,
 		done:         make(chan struct{}),
 	}
@@ -87,7 +113,7 @@ func NewTCPServer(opts ...ServerOption) Server {
 }
 
 // NewUDPEndPoint builds a unconnected udp server.
-func NewUDPPEndPoint(opts ...ServerOption) Server {
+func NewUDPEndPoint(opts ...ServerOption) Server {
 	return newServer(UDP_ENDPOINT, opts...)
 }
 
@@ -129,7 +155,7 @@ func (s *server) stop() {
 				if err := s.server.Shutdown(ctx); err != nil {
 					// if the log output is "shutdown ctx: context deadline exceeded"， it means that
 					// there are still some active connections.
-					log.Error("server shutdown ctx:%s error:%v", ctx, err)
+					log.Errorf("server shutdown ctx:%s error:%v", ctx, err)
 				}
 				cancel()
 			}
@@ -177,17 +203,14 @@ func (s *server) listenTCP() error {
 		}
 	} else {
 		if s.sslEnabled {
-			if sslConfig, err := s.tlsConfigBuilder.BuildTlsConfig(); err == nil && sslConfig != nil {
+			if sslConfig, buildTlsConfErr := s.tlsConfigBuilder.BuildTlsConfig(); buildTlsConfErr == nil && sslConfig != nil {
 				streamListener, err = tls.Listen("tcp", s.addr, sslConfig)
-				if err != nil {
-					return perrors.Wrapf(err, "net.Listen(tcp, addr:%s)", s.addr)
-				}
 			}
 		} else {
 			streamListener, err = net.Listen("tcp", s.addr)
-			if err != nil {
-				return perrors.Wrapf(err, "net.Listen(tcp, addr:%s)", s.addr)
-			}
+		}
+		if err != nil {
+			return perrors.Wrapf(err, "net.Listen(tcp, addr:%s)", s.addr)
 		}
 	}
 
@@ -244,7 +267,7 @@ func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 		return nil, perrors.WithStack(err)
 	}
 	if gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
-		log.Warn("conn.localAddr{%s} == conn.RemoteAddr", conn.LocalAddr().String(), conn.RemoteAddr().String())
+		log.Warnf("conn.localAddr{%s} == conn.RemoteAddr", conn.LocalAddr().String(), conn.RemoteAddr().String())
 		return nil, perrors.WithStack(errSelfConnect)
 	}
 
@@ -258,7 +281,7 @@ func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 	return ss, nil
 }
 
-func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
+func (s *server) runTCPEventLoop(newSession NewSessionCallback) {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
@@ -269,11 +292,11 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 		)
 		for {
 			if s.IsClosed() {
-				log.Warn("server{%s} stop accepting client connect request.", s.addr)
+				log.Infof("server{%s} stop accepting client connect request.", s.addr)
 				return
 			}
 			if delay != 0 {
-				<-wheel.After(delay)
+				<-gxtime.After(delay)
 			}
 			client, err = s.accept(newSession)
 			if err != nil {
@@ -288,7 +311,7 @@ func (s *server) runTcpEventLoop(newSession NewSessionCallback) {
 					}
 					continue
 				}
-				log.Warn("server{%s}.Accept() = err:%+v", s.addr, perrors.WithStack(err))
+				log.Warnf("server{%s}.Accept() = err {%+v}", s.addr, perrors.WithStack(err))
 				continue
 			}
 			delay = 0
@@ -346,17 +369,17 @@ func (s *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 
 	if s.server.IsClosed() {
 		http.Error(w, "HTTP server is closed(code:500-11).", 500)
-		log.Warn("server{%s} stop acceptting client connect request.", s.server.addr)
+		log.Warnf("server{%s} stop acceptting client connect request.", s.server.addr)
 		return
 	}
 
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Warn("upgrader.Upgrader(http.Request{%#v}) = error:%+v", r, err)
+		log.Warnf("upgrader.Upgrader(http.Request{%#v}) = error:%+v", r, err)
 		return
 	}
 	if conn.RemoteAddr().String() == conn.LocalAddr().String() {
-		log.Warn("conn.localAddr{%s} == conn.RemoteAddr", conn.LocalAddr().String(), conn.RemoteAddr().String())
+		log.Warnf("conn.localAddr{%s} == conn.RemoteAddr", conn.LocalAddr().String(), conn.RemoteAddr().String())
 		return
 	}
 	// conn.SetReadLimit(int64(handler.maxMsgLen))
@@ -364,7 +387,7 @@ func (s *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 	err = s.newSession(ss)
 	if err != nil {
 		conn.Close()
-		log.Warn("server{%s}.newSession(ss{%#v}) = err {%s}", s.server.addr, ss, err)
+		log.Warnf("server{%s}.newSession(ss{%#v}) = err {%s}", s.server.addr, ss, err)
 		return
 	}
 	if ss.(*session).maxMsgLen > 0 {
@@ -397,7 +420,7 @@ func (s *server) runWSEventLoop(newSession NewSessionCallback) {
 		s.lock.Unlock()
 		err = server.Serve(s.streamListener)
 		if err != nil {
-			log.Error("http.server.Serve(addr{%s}) = err:%+v", s.addr, perrors.WithStack(err))
+			log.Errorf("http.server.Serve(addr{%s}) = err:%+v", s.addr, perrors.WithStack(err))
 		}
 	}()
 }
@@ -419,11 +442,11 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 		defer s.wg.Done()
 
 		if certificate, err = tls.LoadX509KeyPair(s.cert, s.privateKey); err != nil {
-			panic(fmt.Sprintf("tls.LoadX509KeyPair(cert{%s}, privateKey{%s}) = err:%+v",
+			panic(fmt.Sprintf("tls.LoadX509KeyPair(certs{%s}, privateKey{%s}) = err:%+v",
 				s.cert, s.privateKey, perrors.WithStack(err)))
 		}
 		config = &tls.Config{
-			InsecureSkipVerify: true, // do not verify peer cert
+			InsecureSkipVerify: true, // do not verify peer certs
 			ClientAuth:         tls.NoClientCert,
 			NextProtos:         []string{"http/1.1"},
 			Certificates:       []tls.Certificate{certificate},
@@ -457,7 +480,7 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 		s.lock.Unlock()
 		err = server.Serve(tls.NewListener(s.streamListener, config))
 		if err != nil {
-			log.Error("http.server.Serve(addr{%s}) = err:%+v", s.addr, perrors.WithStack(err))
+			log.Errorf("http.server.Serve(addr{%s}) = err:%+v", s.addr, perrors.WithStack(err))
 			panic(err)
 		}
 	}()
@@ -472,7 +495,7 @@ func (s *server) RunEventLoop(newSession NewSessionCallback) {
 
 	switch s.endPointType {
 	case TCP_SERVER:
-		s.runTcpEventLoop(newSession)
+		s.runTCPEventLoop(newSession)
 	case UDP_ENDPOINT:
 		s.runUDPEventLoop(newSession)
 	case WS_SERVER:

@@ -34,19 +34,17 @@ import (
 
 import (
 	"github.com/AlexStocks/getty/transport"
+	log "github.com/AlexStocks/getty/util"
 	"github.com/AlexStocks/goext/log"
 	"github.com/AlexStocks/goext/net"
 	"github.com/AlexStocks/goext/time"
-	log "github.com/AlexStocks/log4go"
 )
 
 const (
 	pprofPath = "/debug/pprof/"
 )
 
-var (
-	client EchoClient
-)
+var client EchoClient
 
 ////////////////////////////////////////////////////////////////////
 // main
@@ -67,9 +65,7 @@ func main() {
 }
 
 func initProfiling() {
-	var (
-		addr string
-	)
+	var addr string
 
 	addr = gxnet.HostAddress(conf.LocalHost, conf.ProfilePort)
 	log.Info("App Profiling startup on address{%v}", addr+pprofPath)
@@ -108,7 +104,6 @@ func newSession(session getty.Session) error {
 	session.SetMaxMsgLen(conf.GettySessionParam.MaxMsgLen)
 	session.SetPkgHandler(echoPkgHandler)
 	session.SetEventListener(echoMsgHandler)
-	session.SetWQLen(conf.GettySessionParam.PkgWQSize)
 	session.SetReadTimeout(conf.GettySessionParam.tcpReadTimeout)
 	session.SetWriteTimeout(conf.GettySessionParam.tcpWriteTimeout)
 	session.SetCronPeriod((int)(conf.heartbeatPeriod.Nanoseconds() / 1e6))
@@ -154,15 +149,13 @@ func initSignal() {
 			go time.AfterFunc(conf.failFastTimeout, func() {
 				// log.Warn("app exit now by force...")
 				// os.Exit(1)
-				log.Exit("app exit now by force...")
-				log.Close()
+				log.Info("app exit now by force...")
 			})
 
 			// 要么fastFailTimeout时间内执行完毕下面的逻辑然后程序退出，要么执行上面的超时函数程序强行退出
 			uninitClient()
 			// fmt.Println("app exit now...")
-			log.Exit("app exit now...")
-			log.Close()
+			log.Info("app exit now...")
 			return
 		}
 	}
@@ -179,7 +172,7 @@ func echo() {
 	pkg.H.Len = (uint16)(len(pkg.B)) + 1
 
 	if session := client.selectSession(); session != nil {
-		err := session.WritePkg(&pkg, conf.GettySessionParam.waitTimeout)
+		_, _, err := session.WritePkg(&pkg, conf.GettySessionParam.waitTimeout)
 		if err != nil {
 			log.Warn("session.WritePkg(session{%s}, pkg{%s}, timeout{%d}) = error{%v}",
 				session.Stat(), pkg, conf.GettySessionParam.waitTimeout, err)

@@ -31,11 +31,17 @@ import (
 )
 
 import (
-	log "github.com/AlexStocks/log4go"
-	gxbytes "github.com/dubbogo/gost/bytes"
+	log "github.com/AlexStocks/getty/util"
+)
+
+import (
+	"github.com/dubbogo/gost/bytes"
 	"github.com/dubbogo/gost/net"
 	gxsync "github.com/dubbogo/gost/sync"
+	gxtime "github.com/dubbogo/gost/time"
+
 	"github.com/gorilla/websocket"
+
 	perrors "github.com/pkg/errors"
 )
 
@@ -49,15 +55,13 @@ const (
 var (
 	sessionClientKey   = "session-client-owner"
 	connectPingPackage = []byte("connect-ping")
-)
 
-/////////////////////////////////////////
-// getty tcp client
-/////////////////////////////////////////
-
-var (
 	clientID = EndPointID(0)
 )
+
+type Client interface {
+	EndPoint
+}
 
 type client struct {
 	ClientOptions
@@ -101,17 +105,17 @@ func newClient(t EndPointType, opts ...ClientOption) *client {
 	return c
 }
 
-// NewTcpClient function builds a tcp client.
+// NewTCPClient builds a tcp client.
 func NewTCPClient(opts ...ClientOption) Client {
 	return newClient(TCP_CLIENT, opts...)
 }
 
-// NewUdpClient function builds a connected udp client
+// NewUDPClient builds a connected udp client
 func NewUDPClient(opts ...ClientOption) Client {
 	return newClient(UDP_CLIENT, opts...)
 }
 
-// NewWsClient function builds a ws client.
+// NewWSClient builds a ws client.
 func NewWSClient(opts ...ClientOption) Client {
 	c := newClient(WS_CLIENT, opts...)
 
@@ -155,7 +159,7 @@ func (c *client) dialTCP() Session {
 			return nil
 		}
 		if c.sslEnabled {
-			if sslConfig, e := c.tlsConfigBuilder.BuildTlsConfig(); e == nil && sslConfig != nil {
+			if sslConfig, buildTlsConfErr := c.tlsConfigBuilder.BuildTlsConfig(); buildTlsConfErr == nil && sslConfig != nil {
 				d := &net.Dialer{Timeout: connectTimeout}
 				conn, err = tls.DialWithDialer(d, "tcp", c.addr, sslConfig)
 			}
@@ -170,8 +174,8 @@ func (c *client) dialTCP() Session {
 			return newTCPSession(conn, c)
 		}
 
-		log.Info("net.DialTimeout(addr:%s, timeout:%v) = error:%+v", c.addr, perrors.WithStack(err))
-		<-wheel.After(connectInterval)
+		log.Infof("net.DialTimeout(addr:%s, timeout:%v) = error:%+v", c.addr, connectTimeout, perrors.WithStack(err))
+		<-gxtime.After(connectInterval)
 	}
 }
 
@@ -186,11 +190,9 @@ func (c *client) dialUDP() Session {
 		buf       []byte
 	)
 
-	//buf = make([]byte, 128)
 	bufp = gxbytes.GetBytes(128)
 	defer gxbytes.PutBytes(bufp)
 	buf = *bufp
-
 	localAddr = &net.UDPAddr{IP: net.IPv4zero, Port: 0}
 	peerAddr, _ = net.ResolveUDPAddr("udp", c.addr)
 	for {
@@ -203,8 +205,8 @@ func (c *client) dialUDP() Session {
 			err = errSelfConnect
 		}
 		if err != nil {
-			log.Warn("net.DialTimeout(addr:%s, timeout:%v) = error:%+v", c.addr, perrors.WithStack(err))
-			<-wheel.After(connectInterval)
+			log.Warnf("net.DialTimeout(addr:%s, timeout:%v) = error:%+v", c.addr, perrors.WithStack(err))
+			<-gxtime.After(connectInterval)
 			continue
 		}
 
@@ -212,8 +214,8 @@ func (c *client) dialUDP() Session {
 		conn.SetWriteDeadline(time.Now().Add(1e9))
 		if length, err = conn.Write(connectPingPackage[:]); err != nil {
 			conn.Close()
-			log.Warn("conn.Write(%s) = {length:%d, err:%s}", string(connectPingPackage), length, perrors.WithStack(err))
-			<-wheel.After(connectInterval)
+			log.Warnf("conn.Write(%s) = {length:%d, err:%+v}", string(connectPingPackage), length, perrors.WithStack(err))
+			<-gxtime.After(connectInterval)
 			continue
 		}
 		conn.SetReadDeadline(time.Now().Add(1e9))
@@ -222,14 +224,12 @@ func (c *client) dialUDP() Session {
 			err = nil
 		}
 		if err != nil {
-			log.Info("conn{%#v}.Read() = {length:%d, err:%+v}", conn, length, perrors.WithStack(err))
+			log.Infof("conn{%#v}.Read() = {length:%d, err:%+v}", conn, length, perrors.WithStack(err))
 			conn.Close()
-			<-wheel.After(connectInterval)
+			<-gxtime.After(connectInterval)
 			continue
 		}
-		//if err == nil {
 		return newUDPSession(conn, c)
-		//}
 	}
 }
 
@@ -247,7 +247,7 @@ func (c *client) dialWS() Session {
 			return nil
 		}
 		conn, _, err = dialer.Dial(c.addr, nil)
-		log.Info("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, perrors.WithStack(err))
+		log.Infof("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, perrors.WithStack(err))
 		if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 			conn.Close()
 			err = errSelfConnect
@@ -261,8 +261,8 @@ func (c *client) dialWS() Session {
 			return ss
 		}
 
-		log.Info("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, perrors.WithStack(err))
-		<-wheel.After(connectInterval)
+		log.Infof("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, perrors.WithStack(err))
+		<-gxtime.After(connectInterval)
 	}
 }
 
@@ -339,8 +339,8 @@ func (c *client) dialWSS() Session {
 			return ss
 		}
 
-		log.Info("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, perrors.WithStack(err))
-		<-wheel.After(connectInterval)
+		log.Infof("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, perrors.WithStack(err))
+		<-gxtime.After(connectInterval)
 	}
 }
 
@@ -434,7 +434,7 @@ func (c *client) reConnect() {
 	}
 	for {
 		if c.IsClosed() {
-			log.Warn("client{peer:%s} goroutine exit now.", c.addr)
+			log.Warnf("client{peer:%s} goroutine exit now.", c.addr)
 			break
 		}
 
@@ -447,7 +447,7 @@ func (c *client) reConnect() {
 		if maxTimes < times {
 			times = maxTimes
 		}
-		<-wheel.After(time.Duration(int64(times) * int64(interval)))
+		<-gxtime.After(time.Duration(int64(times) * int64(interval)))
 	}
 }
 
