@@ -26,7 +26,7 @@ import (
 )
 
 import (
-	log "github.com/AlexStocks/log4go"
+	log "github.com/AlexStocks/getty/util"
 )
 
 ////////////////////////////////////////////
@@ -62,9 +62,7 @@ var (
 	ErrIllegalMagic    = errors.New("package magic is not right.")
 )
 
-var (
-	echoPkgHeaderLen int
-)
+var echoPkgHeaderLen int
 
 func init() {
 	echoPkgHeaderLen = (int)((uint)(unsafe.Sizeof(EchoPkgHeader{})))

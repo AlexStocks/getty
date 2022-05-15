@@ -35,8 +35,11 @@ import (
 	"github.com/AlexStocks/getty/transport"
 	gxlog "github.com/AlexStocks/goext/log"
 	gxnet "github.com/AlexStocks/goext/net"
-	log "github.com/AlexStocks/log4go"
 	"github.com/dubbogo/gost/sync"
+)
+
+import (
+	log "github.com/AlexStocks/getty/util"
 )
 
 const (
@@ -74,9 +77,7 @@ func main() {
 }
 
 func initProfiling() {
-	var (
-		addr string
-	)
+	var addr string
 
 	// addr = *host + ":" + "10000"
 	addr = gxnet.HostAddress(conf.Host, conf.ProfilePort)
@@ -112,12 +113,11 @@ func newSession(session getty.Session) error {
 	session.SetMaxMsgLen(conf.GettySessionParam.MaxMsgLen)
 	session.SetPkgHandler(echoPkgHandler)
 	session.SetEventListener(echoMsgHandler)
-	session.SetWQLen(conf.GettySessionParam.PkgWQSize)
 	session.SetReadTimeout(conf.GettySessionParam.tcpReadTimeout)
 	session.SetWriteTimeout(conf.GettySessionParam.tcpWriteTimeout)
 	session.SetCronPeriod((int)(conf.sessionTimeout.Nanoseconds() / 1e6))
 	session.SetWaitTime(conf.GettySessionParam.waitTimeout)
-	//session.SetTaskPool(taskPool)
+	// session.SetTaskPool(taskPool)
 	log.Debug("app accepts new session:%s\n", session.Stat())
 
 	return nil
@@ -179,15 +179,13 @@ func initSignal() {
 			go time.AfterFunc(conf.failFastTimeout, func() {
 				// log.Warn("app exit now by force...")
 				// os.Exit(1)
-				log.Exit("app exit now by force...")
-				log.Close()
+				log.Info("app exit now by force...")
 			})
 
 			// 要么fastFailTimeout时间内执行完毕下面的逻辑然后程序退出，要么执行上面的超时函数程序强行退出
 			uninitServer()
 			// fmt.Println("app exit now...")
-			log.Exit("app exit now...")
-			log.Close()
+			log.Info("app exit now...")
 			return
 		}
 	}

@@ -26,7 +26,7 @@ An open source, Go based, RPC framework.
 
 Feature list:
 
-- 1 Transport: TCP(√), UDP(X), Websocket(X)
+- 1 Transport: TCP(√), UDP(√), Websocket(√)
 - 2 Codec: ProtoBuf(√), JSON(√)
 - 3 Strategy: Failover(√), Failfast(√)
 - 4 Metrics: Invoke Statistics(X), User Auth(X)

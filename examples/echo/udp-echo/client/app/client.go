@@ -27,7 +27,10 @@ import (
 
 import (
 	"github.com/AlexStocks/getty/transport"
-	log "github.com/AlexStocks/log4go"
+)
+
+import (
+	log "github.com/AlexStocks/getty/util"
 )
 
 var (
@@ -174,8 +177,8 @@ func (c *EchoClient) heartbeat(session getty.Session) {
 	ctx.Pkg = &pkg
 	ctx.PeerAddr = &(c.serverAddr)
 
-	//if err := session.WritePkg(ctx, WritePkgTimeout); err != nil {
-	if err = session.WritePkg(ctx, WritePkgASAP); err != nil {
+	// if err := session.WritePkg(ctx, WritePkgTimeout); err != nil {
+	if _, _, err = session.WritePkg(ctx, WritePkgASAP); err != nil {
 		log.Warn("session.WritePkg(session{%s}, context{%#v}) = error{%v}", session.Stat(), ctx, err)
 		session.Close()
 
