@@ -18,11 +18,14 @@
 package getty
 
 import (
+	"compress/flate"
 	"strconv"
 )
 
-type EndPointID = int32
-type EndPointType int32
+type (
+	EndPointID   = int32
+	EndPointType int32
+)
 
 const (
 	UDP_ENDPOINT EndPointType = 0
@@ -65,3 +68,14 @@ func (x EndPointType) String() string {
 
 	return strconv.Itoa(int(x))
 }
+
+type CompressType int
+
+const (
+	CompressNone            CompressType = flate.NoCompression      // 0
+	CompressZip                          = flate.DefaultCompression // -1
+	CompressBestSpeed                    = flate.BestSpeed          // 1
+	CompressBestCompression              = flate.BestCompression    // 9
+	CompressHuffman                      = flate.HuffmanOnly        // -2
+	CompressSnappy                       = 10
+)

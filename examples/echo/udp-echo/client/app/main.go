@@ -25,7 +25,6 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
-
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -36,7 +35,8 @@ import (
 	gxlog "github.com/AlexStocks/goext/log"
 	gxnet "github.com/AlexStocks/goext/net"
 	gxtime "github.com/AlexStocks/goext/time"
-	log "github.com/AlexStocks/log4go"
+
+	log "github.com/AlexStocks/getty/util"
 )
 
 const (
@@ -72,9 +72,7 @@ func main() {
 }
 
 func initProfiling() {
-	var (
-		addr string
-	)
+	var addr string
 
 	addr = gxnet.HostAddress(conf.LocalHost, conf.ProfilePort)
 	log.Info("App Profiling startup on address{%v}", addr+pprofPath)
@@ -124,7 +122,6 @@ func newSession(session getty.Session) error {
 	session.SetMaxMsgLen(conf.GettySessionParam.MaxMsgLen)
 	session.SetPkgHandler(echoPkgHandler)
 	session.SetEventListener(newEchoMessageHandler(client))
-	session.SetWQLen(conf.GettySessionParam.PkgWQSize)
 	session.SetReadTimeout(conf.GettySessionParam.udpReadTimeout)
 	session.SetWriteTimeout(conf.GettySessionParam.udpWriteTimeout)
 	session.SetCronPeriod((int)(conf.heartbeatPeriod.Nanoseconds() / 1e6))
@@ -136,7 +133,7 @@ func newSession(session getty.Session) error {
 }
 
 func initClient() {
-	unconnectedClient.gettyClient = getty.NewUDPPEndPoint(
+	unconnectedClient.gettyClient = getty.NewUDPEndPoint(
 		getty.WithLocalAddress(gxnet.HostAddress(net.IPv4zero.String(), 0)),
 	)
 	unconnectedClient.gettyClient.RunEventLoop(newSession)
@@ -169,15 +166,13 @@ func initSignal() {
 			go time.AfterFunc(conf.failFastTimeout, func() {
 				// log.Warn("app exit now by force...")
 				// os.Exit(1)
-				log.Exit("app exit now by force...")
-				log.Close()
+				log.Info("app exit now by force...")
 			})
 
 			// 要么fastFailTimeout时间内执行完毕下面的逻辑然后程序退出，要么执行上面的超时函数程序强行退出
 			uninitClient()
 			// fmt.Println("app exit now...")
-			log.Exit("app exit now...")
-			log.Close()
+			log.Info("app exit now...")
 			return
 		}
 	}
@@ -203,7 +198,7 @@ func echo(client *EchoClient) {
 
 	if session := client.selectSession(); session != nil {
 		// err := session.WritePkg(ctx, WritePkgTimeout)
-		err = session.WritePkg(ctx, WritePkgASAP)
+		_, _, err = session.WritePkg(ctx, WritePkgASAP)
 		if err != nil {
 			log.Warn("session.WritePkg(session{%s}, UDPContext{%#v}) = error{%v}", session.Stat(), ctx, err)
 			session.Close()

@@ -26,7 +26,10 @@ import (
 
 import (
 	"github.com/AlexStocks/getty/transport"
-	log "github.com/AlexStocks/log4go"
+)
+
+import (
+	log "github.com/AlexStocks/getty/util"
 )
 
 var (
@@ -163,7 +166,7 @@ func (c *EchoClient) heartbeat(session getty.Session) {
 	pkg.B = echoHeartbeatRequestString
 	pkg.H.Len = (uint16)(len(pkg.B) + 1)
 
-	if err := session.WritePkg(&pkg, WritePkgTimeout); err != nil {
+	if _, _, err := session.WritePkg(&pkg, WritePkgTimeout); err != nil {
 		log.Warn("session.WritePkg(session{%s}, pkg{%s}) = error{%v}", session.Stat(), pkg, err)
 		session.Close()
 

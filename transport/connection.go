@@ -24,47 +24,71 @@ import (
 	"io"
 	"net"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
 import (
-	log "github.com/AlexStocks/log4go"
 	"github.com/golang/snappy"
 	"github.com/gorilla/websocket"
 	perrors "github.com/pkg/errors"
+	uatomic "go.uber.org/atomic"
+)
+
+import (
+	log "github.com/AlexStocks/getty/util"
 )
 
 var (
 	launchTime = time.Now()
-
-// ErrInvalidConnection = errors.New("connection has been closed.")
+	connID     uatomic.Uint32
 )
 
-/////////////////////////////////////////
+// Connection wrap some connection params and operations
+type Connection interface {
+	ID() uint32
+	SetCompressType(CompressType)
+	LocalAddr() string
+	RemoteAddr() string
+	incReadPkgNum()
+	incWritePkgNum()
+	// UpdateActive update session's active time
+	UpdateActive()
+	// GetActive get session's active time
+	GetActive() time.Time
+	readTimeout() time.Duration
+	// SetReadTimeout sets deadline for the future read calls.
+	SetReadTimeout(time.Duration)
+	writeTimeout() time.Duration
+	// SetWriteTimeout sets deadline for the future read calls.
+	SetWriteTimeout(time.Duration)
+	send(interface{}) (int, error)
+	// don't distinguish between tcp connection and websocket connection. Because
+	// gorilla/websocket/conn.go:(Conn)Close also invoke net.Conn.Close
+	close(int)
+	// set related session
+	setSession(Session)
+}
+
+// ///////////////////////////////////////
 // getty connection
-/////////////////////////////////////////
-
-var (
-	connID uint32
-)
+// ///////////////////////////////////////
 
 type gettyConn struct {
 	id            uint32
 	compress      CompressType
 	padding1      uint8
 	padding2      uint16
-	readBytes     uint32        // read bytes
-	writeBytes    uint32        // write bytes
-	readPkgNum    uint32        // send pkg number
-	writePkgNum   uint32        // recv pkg number
-	active        int64         // last active, in milliseconds
-	rTimeout      time.Duration // network current limiting
-	wTimeout      time.Duration
-	rLastDeadline time.Time // lastest network read time
-	wLastDeadline time.Time // lastest network write time
-	local         string    // local address
-	peer          string    // peer address
+	readBytes     uatomic.Uint32   // read bytes
+	writeBytes    uatomic.Uint32   // write bytes
+	readPkgNum    uatomic.Uint32   // send pkg number
+	writePkgNum   uatomic.Uint32   // recv pkg number
+	active        uatomic.Int64    // last active, in milliseconds
+	rTimeout      uatomic.Duration // network current limiting
+	wTimeout      uatomic.Duration
+	rLastDeadline uatomic.Time // last network read time
+	wLastDeadline uatomic.Time // last network write time
+	local         string       // local address
+	peer          string       // peer address
 	ss            Session
 }
 
@@ -81,19 +105,19 @@ func (c *gettyConn) RemoteAddr() string {
 }
 
 func (c *gettyConn) incReadPkgNum() {
-	atomic.AddUint32(&c.readPkgNum, 1)
+	c.readPkgNum.Add(1)
 }
 
 func (c *gettyConn) incWritePkgNum() {
-	atomic.AddUint32(&c.writePkgNum, 1)
+	c.writePkgNum.Add(1)
 }
 
 func (c *gettyConn) UpdateActive() {
-	atomic.StoreInt64(&(c.active), int64(time.Since(launchTime)))
+	c.active.Store(int64(time.Since(launchTime)))
 }
 
 func (c *gettyConn) GetActive() time.Time {
-	return launchTime.Add(time.Duration(atomic.LoadInt64(&(c.active))))
+	return launchTime.Add(time.Duration(c.active.Load()))
 }
 
 func (c *gettyConn) send(interface{}) (int, error) {
@@ -103,14 +127,14 @@ func (c *gettyConn) send(interface{}) (int, error) {
 func (c *gettyConn) close(int) {}
 
 func (c gettyConn) readTimeout() time.Duration {
-	return c.rTimeout
+	return c.rTimeout.Load()
 }
 
 func (c *gettyConn) setSession(ss Session) {
 	c.ss = ss
 }
 
-// Pls do not set read deadline for websocket connection. AlexStocks 20180310
+// SetReadTimeout Pls do not set read deadline for websocket connection. AlexStocks 20180310
 // gorilla/websocket/conn.go:NextReader will always fail when got a timeout error.
 //
 // Pls do not set read deadline when using compression. AlexStocks 20180314.
@@ -119,17 +143,17 @@ func (c *gettyConn) SetReadTimeout(rTimeout time.Duration) {
 		panic("@rTimeout < 1")
 	}
 
-	c.rTimeout = rTimeout
-	if c.wTimeout == 0 {
-		c.wTimeout = rTimeout
+	c.rTimeout.Store(rTimeout)
+	if c.wTimeout.Load() == 0 {
+		c.wTimeout.Store(rTimeout)
 	}
 }
 
 func (c gettyConn) writeTimeout() time.Duration {
-	return c.wTimeout
+	return c.wTimeout.Load()
 }
 
-// Pls do not set write deadline for websocket connection. AlexStocks 20180310
+// SetWriteTimeout Pls do not set write deadline for websocket connection. AlexStocks 20180310
 // gorilla/websocket/conn.go:NextWriter will always fail when got a timeout error.
 //
 // Pls do not set write deadline when using compression. AlexStocks 20180314.
@@ -138,9 +162,9 @@ func (c *gettyConn) SetWriteTimeout(wTimeout time.Duration) {
 		panic("@wTimeout < 1")
 	}
 
-	c.wTimeout = wTimeout
-	if c.rTimeout == 0 {
-		c.rTimeout = wTimeout
+	c.wTimeout.Store(wTimeout)
+	if c.rTimeout.Load() == 0 {
+		c.rTimeout.Store(wTimeout)
 	}
 }
 
@@ -161,7 +185,7 @@ func newGettyTCPConn(conn net.Conn) *gettyTCPConn {
 		panic("newGettyTCPConn(conn):@conn is nil")
 	}
 	var localAddr, peerAddr string
-	//  check conn.LocalAddr or conn.RemoetAddr is nil to defeat panic on 2016/09/27
+	//  check conn.LocalAddr or conn.RemoteAddr is nil to defeat panic on 2016/09/27
 	if conn.LocalAddr() != nil {
 		localAddr = conn.LocalAddr().String()
 	}
@@ -174,9 +198,9 @@ func newGettyTCPConn(conn net.Conn) *gettyTCPConn {
 		reader: io.Reader(conn),
 		writer: io.Writer(conn),
 		gettyConn: gettyConn{
-			id:       atomic.AddUint32(&connID, 1),
-			rTimeout: netIOTimeout,
-			wTimeout: netIOTimeout,
+			id:       connID.Add(1),
+			rTimeout: *uatomic.NewDuration(netIOTimeout),
+			wTimeout: *uatomic.NewDuration(netIOTimeout),
 			local:    localAddr,
 			peer:     peerAddr,
 			compress: CompressNone,
@@ -208,7 +232,7 @@ func (t *writeFlusher) Write(p []byte) (int, error) {
 	return n, nil
 }
 
-// set compress type(tcp: zip/snappy, websocket:zip)
+// SetCompressType set compress type(tcp: zip/snappy, websocket:zip)
 func (t *gettyTCPConn) SetCompressType(c CompressType) {
 	switch c {
 	case CompressNone, CompressZip, CompressBestSpeed, CompressBestCompression, CompressHuffman:
@@ -243,25 +267,23 @@ func (t *gettyTCPConn) recv(p []byte) (int, error) {
 	)
 
 	// set read timeout deadline
-	if t.compress == CompressNone && t.rTimeout > 0 {
+	if t.compress == CompressNone && t.rTimeout.Load() > 0 {
 		// Optimization: update read deadline only if more than 25%
 		// of the last read deadline exceeded.
 		// See https://github.com/golang/go/issues/15133 for details.
 		currentTime = time.Now()
-		if currentTime.Sub(t.rLastDeadline) > (t.rTimeout >> 2) {
-			if err = t.conn.SetReadDeadline(currentTime.Add(t.rTimeout)); err != nil {
+		if currentTime.Sub(t.rLastDeadline.Load()) > t.rTimeout.Load()>>2 {
+			if err = t.conn.SetReadDeadline(currentTime.Add(t.rTimeout.Load())); err != nil {
 				// just a timeout error
 				return 0, perrors.WithStack(err)
 			}
-			t.rLastDeadline = currentTime
+			t.rLastDeadline.Store(currentTime)
 		}
 	}
 
 	length, err = t.reader.Read(p)
-	// log.Debug("now:%s, length:%d, err:%s", currentTime, length, err)
-	atomic.AddUint32(&t.readBytes, uint32(length))
+	t.readBytes.Add(uint32(length))
 	return length, perrors.WithStack(err)
-	//return length, err
 }
 
 // tcp connection write
@@ -272,42 +294,46 @@ func (t *gettyTCPConn) send(pkg interface{}) (int, error) {
 		ok          bool
 		p           []byte
 		length      int
+		lg          int64
 	)
 
-	if t.compress == CompressNone && t.wTimeout > 0 {
+	if t.compress == CompressNone && t.wTimeout.Load() > 0 {
 		// Optimization: update write deadline only if more than 25%
 		// of the last write deadline exceeded.
 		// See https://github.com/golang/go/issues/15133 for details.
 		currentTime = time.Now()
-		if currentTime.Sub(t.wLastDeadline) > (t.wTimeout >> 2) {
-			if err = t.conn.SetWriteDeadline(currentTime.Add(t.wTimeout)); err != nil {
+		if currentTime.Sub(t.wLastDeadline.Load()) > t.wTimeout.Load()>>2 {
+			if err = t.conn.SetWriteDeadline(currentTime.Add(t.wTimeout.Load())); err != nil {
 				return 0, perrors.WithStack(err)
 			}
-			t.wLastDeadline = currentTime
+			t.wLastDeadline.Store(currentTime)
 		}
 	}
+
 	if buffers, ok := pkg.([][]byte); ok {
 		netBuf := net.Buffers(buffers)
-		if length, err := netBuf.WriteTo(t.conn); err == nil {
-			atomic.AddUint32(&t.writeBytes, (uint32)(length))
-			atomic.AddUint32(&t.writePkgNum, (uint32)(len(buffers)))
+		lg, err = netBuf.WriteTo(t.conn)
+		if err == nil {
+			t.writeBytes.Add((uint32)(lg))
+			t.writePkgNum.Add((uint32)(len(buffers)))
 		}
-		log.Debug("localAddr: %s, remoteAddr:%s, now:%s, length:%d, err:%s",
+		log.Debugf("localAddr: %s, remoteAddr:%s, now:%s, length:%d, err:%s",
 			t.conn.LocalAddr(), t.conn.RemoteAddr(), currentTime, length, err)
-		return int(length), perrors.WithStack(err)
+		return int(lg), perrors.WithStack(err)
 	}
 
 	if p, ok = pkg.([]byte); ok {
-		if length, err = t.writer.Write(p); err == nil {
-			atomic.AddUint32(&t.writeBytes, (uint32)(len(p)))
-			atomic.AddUint32(&t.writePkgNum, 1)
+		length, err = t.writer.Write(p)
+		if err == nil {
+			t.writeBytes.Add((uint32)(len(p)))
+			t.writePkgNum.Add(1)
 		}
-		log.Debug("localAddr: %s, remoteAddr:%s, now:%s, length:%d, err:%s",
+		log.Debugf("localAddr: %s, remoteAddr:%s, now:%s, length:%d, err:%v",
 			t.conn.LocalAddr(), t.conn.RemoteAddr(), currentTime, length, err)
 		return length, perrors.WithStack(err)
 	}
+
 	return 0, perrors.Errorf("illegal @pkg{%#v} type", pkg)
-	//return length, err
 }
 
 // close tcp connection
@@ -319,7 +345,7 @@ func (t *gettyTCPConn) close(waitSec int) {
 	if t.conn != nil {
 		if writer, ok := t.writer.(*snappy.Writer); ok {
 			if err := writer.Close(); err != nil {
-				log.Error("snappy.Writer.Close() = error{%s}", perrors.WithStack(err))
+				log.Errorf("snappy.Writer.Close() = error:%+v", err)
 			}
 		}
 		if conn, ok := t.conn.(*net.TCPConn); ok {
@@ -327,15 +353,14 @@ func (t *gettyTCPConn) close(waitSec int) {
 			_ = conn.Close()
 		} else {
 			_ = t.conn.(*tls.Conn).Close()
-
 		}
 		t.conn = nil
 	}
 }
 
-/////////////////////////////////////////
+// ///////////////////////////////////////
 // getty udp connection
-/////////////////////////////////////////
+// ///////////////////////////////////////
 
 type UDPContext struct {
 	Pkg      interface{}
@@ -371,9 +396,9 @@ func newGettyUDPConn(conn *net.UDPConn) *gettyUDPConn {
 	return &gettyUDPConn{
 		conn: conn,
 		gettyConn: gettyConn{
-			id:       atomic.AddUint32(&connID, 1),
-			rTimeout: netIOTimeout,
-			wTimeout: netIOTimeout,
+			id:       connID.Add(1),
+			rTimeout: *uatomic.NewDuration(netIOTimeout),
+			wTimeout: *uatomic.NewDuration(netIOTimeout),
 			local:    localAddr,
 			peer:     peerAddr,
 			compress: CompressNone,
@@ -393,33 +418,25 @@ func (u *gettyUDPConn) SetCompressType(c CompressType) {
 
 // udp connection read
 func (u *gettyUDPConn) recv(p []byte) (int, *net.UDPAddr, error) {
-	var (
-		err         error
-		currentTime time.Time
-		length      int
-		addr        *net.UDPAddr
-	)
-
-	if u.rTimeout > 0 {
+	if u.rTimeout.Load() > 0 {
 		// Optimization: update read deadline only if more than 25%
 		// of the last read deadline exceeded.
 		// See https://github.com/golang/go/issues/15133 for details.
-		currentTime = time.Now()
-		if currentTime.Sub(u.rLastDeadline) > (u.rTimeout >> 2) {
-			if err = u.conn.SetReadDeadline(currentTime.Add(u.rTimeout)); err != nil {
+		currentTime := time.Now()
+		if currentTime.Sub(u.rLastDeadline.Load()) > u.rTimeout.Load()>>2 {
+			if err := u.conn.SetReadDeadline(currentTime.Add(u.rTimeout.Load())); err != nil {
 				return 0, nil, perrors.WithStack(err)
 			}
-			u.rLastDeadline = currentTime
+			u.rLastDeadline.Store(currentTime)
 		}
 	}
 
-	length, addr, err = u.conn.ReadFromUDP(p) // connected udp also can get return @addr
-	log.Debug("ReadFromUDP() = {length:%d, peerAddr:%s, error:%s}", length, addr, err)
+	length, addr, err := u.conn.ReadFromUDP(p) // connected udp also can get return @addr
+	log.Debugf("ReadFromUDP(p:%d) = {length:%d, peerAddr:%s, error:%v}", len(p), length, addr, err)
 	if err == nil {
-		atomic.AddUint32(&u.readBytes, uint32(length))
+		u.readBytes.Add(uint32(length))
 	}
 
-	//return length, addr, err
 	return length, addr, perrors.WithStack(err)
 }
 
@@ -448,27 +465,26 @@ func (u *gettyUDPConn) send(udpCtx interface{}) (int, error) {
 		}
 	}
 
-	if u.wTimeout > 0 {
+	if u.wTimeout.Load() > 0 {
 		// Optimization: update write deadline only if more than 25%
 		// of the last write deadline exceeded.
 		// See https://github.com/golang/go/issues/15133 for details.
 		currentTime = time.Now()
-		if currentTime.Sub(u.wLastDeadline) > (u.wTimeout >> 2) {
-			if err = u.conn.SetWriteDeadline(currentTime.Add(u.wTimeout)); err != nil {
+		if currentTime.Sub(u.wLastDeadline.Load()) > u.wTimeout.Load()>>2 {
+			if err = u.conn.SetWriteDeadline(currentTime.Add(u.wTimeout.Load())); err != nil {
 				return 0, perrors.WithStack(err)
 			}
-			u.wLastDeadline = currentTime
+			u.wLastDeadline.Store(currentTime)
 		}
 	}
 
 	if length, _, err = u.conn.WriteMsgUDP(buf, nil, peerAddr); err == nil {
-		atomic.AddUint32(&u.writeBytes, (uint32)(len(buf)))
-		atomic.AddUint32(&u.writePkgNum, 1)
+		u.writeBytes.Add((uint32)(len(buf)))
+		u.writePkgNum.Add(1)
 	}
-	log.Debug("WriteMsgUDP(peerAddr:%s) = {length:%d, error:%s}", peerAddr, length, err)
+	log.Debugf("WriteMsgUDP(peerAddr:%s) = {length:%d, error:%v}", peerAddr, length, err)
 
 	return length, perrors.WithStack(err)
-	//return length, err
 }
 
 // close udp connection
@@ -479,9 +495,9 @@ func (u *gettyUDPConn) close(_ int) {
 	}
 }
 
-/////////////////////////////////////////
+// ///////////////////////////////////////
 // getty websocket connection
-/////////////////////////////////////////
+// ///////////////////////////////////////
 
 type gettyWSConn struct {
 	gettyConn
@@ -505,9 +521,9 @@ func newGettyWSConn(conn *websocket.Conn) *gettyWSConn {
 	gettyWSConn := &gettyWSConn{
 		conn: conn,
 		gettyConn: gettyConn{
-			id:       atomic.AddUint32(&connID, 1),
-			rTimeout: netIOTimeout,
-			wTimeout: netIOTimeout,
+			id:       connID.Add(1),
+			rTimeout: *uatomic.NewDuration(netIOTimeout),
+			wTimeout: *uatomic.NewDuration(netIOTimeout),
 			local:    localAddr,
 			peer:     peerAddr,
 			compress: CompressNone,
@@ -520,7 +536,7 @@ func newGettyWSConn(conn *websocket.Conn) *gettyWSConn {
 	return gettyWSConn
 }
 
-// set compress type
+// SetCompressType set compress type
 func (w *gettyWSConn) SetCompressType(c CompressType) {
 	switch c {
 	case CompressNone, CompressZip, CompressBestSpeed, CompressBestCompression, CompressHuffman:
@@ -558,15 +574,14 @@ func (w *gettyWSConn) recv() ([]byte, error) {
 	// gorilla/websocket/conn.go:NextReader will always fail when got a timeout error.
 	_, b, e := w.conn.ReadMessage() // the first return value is message type.
 	if e == nil {
-		atomic.AddUint32(&w.readBytes, (uint32)(len(b)))
+		w.readBytes.Add((uint32)(len(b)))
 	} else {
 		if websocket.IsUnexpectedCloseError(e, websocket.CloseGoingAway) {
-			log.Warn("websocket unexpected close error: %v", e)
+			log.Warnf("websocket unexpected close error: %v", e)
 		}
 	}
 
 	return b, perrors.WithStack(e)
-	//return b, e
 }
 
 func (w *gettyWSConn) updateWriteDeadline() error {
@@ -575,16 +590,16 @@ func (w *gettyWSConn) updateWriteDeadline() error {
 		currentTime time.Time
 	)
 
-	if w.wTimeout > 0 {
+	if w.wTimeout.Load() > 0 {
 		// Optimization: update write deadline only if more than 25%
 		// of the last write deadline exceeded.
 		// See https://github.com/golang/go/issues/15133 for details.
 		currentTime = time.Now()
-		if currentTime.Sub(w.wLastDeadline) > (w.wTimeout >> 2) {
-			if err = w.conn.SetWriteDeadline(currentTime.Add(w.wTimeout)); err != nil {
+		if currentTime.Sub(w.wLastDeadline.Load()) > w.wTimeout.Load()>>2 {
+			if err = w.conn.SetWriteDeadline(currentTime.Add(w.wTimeout.Load())); err != nil {
 				return perrors.WithStack(err)
 			}
-			w.wLastDeadline = currentTime
+			w.wLastDeadline.Store(currentTime)
 		}
 	}
 
@@ -605,11 +620,10 @@ func (w *gettyWSConn) send(pkg interface{}) (int, error) {
 
 	w.updateWriteDeadline()
 	if err = w.conn.WriteMessage(websocket.BinaryMessage, p); err == nil {
-		atomic.AddUint32(&w.writeBytes, (uint32)(len(p)))
-		atomic.AddUint32(&w.writePkgNum, 1)
+		w.writeBytes.Add((uint32)(len(p)))
+		w.writePkgNum.Add(1)
 	}
 	return len(p), perrors.WithStack(err)
-	//return len(p), err
 }
 
 func (w *gettyWSConn) writePing() error {

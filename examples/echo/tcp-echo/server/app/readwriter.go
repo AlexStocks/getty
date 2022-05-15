@@ -25,12 +25,13 @@ import (
 
 import (
 	"github.com/AlexStocks/getty/transport"
-	log "github.com/AlexStocks/log4go"
 )
 
-var (
-	echoPkgHandler = NewEchoPackageHandler()
+import (
+	log "github.com/AlexStocks/getty/util"
 )
+
+var echoPkgHandler = NewEchoPackageHandler()
 
 type EchoPackageHandler struct{}
 

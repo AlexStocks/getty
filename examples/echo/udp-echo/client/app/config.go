@@ -25,8 +25,11 @@ import (
 )
 
 import (
-	log "github.com/AlexStocks/log4go"
 	config "github.com/koding/multiconfig"
+)
+
+import (
+	log "github.com/AlexStocks/getty/util"
 )
 
 const (
@@ -34,9 +37,7 @@ const (
 	APP_LOG_CONF_FILE = "APP_LOG_CONF_FILE"
 )
 
-var (
-	conf *Config
-)
+var conf *Config
 
 type (
 	GettySessionParam struct {
@@ -150,7 +151,6 @@ func initConf() {
 		panic(fmt.Sprintf("log configure file name{%v} suffix must be .xml", confFile))
 		return
 	}
-	log.LoadConfiguration(confFile)
 	log.Info("config{%#v}", conf)
 
 	return

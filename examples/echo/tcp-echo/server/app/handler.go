@@ -25,7 +25,10 @@ import (
 
 import (
 	"github.com/AlexStocks/getty/transport"
-	log "github.com/AlexStocks/log4go"
+)
+
+import (
+	log "github.com/AlexStocks/getty/util"
 )
 
 const (
@@ -56,8 +59,8 @@ func (h *HeartbeatHandler) Handle(session getty.Session, pkg *EchoPackage) error
 	rspPkg.H = pkg.H
 	rspPkg.B = echoHeartbeatResponseString
 	rspPkg.H.Len = uint16(len(rspPkg.B) + 1)
-
-	return session.WritePkg(&rspPkg, WritePkgTimeout)
+	_, _, err := session.WritePkg(pkg, WritePkgTimeout)
+	return err
 }
 
 ////////////////////////////////////////////
@@ -69,7 +72,8 @@ type MessageHandler struct{}
 func (h *MessageHandler) Handle(session getty.Session, pkg *EchoPackage) error {
 	log.Debug("get echo package{%s}", pkg)
 	// write echo message handle logic here.
-	return session.WritePkg(pkg, WritePkgTimeout)
+	_, _, err := session.WritePkg(pkg, WritePkgTimeout)
+	return err
 }
 
 ////////////////////////////////////////////
@@ -97,9 +101,7 @@ func newEchoMessageHandler() *EchoMessageHandler {
 }
 
 func (h *EchoMessageHandler) OnOpen(session getty.Session) error {
-	var (
-		err error
-	)
+	var err error
 
 	h.rwlock.RLock()
 	if conf.SessionNumber <= len(h.sessionMap) {

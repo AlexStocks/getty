@@ -57,11 +57,9 @@ func testTCPServer(t *testing.T, address string) {
 	)
 	assert.NotNil(t, clt)
 	assert.True(t, clt.ID() > 0)
-	assert.Equal(t, clt.endPointType, TCP_CLIENT)
+	assert.Equal(t, clt.EndPointType(), TCP_CLIENT)
 
-	var (
-		msgHandler MessageHandler
-	)
+	var msgHandler MessageHandler
 	cb := func(session Session) error {
 		return newSessionCallback(session, &msgHandler)
 	}
@@ -76,6 +74,7 @@ func testTCPServer(t *testing.T, address string) {
 	server.Close()
 	assert.True(t, server.IsClosed())
 }
+
 func testTCPTlsServer(t *testing.T, address string) {
 	var (
 		server           *server
@@ -126,11 +125,9 @@ func testTCPTlsServer(t *testing.T, address string) {
 	)
 	assert.NotNil(t, clt)
 	assert.True(t, clt.ID() > 0)
-	assert.Equal(t, clt.endPointType, TCP_CLIENT)
+	assert.Equal(t, clt.EndPointType(), TCP_CLIENT)
 
-	var (
-		msgHandler MessageHandler
-	)
+	var msgHandler MessageHandler
 	cb := func(session Session) error {
 		return newSessionCallback(session, &msgHandler)
 	}
