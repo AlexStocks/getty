@@ -3,7 +3,7 @@ module github.com/apache/dubbo-getty
 go 1.14
 
 require (
-	github.com/dubbogo/gost v1.12.6-0.20220824084206-300e27e9e524
+	github.com/dubbogo/gost v1.13.1
 	github.com/fatih/camelcase v1.0.0 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/golang/snappy v0.0.1
@@ -13,6 +13,6 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.7.0
 	go.uber.org/atomic v1.9.0
-	go.uber.org/zap v1.16.0
+	go.uber.org/zap v1.21.0
 	gopkg.in/yaml.v2 v2.4.0
 )
