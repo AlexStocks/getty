@@ -45,23 +45,27 @@ type Connection interface {
 	SetCompressType(CompressType)
 	LocalAddr() string
 	RemoteAddr() string
+	// IncReadPkgNum increases connection's read pkg number
 	IncReadPkgNum()
+	// IncWritePkgNum increases connection's write pkg number
 	IncWritePkgNum()
 	// UpdateActive update session's active time
 	UpdateActive()
 	// GetActive get session's active time
 	GetActive() time.Time
+	// ReadTimeout gets deadline for the future read calls.
 	ReadTimeout() time.Duration
 	// SetReadTimeout sets deadline for the future read calls.
 	SetReadTimeout(time.Duration)
+	// WriteTimeout gets deadline for the future write calls.
 	WriteTimeout() time.Duration
-	// SetWriteTimeout sets deadline for the future read calls.
+	// SetWriteTimeout sets deadline for the future write calls.
 	SetWriteTimeout(time.Duration)
+	// Send pkg data to peer
 	Send(interface{}) (int, error)
-	// don't distinguish between tcp connection and websocket connection. Because
-	// gorilla/websocket/conn.go:(Conn)Close also invoke net.Conn.Close
+	// CloseConn close connection
 	CloseConn(int)
-	// set related session
+	// SetSession sets related session
 	SetSession(Session)
 }
 
