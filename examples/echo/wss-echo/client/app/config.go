@@ -103,7 +103,7 @@ func initConf() {
 	// configure
 	confFile = os.Getenv(APP_CONF_FILE)
 	if confFile == "" {
-		panic(fmt.Sprintf("application configure file name is nil"))
+		panic("application configure file name is nil")
 		return // I know it is of no usage. Just Err Protection.
 	}
 	if path.Ext(confFile) != ".toml" {
@@ -147,7 +147,7 @@ func initConf() {
 	// log
 	confFile = os.Getenv(APP_LOG_CONF_FILE)
 	if confFile == "" {
-		panic(fmt.Sprintf("log configure file name is nil"))
+		panic("log configure file name is nil")
 		return
 	}
 	if path.Ext(confFile) != ".xml" {
