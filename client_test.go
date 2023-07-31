@@ -134,7 +134,7 @@ func TestTCPClient(t *testing.T) {
 	assert.True(t, conn.compress == CompressNone)
 	beforeWriteBytes := conn.writeBytes
 	beforeWritePkgNum := conn.writePkgNum
-	l, err := conn.send([]byte("hello"))
+	l, err := conn.Send([]byte("hello"))
 	assert.Nil(t, err)
 	assert.True(t, l == 5)
 	beforeWritePkgNum.Add(1)
@@ -150,7 +150,7 @@ func TestTCPClient(t *testing.T) {
 	assert.Equal(t, beforeWritePkgNum, conn.writePkgNum)
 	var pkgs [][]byte
 	pkgs = append(pkgs, []byte("hello"), []byte("hello"))
-	l, err = conn.send(pkgs)
+	l, err = conn.Send(pkgs)
 	assert.Nil(t, err)
 	assert.True(t, l == 10)
 	beforeWritePkgNum.Add(2)
@@ -264,11 +264,11 @@ func TestUDPClient(t *testing.T) {
 	}
 	t.Logf("udp context:%s", udpCtx)
 	udpConn := ss.(*session).Connection.(*gettyUDPConn)
-	_, err = udpConn.send(udpCtx)
+	_, err = udpConn.Send(udpCtx)
 	assert.NotNil(t, err)
 	udpCtx.Pkg = []byte("hello")
 	beforeWriteBytes := udpConn.writeBytes
-	_, err = udpConn.send(udpCtx)
+	_, err = udpConn.Send(udpCtx)
 	beforeWriteBytes.Add(5)
 	assert.Equal(t, beforeWriteBytes, udpConn.writeBytes)
 	assert.Nil(t, err)
@@ -327,11 +327,11 @@ func TestNewWSClient(t *testing.T) {
 	assert.True(t, conn.compress == CompressNone)
 	err := conn.handlePing("hello")
 	assert.Nil(t, err)
-	l, err := conn.send("hello")
+	l, err := conn.Send("hello")
 	assert.NotNil(t, err)
 	assert.True(t, l == 0)
 	beforeWriteBytes := conn.writeBytes
-	_, err = conn.send([]byte("hello"))
+	_, err = conn.Send([]byte("hello"))
 	assert.Nil(t, err)
 	beforeWriteBytes.Add(5)
 	assert.Equal(t, beforeWriteBytes, conn.writeBytes)
