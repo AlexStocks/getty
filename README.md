@@ -20,7 +20,7 @@ If you're using WebSocket, you don't need to worry about heartbeat request/respo
 
 For code examples, you can refer to https://github.com/AlexStocks/getty-examples.
 
-## About network transmission in getty 
+## About network transmission in getty
 
 In network communication, the data transmission interface of getty does not guarantee that data will be sent successfully; it lacks an internal retry mechanism. Instead, getty delegates the outcome of data transmission to the underlying operating system mechanism. Under this mechanism, if data is successfully transmitted, it is considered a success; if transmission fails, it is regarded as a failure. These outcomes are then communicated back to the upper-layer caller.
 
