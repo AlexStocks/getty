@@ -1,4 +1,4 @@
-# getty
+# getty [中文](./README_CN.md)
 
  *a netty like asynchronous network I/O library*
 
@@ -10,44 +10,23 @@
 
 ## INTRO
 
-Getty is a asynchronous network I/O library in golang. Getty works on tcp/udp/websocket network protocol and supplies [a uniform interface](https://github.com/alexstocks/getty/blob/master/getty.go#L45).
+Getty is an asynchronous network I/O library developed in Golang. It operates on TCP, UDP, and WebSocket network protocols, providing a consistent interface [EventListener](https://github.com/AlexStocks/getty/blob/01184614ef72d0cf2dd11894ab31e0dace066b6c/transport/getty.go#L68).
 
-In getty there are two goroutines in one connection(session), one reads tcp stream/udp packet/websocket package, the other handles logic process and writes response into network write buffer. If your logic process may take a long time, you should start a new logic process goroutine by yourself in codec.go:(Codec)OnMessage.
+Within Getty, each connection (session) involves two separate goroutines. One handles the reading of TCP streams, UDP packets, or WebSocket packages, while the other manages the logic processing and writes responses into the network write buffer. If your logic processing might take a considerable amount of time, it's recommended to start a new logic process goroutine yourself within codec.go's (Codec)OnMessage method.
 
-You can also handle heartbeat logic in codec.go:(Codec):OnCron. If you use tcp/udp, you should send hearbeat package by yourself, and then invoke session.go:(Session)UpdateActive to update its active time. Please check whether the tcp session has been timeout or not in codec.go:(Codec)OnCron by session.go:(Session)GetActive.
+Additionally, you can manage heartbeat logic within the (Codec)OnCron method in codec.go. If you're using TCP or UDP, you should send heartbeat packages yourself and then call session.go's (Session)UpdateActive method to update the session's activity timestamp. You can verify if a TCP session has timed out or not in codec.go's (Codec)OnCron method using session.go's (Session)GetActive method.
 
-Whatever if you use websocket, you do not need to care about hearbeat request/response because Getty do this task in session.go:(Session)handleLoop by sending/received websocket ping/pong frames. You just need to  check whether the websocket session has been timeout or not in codec.go:(Codec)OnCron by session.go:(Session)GetActive.
+If you're using WebSocket, you don't need to worry about heartbeat request/response, as Getty handles this task within session.go's (Session)handleLoop method by sending and receiving WebSocket ping/pong frames. Your responsibility is to check whether the WebSocket session has timed out or not within codec.go's (Codec)OnCron method using session.go's (Session)GetActive method.
 
-You can get code example in https://github.com/AlexStocks/getty-examples.
+For code examples, you can refer to https://github.com/AlexStocks/getty-examples.
 
-## RPC
+## About network transmission in getty 
 
-An open source, Go based, RPC framework.
+In network communication, the data transmission interface of getty does not guarantee that data will be sent successfully; it lacks an internal retry mechanism. Instead, getty delegates the outcome of data transmission to the underlying operating system mechanism. Under this mechanism, if data is successfully transmitted, it is considered a success; if transmission fails, it is regarded as a failure. These outcomes are then communicated back to the upper-layer caller.
 
-Feature list:
+Upper-layer callers need to determine whether to incorporate a retry mechanism based on these outcomes. This implies that when data transmission fails, upper-layer callers must handle the situation differently depending on the circumstances. For instance, if the failure is due to a disconnect in the connection, upper-layer callers can attempt to resend the data based on the result of getty's automatic reconnection. Alternatively, if the failure is caused by the sending buffer of the underlying operating system being full, the sender can implement its own retry mechanism to wait for the sending buffer to become available before attempting another transmission.
 
-- 1 Transport: TCP(√), UDP(√), Websocket(√)
-- 2 Codec: ProtoBuf(√), JSON(√)
-- 3 Strategy: Failover(√), Failfast(√)
-- 4 Metrics: Invoke Statistics(X), User Auth(X)
-
-Code example:
-
-The subdirectory rpc of [getty-examples](https://github.com/alexstocks/getty-examples/) shows how to build rpc client/rpc server.
-
-## Micro
-
-An micro service framework based on getty/rpc.
-
-Feature list:
-
-- 1 Registry: ZooKeeper(√), Etcd(√)
-- 2 Load Balance: Random(X), RoundRobin(√), [Self-Defined(√)](https://github.com/alexstocks/getty-examples/blob/master/micro/client/app/main.go#L86)
-- 3 Service Discovery: Service Publish(√), Service Watch(√), Service Notify(√)
-
-Code example:
-
-The subdirectory micro of [getty-examples](https://github.com/alexstocks/getty-examples/) shows how to build micro client/rpc server.
+In summary, the data transmission interface of getty does not come with an inherent retry mechanism; instead, it is up to upper-layer callers to decide whether to implement retry logic based on specific situations. This design approach provides developers with greater flexibility in controlling the behavior of data transmission.
 
 ## LICENCE
 
