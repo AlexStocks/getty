@@ -19,6 +19,7 @@ package getty
 
 import (
 	"bytes"
+	"github.com/gorilla/websocket"
 	"net"
 	"net/http"
 	"os"
@@ -363,6 +364,27 @@ func TestNewWSClient(t *testing.T) {
 	assert.Equal(t, beforeWritePkgNum, conn.writePkgNum)
 	err = conn.writePing()
 	assert.Nil(t, err)
+
+	done := make(chan int)
+	conn.conn.SetCloseHandler(func(code int, text string) error {
+		defer func() {
+			done <- code
+			close(done)
+		}()
+		message := websocket.FormatCloseMessage(code, "")
+		conn.conn.WriteControl(websocket.CloseMessage, message, time.Now().Add(1e9))
+		return nil
+	})
+	serverSession := serverMsgHandler.array[0]
+	serverSession.Close()
+	select {
+	case code := <-done:
+		// refer to websocket.isValidReceivedCloseCode
+		assert.True(t, (code >= 1000 && code <= 1003) || (code >= 1007 && code <= 1013) || (code >= 3000 && code <= 4999))
+	case <-time.After(5e9):
+		assert.True(t, false)
+	}
+	assert.True(t, serverSession.IsClosed())
 
 	ss.SetReader(nil)
 	assert.Nil(t, ss.(*session).reader)
