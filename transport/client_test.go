@@ -19,7 +19,6 @@ package getty
 
 import (
 	"bytes"
-	"github.com/gorilla/websocket"
 	"net"
 	"net/http"
 	"os"
@@ -30,6 +29,7 @@ import (
 )
 
 import (
+	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 )
 
