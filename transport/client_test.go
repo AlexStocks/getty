@@ -379,8 +379,7 @@ func TestNewWSClient(t *testing.T) {
 	serverSession.Close()
 	select {
 	case code := <-done:
-		// refer to websocket.isValidReceivedCloseCode
-		assert.True(t, (code >= 1000 && code <= 1003) || (code >= 1007 && code <= 1013) || (code >= 3000 && code <= 4999))
+		assert.True(t, code == websocket.CloseNormalClosure)
 	case <-time.After(5e9):
 		assert.True(t, false)
 	}
