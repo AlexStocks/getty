@@ -29,6 +29,7 @@ import (
 )
 
 import (
+	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -363,6 +364,26 @@ func TestNewWSClient(t *testing.T) {
 	assert.Equal(t, beforeWritePkgNum, conn.writePkgNum)
 	err = conn.writePing()
 	assert.Nil(t, err)
+
+	done := make(chan int)
+	conn.conn.SetCloseHandler(func(code int, text string) error {
+		defer func() {
+			done <- code
+			close(done)
+		}()
+		message := websocket.FormatCloseMessage(code, "")
+		conn.conn.WriteControl(websocket.CloseMessage, message, time.Now().Add(1e9))
+		return nil
+	})
+	serverSession := serverMsgHandler.array[0]
+	serverSession.Close()
+	select {
+	case code := <-done:
+		assert.True(t, code == websocket.CloseNormalClosure)
+	case <-time.After(5e9):
+		assert.True(t, false)
+	}
+	assert.True(t, serverSession.IsClosed())
 
 	ss.SetReader(nil)
 	assert.Nil(t, ss.(*session).reader)
