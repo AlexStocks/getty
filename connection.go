@@ -268,17 +268,14 @@ func (t *gettyTCPConn) recv(p []byte) (int, error) {
 
 	// set read timeout deadline
 	if t.compress == CompressNone && t.rTimeout.Load() > 0 {
-		// Optimization: update read deadline only if more than 25%
-		// of the last read deadline exceeded.
-		// See https://github.com/golang/go/issues/15133 for details.
+		// Set Deadline every time, since golang has fixed the performance issue
+		// See https://github.com/golang/go/issues/15133#issuecomment-271571395 for details
 		currentTime = time.Now()
-		if currentTime.Sub(t.rLastDeadline.Load()) > t.rTimeout.Load()>>2 {
-			if err = t.conn.SetReadDeadline(currentTime.Add(t.rTimeout.Load())); err != nil {
-				// just a timeout error
-				return 0, perrors.WithStack(err)
-			}
-			t.rLastDeadline.Store(currentTime)
+		if err = t.conn.SetReadDeadline(currentTime.Add(t.rTimeout.Load())); err != nil {
+			// just a timeout error
+			return 0, perrors.WithStack(err)
 		}
+		t.rLastDeadline.Store(currentTime)
 	}
 
 	length, err = t.reader.Read(p)
@@ -298,16 +295,13 @@ func (t *gettyTCPConn) Send(pkg interface{}) (int, error) {
 	)
 
 	if t.compress == CompressNone && t.wTimeout.Load() > 0 {
-		// Optimization: update write deadline only if more than 25%
-		// of the last write deadline exceeded.
-		// See https://github.com/golang/go/issues/15133 for details.
+		// Set Deadline every time, since golang has fixed the performance issue
+		// See https://github.com/golang/go/issues/15133#issuecomment-271571395 for details
 		currentTime = time.Now()
-		if currentTime.Sub(t.wLastDeadline.Load()) > t.wTimeout.Load()>>2 {
-			if err = t.conn.SetWriteDeadline(currentTime.Add(t.wTimeout.Load())); err != nil {
-				return 0, perrors.WithStack(err)
-			}
-			t.wLastDeadline.Store(currentTime)
+		if err = t.conn.SetWriteDeadline(currentTime.Add(t.wTimeout.Load())); err != nil {
+			return 0, perrors.WithStack(err)
 		}
+		t.wLastDeadline.Store(currentTime)
 	}
 
 	if buffers, ok := pkg.([][]byte); ok {
@@ -419,16 +413,13 @@ func (u *gettyUDPConn) SetCompressType(c CompressType) {
 // udp connection read
 func (u *gettyUDPConn) recv(p []byte) (int, *net.UDPAddr, error) {
 	if u.rTimeout.Load() > 0 {
-		// Optimization: update read deadline only if more than 25%
-		// of the last read deadline exceeded.
-		// See https://github.com/golang/go/issues/15133 for details.
+		// Set Deadline every time, since golang has fixed the performance issue
+		// See https://github.com/golang/go/issues/15133#issuecomment-271571395 for details
 		currentTime := time.Now()
-		if currentTime.Sub(u.rLastDeadline.Load()) > u.rTimeout.Load()>>2 {
-			if err := u.conn.SetReadDeadline(currentTime.Add(u.rTimeout.Load())); err != nil {
-				return 0, nil, perrors.WithStack(err)
-			}
-			u.rLastDeadline.Store(currentTime)
+		if err := u.conn.SetReadDeadline(currentTime.Add(u.rTimeout.Load())); err != nil {
+			return 0, nil, perrors.WithStack(err)
 		}
+		u.rLastDeadline.Store(currentTime)
 	}
 
 	length, addr, err := u.conn.ReadFromUDP(p) // connected udp also can get return @addr
@@ -466,16 +457,13 @@ func (u *gettyUDPConn) Send(udpCtx interface{}) (int, error) {
 	}
 
 	if u.wTimeout.Load() > 0 {
-		// Optimization: update write deadline only if more than 25%
-		// of the last write deadline exceeded.
-		// See https://github.com/golang/go/issues/15133 for details.
+		// Set Deadline every time, since golang has fixed the performance issue
+		// See https://github.com/golang/go/issues/15133#issuecomment-271571395 for details
 		currentTime = time.Now()
-		if currentTime.Sub(u.wLastDeadline.Load()) > u.wTimeout.Load()>>2 {
-			if err = u.conn.SetWriteDeadline(currentTime.Add(u.wTimeout.Load())); err != nil {
-				return 0, perrors.WithStack(err)
-			}
-			u.wLastDeadline.Store(currentTime)
+		if err = u.conn.SetWriteDeadline(currentTime.Add(u.wTimeout.Load())); err != nil {
+			return 0, perrors.WithStack(err)
 		}
+		u.wLastDeadline.Store(currentTime)
 	}
 
 	if length, _, err = u.conn.WriteMsgUDP(buf, nil, peerAddr); err == nil {
@@ -591,16 +579,13 @@ func (w *gettyWSConn) updateWriteDeadline() error {
 	)
 
 	if w.wTimeout.Load() > 0 {
-		// Optimization: update write deadline only if more than 25%
-		// of the last write deadline exceeded.
-		// See https://github.com/golang/go/issues/15133 for details.
+		// Set Deadline every time, since golang has fixed the performance issue
+		// See https://github.com/golang/go/issues/15133#issuecomment-271571395 for details
 		currentTime = time.Now()
-		if currentTime.Sub(w.wLastDeadline.Load()) > w.wTimeout.Load()>>2 {
-			if err = w.conn.SetWriteDeadline(currentTime.Add(w.wTimeout.Load())); err != nil {
-				return perrors.WithStack(err)
-			}
-			w.wLastDeadline.Store(currentTime)
+		if err = w.conn.SetWriteDeadline(currentTime.Add(w.wTimeout.Load())); err != nil {
+			return perrors.WithStack(err)
 		}
+		w.wLastDeadline.Store(currentTime)
 	}
 
 	return nil
