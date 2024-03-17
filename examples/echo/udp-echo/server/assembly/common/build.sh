@@ -15,7 +15,8 @@ PROJECT_HOME=`pwd`
 TARGET_FOLDER=${PROJECT_HOME}/target/${GOOS}
 
 TARGET_SBIN_NAME=${TARGET_EXEC_NAME}
-version=`cat app/version.go | grep Version | awk -F '=' '{print $2}' | awk -F '"' '{print $2}'`
+#version=`cat app/version.go | grep Version | awk -F '=' '{print $2}' | awk -F '"' '{print $2}'`
+version="1.0"
 if [[ ${GOOS} == "windows" ]]; then
     TARGET_SBIN_NAME=${TARGET_SBIN_NAME}.exe
 fi
@@ -24,12 +25,12 @@ if [[ $PROFILE == "dev" ||  $PROFILE == "test" ]]; then
     # GFLAGS=-gcflags "-N -l" -race -x -v # -x会把go build的详细过程输出
     # GFLAGS=-gcflags "-N -l" -race -v
     # GFLAGS="-gcflags \"-N -l\" -v"
-    cd ${BUILD_PACKAGE} && GOOS=$GOOS GOARCH=$GOARCH go build -gcflags "-N -l" -x -v -i -o ${TARGET_NAME} && cd -
+    cd ${BUILD_PACKAGE} && GOOS=$GOOS GOARCH=$GOARCH go build -gcflags "-N -l" -x -v -o ${TARGET_NAME} && cd -
 else
     # -s去掉符号表（然后panic时候的stack trace就没有任何文件名/行号信息了，这个等价于普通C/C++程序被strip的效果），
     # -w去掉DWARF调试信息，得到的程序就不能用gdb调试了。-s和-w也可以分开使用，一般来说如果不打算用gdb调试，
     # -w基本没啥损失。-s的损失就有点大了。
-    cd ${BUILD_PACKAGE} && GOOS=$GOOS GOARCH=$GOARCH go build -ldflags "-w" -x -v -i -o ${TARGET_NAME} && cd -
+    cd ${BUILD_PACKAGE} && GOOS=$GOOS GOARCH=$GOARCH go build -ldflags "-w" -x -v -o ${TARGET_NAME} && cd -
 fi
 
 TAR_NAME=${TARGET_EXEC_NAME}-${version}-`date "+%Y%m%d-%H%M"`-${PROFILE}

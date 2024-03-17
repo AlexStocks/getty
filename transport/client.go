@@ -22,8 +22,8 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
 	"net"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -32,16 +32,11 @@ import (
 
 import (
 	log "github.com/AlexStocks/getty/util"
-)
-
-import (
-	"github.com/dubbogo/gost/bytes"
+	gxbytes "github.com/dubbogo/gost/bytes"
 	"github.com/dubbogo/gost/net"
 	gxsync "github.com/dubbogo/gost/sync"
 	gxtime "github.com/dubbogo/gost/time"
-
 	"github.com/gorilla/websocket"
-
 	perrors "github.com/pkg/errors"
 )
 
@@ -190,8 +185,8 @@ func (c *client) dialUDP() Session {
 		buf       []byte
 	)
 
-	bufp = gxbytes.GetBytes(128)
-	defer gxbytes.PutBytes(bufp)
+	bufp = gxbytes.AcquireBytes(128)
+	defer gxbytes.ReleaseBytes(bufp)
 	buf = *bufp
 	localAddr = &net.UDPAddr{IP: net.IPv4zero, Port: 0}
 	peerAddr, _ = net.ResolveUDPAddr("udp", c.addr)
@@ -285,9 +280,9 @@ func (c *client) dialWSS() Session {
 	}
 
 	if c.cert != "" {
-		certPEMBlock, err := ioutil.ReadFile(c.cert)
+		certPEMBlock, err := os.ReadFile(c.cert)
 		if err != nil {
-			panic(fmt.Sprintf("ioutil.ReadFile(cert:%s) = error:%+v", c.cert, perrors.WithStack(err)))
+			panic(fmt.Sprintf("os.ReadFile(cert:%s) = error:%+v", c.cert, perrors.WithStack(err)))
 		}
 
 		var cert tls.Certificate

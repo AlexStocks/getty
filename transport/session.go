@@ -20,23 +20,21 @@ package getty
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
 	"runtime"
 	"sync"
 	"time"
-)
 
-import (
 	log "github.com/AlexStocks/getty/util"
-)
 
-import (
 	gxbytes "github.com/dubbogo/gost/bytes"
-	gxcontext "github.com/dubbogo/gost/context"
-	gxtime "github.com/dubbogo/gost/time"
 
+	gxcontext "github.com/dubbogo/gost/context"
+
+	gxtime "github.com/dubbogo/gost/time"
 	"github.com/gorilla/websocket"
 
 	perrors "github.com/pkg/errors"
@@ -52,6 +50,8 @@ const (
 	// MaxWheelTimeSpan 900s, 15 minute
 	MaxWheelTimeSpan = 900e9
 	maxPacketLen     = 16 * 1024
+
+	defaultTLSHandshakeTimeout = time.Second * 3
 
 	defaultSessionName    = "session"
 	defaultTCPSessionName = "tcp-session"
@@ -566,6 +566,12 @@ func (s *session) run() {
 
 func (s *session) addTask(pkg interface{}) {
 	f := func() {
+		// If the session is closed, there is no need to perform CPU-intensive operations.
+		if s.IsClosed() {
+			log.Errorf("[Id:%d, name=%s, endpoint=%s] Session is closed", s.ID(), s.name, s.EndPoint())
+			return
+		}
+
 		s.listener.OnMessage(s, pkg)
 		s.incReadPkgNum()
 	}
@@ -635,6 +641,18 @@ func (s *session) handleTCPPackage() error {
 	pktBuf = gxbytes.NewBuffer(nil)
 
 	conn = s.Connection.(*gettyTCPConn)
+	if tlsConn, ok := conn.conn.(*tls.Conn); ok {
+		tlsHandshaketime := defaultTLSHandshakeTimeout
+		if s.readTimeout() > 0 {
+			tlsHandshaketime = s.readTimeout()
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), tlsHandshaketime)
+		defer cancel()
+		if err := tlsConn.HandshakeContext(ctx); err != nil {
+			log.Errorf("[tlsConn.HandshakeContext] = error:%+v", err)
+			return perrors.Wrap(err, "tlsConn.HandshakeContext")
+		}
+	}
 	for {
 		if s.IsClosed() {
 			err = nil
