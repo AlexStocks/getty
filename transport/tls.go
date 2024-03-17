@@ -21,7 +21,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io/ioutil"
+	"os"
 )
 
 import (
@@ -66,9 +66,9 @@ func (s *ServerTlsConfigBuilder) BuildTlsConfig() (*tls.Config, error) {
 	}
 
 	if s.ServerTrustCertCollectionPath != "" {
-		certPem, err = ioutil.ReadFile(s.ServerTrustCertCollectionPath)
+		certPem, err = os.ReadFile(s.ServerTrustCertCollectionPath)
 		if err != nil {
-			log.Error(fmt.Errorf("ioutil.ReadFile(certFile{%s}) = err:%+v", s.ServerTrustCertCollectionPath, perrors.WithStack(err)))
+			log.Error(fmt.Errorf("os.ReadFile(certFile{%s}) = err:%+v", s.ServerTrustCertCollectionPath, perrors.WithStack(err)))
 			return nil, err
 		}
 		certPool = x509.NewCertPool()
@@ -98,7 +98,7 @@ func (c *ClientTlsConfigBuilder) BuildTlsConfig() (*tls.Config, error) {
 		log.Error(fmt.Sprintf("Unable to load X509 Key Pair %v", err))
 		return nil, err
 	}
-	certBytes, err := ioutil.ReadFile(c.ClientTrustCertCollectionPath)
+	certBytes, err := os.ReadFile(c.ClientTrustCertCollectionPath)
 	if err != nil {
 		log.Error(fmt.Sprintf("Unable to read pem file: %s", c.ClientTrustCertCollectionPath))
 		return nil, err
