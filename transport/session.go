@@ -142,6 +142,9 @@ type session struct {
 	// callbacks
 	closeCallback      callbacks
 	closeCallbackMutex sync.RWMutex
+
+	// wait
+	closeWait chan struct{}
 }
 
 func newSession(endPoint EndPoint, conn Connection) *session {
@@ -155,10 +158,11 @@ func newSession(endPoint EndPoint, conn Connection) *session {
 
 		period: period,
 
-		once:  &sync.Once{},
-		done:  make(chan struct{}),
-		wait:  pendingDuration,
-		attrs: gxcontext.NewValuesContext(context.Background()),
+		once:      &sync.Once{},
+		done:      make(chan struct{}),
+		wait:      pendingDuration,
+		attrs:     gxcontext.NewValuesContext(context.Background()),
+		closeWait: make(chan struct{}),
 	}
 
 	ss.Connection.SetSession(ss)
@@ -603,6 +607,9 @@ func (s *session) handlePackage() {
 		}
 		grNum := s.grNum.Add(-1)
 		log.Infof("%s, [session.handlePackage] gr will exit now, left gr num %d", s.sessionToken(), grNum)
+		if grNum == 0 {
+			close(s.closeWait)
+		}
 		s.stop()
 		if err != nil {
 			log.Errorf("%s, [session.handlePackage] error:%+v", s.sessionToken(), perrors.WithStack(err))
@@ -914,6 +921,9 @@ func (s *session) gc() {
 // Close will be invoked by NewSessionCallback(if return error is not nil)
 // or (session)handleLoop automatically. It's thread safe.
 func (s *session) Close() {
+	if s.IsClosed() {
+		return
+	}
 	s.stop()
 	log.Infof("%s closed now. its current gr num is %d", s.sessionToken(), s.grNum.Load())
 }

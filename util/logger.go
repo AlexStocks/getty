@@ -26,12 +26,27 @@ import (
 type Logger interface {
 	Info(args ...any)
 	Warn(args ...any)
-	Error(args ...any)
+	Error(args ...any) error
 	Debug(args ...any)
 	Infof(fmt string, args ...any)
 	Warnf(fmt string, args ...any)
-	Errorf(fmt string, args ...any)
+	Errorf(fmt string, args ...any) error
 	Debugf(fmt string, args ...any)
+}
+
+// zapLoggerAdapter adapts zap.SugaredLogger to the Logger interface
+type zapLoggerAdapter struct {
+	*zap.SugaredLogger
+}
+
+func (l *zapLoggerAdapter) Error(args ...any) error {
+	l.SugaredLogger.Error(args...)
+	return nil
+}
+
+func (l *zapLoggerAdapter) Errorf(fmt string, args ...any) error {
+	l.SugaredLogger.Errorf(fmt, args...)
+	return nil
 }
 
 type LoggerLevel int8
@@ -79,7 +94,7 @@ var (
 func init() {
 	zapLoggerConfig.EncoderConfig = zapLoggerEncoderConfig
 	zapLogger, _ = zapLoggerConfig.Build()
-	log = zapLogger.Sugar()
+	log = &zapLoggerAdapter{zapLogger.Sugar()}
 
 	// todo: flushes buffer when redirect log to file.
 	// var exitSignal = make(chan os.Signal)
@@ -114,7 +129,7 @@ func SetLoggerLevel(level LoggerLevel) error {
 	if err != nil {
 		return err
 	}
-	log = zapLogger.Sugar()
+	log = &zapLoggerAdapter{zapLogger.Sugar()}
 	return nil
 }
 
@@ -128,7 +143,7 @@ func SetLoggerCallerDisable() error {
 	if err != nil {
 		return err
 	}
-	log = zapLogger.Sugar()
+	log = &zapLoggerAdapter{zapLogger.Sugar()}
 	return nil
 }
 
@@ -163,11 +178,11 @@ func Warnf(template string, args ...any) {
 }
 
 // Error
-func Error(args ...any) {
-	log.Error(args...)
+func Error(args ...any) error {
+	return log.Error(args...)
 }
 
 // Errorf
-func Errorf(template string, args ...any) {
-	log.Errorf(template, args...)
+func Errorf(template string, args ...any) error {
+	return log.Errorf(template, args...)
 }
