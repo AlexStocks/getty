@@ -155,7 +155,7 @@ func (s *server) stop() {
 				if err := s.server.Shutdown(ctx); err != nil {
 					// if the log output is "shutdown ctx: context deadline exceeded"， it means that
 					// there are still some active connections.
-					log.Errorf("server shutdown ctx:%s error:%v", ctx, err)
+					_ = log.Errorf("server shutdown ctx:%s error:%v", ctx, err)
 				}
 				cancel()
 			}
@@ -424,7 +424,7 @@ func (s *server) runWSEventLoop(newSession NewSessionCallback) {
 		s.lock.Unlock()
 		err = server.Serve(s.streamListener)
 		if err != nil {
-			log.Errorf("http.server.Serve(addr{%s}) = err:%+v", s.addr, perrors.WithStack(err))
+			_ = log.Errorf("http.server.Serve(addr{%s}) = err:%+v", s.addr, perrors.WithStack(err))
 		}
 	}()
 }

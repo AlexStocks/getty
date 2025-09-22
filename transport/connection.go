@@ -340,7 +340,7 @@ func (t *gettyTCPConn) CloseConn(waitSec int) {
 	if t.conn != nil {
 		if writer, ok := t.writer.(*snappy.Writer); ok {
 			if err := writer.Close(); err != nil {
-				log.Errorf("snappy.Writer.Close() = error:%+v", err)
+				_ = log.Errorf("snappy.Writer.Close() = error:%+v", err)
 			}
 		}
 		if conn, ok := t.conn.(*net.TCPConn); ok {

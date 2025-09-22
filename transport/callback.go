@@ -71,7 +71,7 @@ func (t *callbacks) Add(handler, key any, callback func()) {
 
 	// Guard: avoid runtime panic on non-comparable types
 	if !isComparable(handler) || !isComparable(key) {
-		log.Error(perrors.New(fmt.Sprintf("callbacks.Add: non-comparable handler/key: %T, %T; ignored", handler, key)))
+		_ = log.Error(perrors.New(fmt.Sprintf("callbacks.Add: non-comparable handler/key: %T, %T; ignored", handler, key)))
 		return
 	}
 
@@ -109,7 +109,7 @@ func (t *callbacks) Add(handler, key any, callback func()) {
 func (t *callbacks) Remove(handler, key any) {
 	// Guard: avoid runtime panic on non-comparable types
 	if !isComparable(handler) || !isComparable(key) {
-		log.Error(perrors.New(fmt.Sprintf("callbacks.Remove: non-comparable handler/key: %T, %T; ignored", handler, key)))
+		_ = log.Error(perrors.New(fmt.Sprintf("callbacks.Remove: non-comparable handler/key: %T, %T; ignored", handler, key)))
 		return
 	}
 

@@ -397,7 +397,7 @@ func (s *session) WritePkg(pkg any, timeout time.Duration) (pkgBytesLenth int, s
 			rBuf := make([]byte, size)
 			rBuf = rBuf[:runtime.Stack(rBuf, false)]
 			err = perrors.WithStack(fmt.Errorf("[session.WritePkg] panic session %s: err=%v\n%s", s.sessionToken(), r, rBuf))
-			log.Error(err)
+			_ = log.Error(err)
 		}
 	}()
 
