@@ -557,14 +557,14 @@ func (s *session) run() {
 	if s.Connection == nil || s.listener == nil || s.writer == nil {
 		errStr := fmt.Sprintf("session{name:%s, conn:%#v, listener:%#v, writer:%#v}",
 			s.name, s.Connection, s.listener, s.writer)
-		log.Error(errStr)
+		_ = log.Error(errStr)
 		panic(errStr)
 	}
 
 	// call session opened
 	s.UpdateActive()
 	if err := s.listener.OnOpen(s); err != nil {
-		log.Errorf("[OnOpen] session %s, error: %#v", s.Stat(), err)
+		_ = log.Errorf("[OnOpen] session %s, error: %#v", s.Stat(), err)
 		s.Close()
 		return
 	}
@@ -582,7 +582,7 @@ func (s *session) addTask(pkg any) {
 	f := func() {
 		// If the session is closed, there is no need to perform CPU-intensive operations.
 		if s.IsClosed() {
-			log.Errorf("[Id:%d, name=%s, endpoint=%s] Session is closed", s.ID(), s.name, s.EndPoint())
+			_ = log.Errorf("[Id:%d, name=%s, endpoint=%s] Session is closed", s.ID(), s.name, s.EndPoint())
 			return
 		}
 		s.listener.OnMessage(s, pkg)
@@ -625,7 +625,7 @@ func (s *session) handlePackage() {
 	if _, ok := s.Connection.(*gettyTCPConn); ok {
 		if s.reader == nil {
 			errStr := fmt.Sprintf("session{name:%s, conn:%#v, reader:%#v}", s.name, s.Connection, s.reader)
-			log.Error(errStr)
+			_ = log.Error(errStr)
 			panic(errStr)
 		}
 
@@ -884,7 +884,7 @@ func (s *session) stop() {
 						rBuf = rBuf[:runtime.Stack(rBuf, false)]
 						err := perrors.WithStack(fmt.Errorf("[session.invokeCloseCallbacks] panic session %s: err=%v\n%s",
 							sessionToken, r, rBuf))
-						log.Error(err)
+						_ = log.Error(err)
 					}
 				}()
 
