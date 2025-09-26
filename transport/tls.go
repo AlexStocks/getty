@@ -55,7 +55,7 @@ func (s *ServerTlsConfigBuilder) BuildTlsConfig() (*tls.Config, error) {
 		config      *tls.Config
 	)
 	if certificate, err = tls.LoadX509KeyPair(s.ServerKeyCertChainPath, s.ServerPrivateKeyPath); err != nil {
-		log.Error(fmt.Sprintf("tls.LoadX509KeyPair(certs{%s}, privateKey{%s}) = err:%+v",
+		_ = log.Error(fmt.Sprintf("tls.LoadX509KeyPair(certs{%s}, privateKey{%s}) = err:%+v",
 			s.ServerKeyCertChainPath, s.ServerPrivateKeyPath, perrors.WithStack(err)))
 		return nil, err
 	}
@@ -68,12 +68,12 @@ func (s *ServerTlsConfigBuilder) BuildTlsConfig() (*tls.Config, error) {
 	if s.ServerTrustCertCollectionPath != "" {
 		certPem, err = os.ReadFile(s.ServerTrustCertCollectionPath)
 		if err != nil {
-			log.Error(fmt.Errorf("os.ReadFile(certFile{%s}) = err:%+v", s.ServerTrustCertCollectionPath, perrors.WithStack(err)))
+			_ = log.Error(fmt.Errorf("os.ReadFile(certFile{%s}) = err:%+v", s.ServerTrustCertCollectionPath, perrors.WithStack(err)))
 			return nil, err
 		}
 		certPool = x509.NewCertPool()
 		if ok := certPool.AppendCertsFromPEM(certPem); !ok {
-			log.Error("failed to parse root certificate file")
+			_ = log.Error("failed to parse root certificate file")
 			return nil, err
 		}
 		config.ClientCAs = certPool
@@ -95,18 +95,18 @@ type ClientTlsConfigBuilder struct {
 func (c *ClientTlsConfigBuilder) BuildTlsConfig() (*tls.Config, error) {
 	cert, err := tls.LoadX509KeyPair(c.ClientKeyCertChainPath, c.ClientPrivateKeyPath)
 	if err != nil {
-		log.Error(fmt.Sprintf("Unable to load X509 Key Pair %v", err))
+		_ = log.Error(fmt.Sprintf("Unable to load X509 Key Pair %v", err))
 		return nil, err
 	}
 	certBytes, err := os.ReadFile(c.ClientTrustCertCollectionPath)
 	if err != nil {
-		log.Error(fmt.Sprintf("Unable to read pem file: %s", c.ClientTrustCertCollectionPath))
+		_ = log.Error(fmt.Sprintf("Unable to read pem file: %s", c.ClientTrustCertCollectionPath))
 		return nil, err
 	}
 	clientCertPool := x509.NewCertPool()
 	ok := clientCertPool.AppendCertsFromPEM(certBytes)
 	if !ok {
-		log.Error("failed to parse root certificate")
+		_ = log.Error("failed to parse root certificate")
 		return nil, err
 	}
 	return &tls.Config{

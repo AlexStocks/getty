@@ -603,7 +603,7 @@ func (s *session) handlePackage() {
 			const size = 64 << 10
 			rBuf := make([]byte, size)
 			rBuf = rBuf[:runtime.Stack(rBuf, false)]
-			log.Errorf("[session.handlePackage] panic session %s: err=%s\n%s", s.sessionToken(), r, rBuf)
+			_ = log.Errorf("[session.handlePackage] panic session %s: err=%s\n%s", s.sessionToken(), r, rBuf)
 		}
 		grNum := s.grNum.Add(-1)
 		log.Infof("%s, [session.handlePackage] gr will exit now, left gr num %d", s.sessionToken(), grNum)
@@ -612,7 +612,7 @@ func (s *session) handlePackage() {
 		}
 		s.stop()
 		if err != nil {
-			log.Errorf("%s, [session.handlePackage] error:%+v", s.sessionToken(), perrors.WithStack(err))
+			_ = log.Errorf("%s, [session.handlePackage] error:%+v", s.sessionToken(), perrors.WithStack(err))
 			if s != nil || s.listener != nil {
 				s.listener.OnError(s, err)
 			}
@@ -665,7 +665,7 @@ func (s *session) handleTCPPackage() error {
 		ctx, cancel := context.WithTimeout(context.Background(), tlsHandshaketime)
 		defer cancel()
 		if err := tlsConn.HandshakeContext(ctx); err != nil {
-			log.Errorf("[tlsConn.HandshakeContext] = error:%+v", err)
+			_ = log.Errorf("[tlsConn.HandshakeContext] = error:%+v", err)
 			return perrors.Wrap(err, "tlsConn.HandshakeContext")
 		}
 	}
@@ -702,7 +702,7 @@ func (s *session) handleTCPPackage() error {
 					}
 					break
 				}
-				log.Errorf("%s, [session.conn.read] = error:%+v", s.sessionToken(), perrors.WithStack(err))
+				_ = log.Errorf("%s, [session.conn.read] = error:%+v", s.sessionToken(), perrors.WithStack(err))
 				exit = true
 			}
 			break
@@ -775,14 +775,14 @@ func (s *session) handleUDPPackage() error {
 			continue
 		}
 		if err != nil {
-			log.Errorf("%s, [session.handleUDPPackage] = len:%d, error:%+v",
+			_ = log.Errorf("%s, [session.handleUDPPackage] = len:%d, error:%+v",
 				s.sessionToken(), bufLen, perrors.WithStack(err))
 			err = perrors.Wrapf(err, "conn.read()")
 			break
 		}
 
 		if bufLen == 0 {
-			log.Errorf("conn.read() = bufLen:%d, addr:%s, err:%+v", bufLen, addr, perrors.WithStack(err))
+			_ = log.Errorf("conn.read() = bufLen:%d, addr:%s, err:%+v", bufLen, addr, perrors.WithStack(err))
 			continue
 		}
 
@@ -802,7 +802,7 @@ func (s *session) handleUDPPackage() error {
 			continue
 		}
 		if pkgLen == 0 {
-			log.Errorf("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%+v", pkg, pkgLen, perrors.WithStack(err))
+			_ = log.Errorf("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%+v", pkg, pkgLen, perrors.WithStack(err))
 			continue
 		}
 
