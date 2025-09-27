@@ -66,7 +66,7 @@ func (h *EchoMessageHandler) OnClose(session getty.Session) {
 func (h *EchoMessageHandler) OnMessage(session getty.Session, pkg any) {
 	p, ok := pkg.(*EchoPackage)
 	if !ok {
-		log.Error("illegal packge{%#v}", pkg)
+		_ = log.Error("illegal packge{%#v}", pkg)
 		return
 	}
 
@@ -77,7 +77,7 @@ func (h *EchoMessageHandler) OnMessage(session getty.Session, pkg any) {
 func (h *EchoMessageHandler) OnCron(session getty.Session) {
 	clientEchoSession, err := client.getClientEchoSession(session)
 	if err != nil {
-		log.Error("client.getClientSession(session{%s}) = error{%#v}", session.Stat(), err)
+		_ = log.Error("client.getClientSession(session{%s}) = error{%#v}", session.Stat(), err)
 		return
 	}
 	if conf.sessionTimeout.Nanoseconds() < time.Since(session.GetActive()).Nanoseconds() {

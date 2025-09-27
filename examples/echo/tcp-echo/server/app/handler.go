@@ -133,13 +133,13 @@ func (h *EchoMessageHandler) OnClose(session getty.Session) {
 func (h *EchoMessageHandler) OnMessage(session getty.Session, pkg any) {
 	p, ok := pkg.(*EchoPackage)
 	if !ok {
-		log.Error("illegal packge{%#v}", pkg)
+		_ = log.Error("illegal packge{%#v}", pkg)
 		return
 	}
 
 	handler, ok := h.handlers[p.H.Command]
 	if !ok {
-		log.Error("illegal command{%d}", p.H.Command)
+		_ = log.Error("illegal command{%d}", p.H.Command)
 		return
 	}
 	err := handler.Handle(session, p)
