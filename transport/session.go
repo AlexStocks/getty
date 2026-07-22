@@ -606,12 +606,13 @@ func (s *session) handlePackage() {
 		s.stop()
 		if err != nil {
 			log.Errorf("%s, [session.handlePackage] error:%+v", s.sessionToken(), perrors.WithStack(err))
-			if s != nil || s.listener != nil {
+			if s != nil && s.listener != nil {
 				s.listener.OnError(s, err)
 			}
 		}
-
-		s.listener.OnClose(s)
+		if s.listener != nil {
+			s.listener.OnClose(s)
+		}
 		s.gc()
 	}()
 
