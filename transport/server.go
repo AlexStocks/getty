@@ -383,6 +383,7 @@ func (s *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if conn.RemoteAddr().String() == conn.LocalAddr().String() {
+		_ = conn.Close()
 		log.Warnf("conn.localAddr{%s} == conn.RemoteAddr", conn.LocalAddr().String(), conn.RemoteAddr().String())
 		return
 	}
