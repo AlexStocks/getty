@@ -20,6 +20,7 @@ package getty
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"net"
@@ -206,7 +207,7 @@ func TestWSServeWSRequestClosesSelfConnectConn(t *testing.T) {
 		header: make(http.Header),
 		conn:   conn,
 	}
-	req, err := http.NewRequest(http.MethodGet, "http://127.0.0.1/ws", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://127.0.0.1/ws", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
