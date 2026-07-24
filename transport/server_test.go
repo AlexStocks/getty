@@ -18,7 +18,15 @@
 package getty
 
 import (
+	"bufio"
+	"bytes"
+	"context"
+	"errors"
+	"io"
+	"net"
+	"net/http"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -184,4 +192,100 @@ func TestServer(t *testing.T) {
 	testUDPServer(t, addr)
 	addr = "127.0.0.9999"
 	testTCPTlsServer(t, addr)
+}
+
+func TestWSServeWSRequestClosesSelfConnectConn(t *testing.T) {
+	server := newServer(WS_SERVER)
+	newSessionCalled := false
+	handler := newWSHandler(server, func(Session) error {
+		newSessionCalled = true
+		return errors.New("self-connect request should not create session")
+	})
+
+	conn := &selfConnectConn{addr: &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 65000}}
+	rw := &hijackResponseWriter{
+		header: make(http.Header),
+		conn:   conn,
+	}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://127.0.0.1/ws", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", "websocket")
+	req.Header.Set("Sec-WebSocket-Version", "13")
+	req.Header.Set("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
+
+	handler.serveWSRequest(rw, req)
+
+	if !strings.HasPrefix(conn.writes.String(), "HTTP/1.1 101 Switching Protocols\r\n") {
+		t.Fatalf("expected websocket upgrade to succeed, got response %q", conn.writes.String())
+	}
+	if newSessionCalled {
+		t.Fatal("expected self-connect websocket request to be rejected before session creation")
+	}
+	if !conn.closed {
+		t.Fatal("expected self-connect websocket connection to be closed")
+	}
+}
+
+type hijackResponseWriter struct {
+	header http.Header
+	conn   *selfConnectConn
+	status int
+}
+
+func (w *hijackResponseWriter) Header() http.Header {
+	return w.header
+}
+
+func (w *hijackResponseWriter) Write(p []byte) (int, error) {
+	return len(p), nil
+}
+
+func (w *hijackResponseWriter) WriteHeader(status int) {
+	w.status = status
+}
+
+func (w *hijackResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return w.conn, bufio.NewReadWriter(bufio.NewReader(w.conn), bufio.NewWriter(w.conn)), nil
+}
+
+type selfConnectConn struct {
+	writes bytes.Buffer
+	addr   net.Addr
+	closed bool
+}
+
+func (c *selfConnectConn) Read([]byte) (int, error) {
+	return 0, io.EOF
+}
+
+func (c *selfConnectConn) Write(p []byte) (int, error) {
+	return c.writes.Write(p)
+}
+
+func (c *selfConnectConn) Close() error {
+	c.closed = true
+	return nil
+}
+
+func (c *selfConnectConn) LocalAddr() net.Addr {
+	return c.addr
+}
+
+func (c *selfConnectConn) RemoteAddr() net.Addr {
+	return c.addr
+}
+
+func (c *selfConnectConn) SetDeadline(time.Time) error {
+	return nil
+}
+
+func (c *selfConnectConn) SetReadDeadline(time.Time) error {
+	return nil
+}
+
+func (c *selfConnectConn) SetWriteDeadline(time.Time) error {
+	return nil
 }
