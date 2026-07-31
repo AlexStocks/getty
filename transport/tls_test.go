@@ -27,6 +27,18 @@ import (
 	"testing"
 )
 
+var tlsTestRootCertificate = []byte(`-----BEGIN CERTIFICATE-----
+MIIBiDCCAS+gAwIBAgIUMaJuA5AGTTBvqSWb4fhJCC7UY4wwCgYIKoZIzj0EAwIw
+GjEYMBYGA1UEAwwPZ2V0dHktdGVzdC1yb290MB4XDTI2MDczMTIzMTYyN1oXDTM2
+MDcyODIzMTYyN1owGjEYMBYGA1UEAwwPZ2V0dHktdGVzdC1yb290MFkwEwYHKoZI
+zj0CAQYIKoZIzj0DAQcDQgAEWZNS+42M+wb2AmNunl7ccsdoaRYanWn1kgt5Rj7X
+50hqE1aA8Wdl7dbbDmCwSrwLRNus1ebi2571N0XJNXn536NTMFEwHQYDVR0OBBYE
+FJYJbIsdqMVkz65eVtuLmz41l4IjMB8GA1UdIwQYMBaAFJYJbIsdqMVkz65eVtuL
+mz41l4IjMA8GA1UdEwEB/wQFMAMBAf8wCgYIKoZIzj0EAwIDRwAwRAIgX6EFP2GN
+UF0MEbozG6tzqvrF1R8NUNEUEF4ThXnQMpMCIB/191gSjtjhiuDKu/pT5cCXe9ka
+Wf17jc2sFoJ9DUsb
+-----END CERTIFICATE-----`)
+
 func TestClientTLSConfigBuilderMinimumVersion(t *testing.T) {
 	tempDir := t.TempDir()
 	certPath := filepath.Join(tempDir, "client.crt")
@@ -35,7 +47,7 @@ func TestClientTLSConfigBuilderMinimumVersion(t *testing.T) {
 	for path, data := range map[string][]byte{
 		certPath: WssServerCRT,
 		keyPath:  WssServerKEY,
-		caPath:   WssClientCRT,
+		caPath:   tlsTestRootCertificate,
 	} {
 		if err := os.WriteFile(path, data, 0o600); err != nil {
 			t.Fatal(err)
@@ -63,7 +75,7 @@ func TestClientTLSConfigBuilderMinimumVersion(t *testing.T) {
 		t.Fatalf("Certificates contains %d entries, want 1", len(config.Certificates))
 	}
 	expectedRootCAs := x509.NewCertPool()
-	if !expectedRootCAs.AppendCertsFromPEM(WssClientCRT) {
+	if !expectedRootCAs.AppendCertsFromPEM(tlsTestRootCertificate) {
 		t.Fatal("failed to parse the expected root certificate")
 	}
 	if !config.RootCAs.Equal(expectedRootCAs) {
@@ -72,6 +84,13 @@ func TestClientTLSConfigBuilderMinimumVersion(t *testing.T) {
 	expectedClientCertificate, _ := pem.Decode(WssServerCRT)
 	if expectedClientCertificate == nil {
 		t.Fatal("failed to decode the expected client certificate")
+	}
+	expectedRootCertificate, _ := pem.Decode(tlsTestRootCertificate)
+	if expectedRootCertificate == nil {
+		t.Fatal("failed to decode the expected root certificate")
+	}
+	if bytes.Equal(expectedClientCertificate.Bytes, expectedRootCertificate.Bytes) {
+		t.Fatal("client and root certificate fixtures must be distinct")
 	}
 	if len(config.Certificates[0].Certificate) == 0 {
 		t.Fatal("configured client certificate has an empty certificate chain")
