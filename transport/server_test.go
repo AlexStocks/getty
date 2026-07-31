@@ -177,6 +177,42 @@ func testUDPServer(t *testing.T, address string) {
 	t.Logf("@address:%s, udp server addr: %v", address, addr)
 }
 
+func TestServerCloseKeepsPublishedListener(t *testing.T) {
+	t.Run("TCP", func(t *testing.T) {
+		server := newServer(TCP_SERVER, WithLocalAddress("127.0.0.1:0"))
+		if err := server.listen(); err != nil {
+			t.Fatal(err)
+		}
+		listener := server.Listener()
+		if listener == nil {
+			t.Fatal("listen did not publish the TCP listener")
+		}
+
+		server.Close()
+
+		if got := server.Listener(); got != listener {
+			t.Fatalf("Listener() after Close = %v, want the published listener %v", got, listener)
+		}
+	})
+
+	t.Run("UDP", func(t *testing.T) {
+		server := newServer(UDP_ENDPOINT, WithLocalAddress("127.0.0.1:0"))
+		if err := server.listen(); err != nil {
+			t.Fatal(err)
+		}
+		listener := server.PacketConn()
+		if listener == nil {
+			t.Fatal("listen did not publish the UDP listener")
+		}
+
+		server.Close()
+
+		if got := server.PacketConn(); got != listener {
+			t.Fatalf("PacketConn() after Close = %v, want the published listener %v", got, listener)
+		}
+	})
+}
+
 func TestServer(t *testing.T) {
 	var addr string
 

@@ -24,6 +24,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -588,6 +589,58 @@ func DownloadFile(filepath string, content []byte) error {
 	// Write the body to file
 	_, err = out.Write(content)
 	return err
+}
+
+func TestBuildWSSClientTLSConfig(t *testing.T) {
+	t.Run("system roots", func(t *testing.T) {
+		config, err := (&client{}).buildWSSClientTLSConfig()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if config.RootCAs != nil {
+			t.Fatal("RootCAs must be nil when no custom root certificate is configured")
+		}
+		if config.MinVersion != tls.VersionTLS12 {
+			t.Fatalf("MinVersion = %d, want TLS 1.2 (%d)", config.MinVersion, tls.VersionTLS12)
+		}
+	})
+
+	t.Run("custom root certificate", func(t *testing.T) {
+		certPath := filepath.Join(t.TempDir(), "root.crt")
+		if err := os.WriteFile(certPath, WssClientCRT, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		config, err := (&client{ClientOptions: ClientOptions{cert: certPath}}).buildWSSClientTLSConfig()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if config.RootCAs == nil {
+			t.Fatal("RootCAs is nil with a configured root certificate")
+		}
+		if len(config.Certificates) != 0 {
+			t.Fatalf("client Certificates contains %d entries, want 0 for a root-only option", len(config.Certificates))
+		}
+		if config.MinVersion != tls.VersionTLS12 {
+			t.Fatalf("MinVersion = %d, want TLS 1.2 (%d)", config.MinVersion, tls.VersionTLS12)
+		}
+	})
+
+	t.Run("invalid PEM", func(t *testing.T) {
+		certPath := filepath.Join(t.TempDir(), "invalid.crt")
+		if err := os.WriteFile(certPath, []byte("not a certificate"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := (&client{ClientOptions: ClientOptions{cert: certPath}}).buildWSSClientTLSConfig(); err == nil {
+			t.Fatal("invalid PEM returned nil error")
+		}
+	})
+
+	t.Run("missing file", func(t *testing.T) {
+		certPath := filepath.Join(t.TempDir(), "missing.crt")
+		if _, err := (&client{ClientOptions: ClientOptions{cert: certPath}}).buildWSSClientTLSConfig(); err == nil {
+			t.Fatal("missing root certificate returned nil error")
+		}
+	})
 }
 
 func TestNewWSSClient(t *testing.T) {

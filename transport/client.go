@@ -20,7 +20,6 @@ package getty
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"encoding/pem"
 	"fmt"
 	"net"
 	"os"
@@ -280,16 +279,31 @@ func (c *client) dialWS() Session {
 	return nil
 }
 
+func (c *client) buildWSSClientTLSConfig() (*tls.Config, error) {
+	config := &tls.Config{MinVersion: tls.VersionTLS12}
+	if c.cert == "" {
+		return config, nil
+	}
+
+	certPEM, err := os.ReadFile(c.cert)
+	if err != nil {
+		return nil, perrors.Wrapf(err, "os.ReadFile(cert:%s)", c.cert)
+	}
+	certPool := x509.NewCertPool()
+	if !certPool.AppendCertsFromPEM(certPEM) {
+		return nil, fmt.Errorf("failed to parse root certificate: %s", c.cert)
+	}
+	config.RootCAs = certPool
+	return config, nil
+}
+
 func (c *client) dialWSS() Session {
 	var (
-		err      error
-		root     *x509.Certificate
-		roots    []*x509.Certificate
-		certPool *x509.CertPool
-		config   *tls.Config
-		dialer   websocket.Dialer
-		conn     *websocket.Conn
-		ss       Session
+		err    error
+		config *tls.Config
+		dialer websocket.Dialer
+		conn   *websocket.Conn
+		ss     Session
 	)
 
 	// #106: single attempt; reConnect() owns bounded retry/back-off.
@@ -298,47 +312,12 @@ func (c *client) dialWSS() Session {
 	}
 	dialer.EnableCompression = true
 
-	// #100: do NOT set InsecureSkipVerify=true here. It disables certificate
-	// verification entirely and makes the RootCAs configured below useless,
-	// exposing the WSS client to MITM attacks.
-	config = &tls.Config{}
-
-	if c.cert != "" {
-		certPEMBlock, err := os.ReadFile(c.cert)
-		if err != nil {
-			panic(fmt.Sprintf("os.ReadFile(cert:%s) = error:%+v", c.cert, perrors.WithStack(err)))
-		}
-
-		var cert tls.Certificate
-		for {
-			var certDERBlock *pem.Block
-			certDERBlock, certPEMBlock = pem.Decode(certPEMBlock)
-			if certDERBlock == nil {
-				break
-			}
-			if certDERBlock.Type == "CERTIFICATE" {
-				cert.Certificate = append(cert.Certificate, certDERBlock.Bytes)
-			}
-		}
-		config.Certificates = make([]tls.Certificate, 1)
-		config.Certificates[0] = cert
+	config, err = c.buildWSSClientTLSConfig()
+	if err != nil {
+		log.Errorf("build WSS client TLS config = error:%+v", perrors.WithStack(err))
+		return nil
 	}
 
-	certPool = x509.NewCertPool()
-	// avoid shadowing the receiver `c` with the loop variable.
-	for _, cert := range config.Certificates {
-		roots, err = x509.ParseCertificates(cert.Certificate[len(cert.Certificate)-1])
-		if err != nil {
-			panic(fmt.Sprintf("error parsing server's root cert: %+v\n", perrors.WithStack(err)))
-		}
-		for _, root = range roots {
-			certPool.AddCert(root)
-		}
-	}
-	// #100: rely on RootCAs for verification instead of InsecureSkipVerify.
-	config.RootCAs = certPool
-
-	// dialer.EnableCompression = true
 	dialer.TLSClientConfig = config
 	conn, _, err = dialer.Dial(c.addr, nil)
 	if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {

@@ -116,6 +116,7 @@ func (c *ClientTlsConfigBuilder) BuildTlsConfig() (*tls.Config, error) {
 		return nil, fmt.Errorf("failed to parse root certificate: %s", c.ClientTrustCertCollectionPath)
 	}
 	return &tls.Config{
+		MinVersion:   tls.VersionTLS12,
 		RootCAs:      clientCertPool,
 		Certificates: []tls.Certificate{cert},
 		// #100: do NOT set InsecureSkipVerify=true here; it disables

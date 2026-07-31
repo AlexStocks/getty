@@ -160,12 +160,10 @@ func (s *server) stop() {
 				cancel()
 			}
 			s.server = nil
-			// #105: read & nil the listeners under s.lock so concurrent
-			// Listener()/PacketConn() accessors don't race with stop().
+			// Snapshot the listeners under s.lock. Keep the published listener
+			// objects in place so event loops cannot race with a nil assignment.
 			streamListener := s.streamListener
-			s.streamListener = nil
 			pktListener := s.pktListener
-			s.pktListener = nil
 			s.lock.Unlock()
 			// close outside the lock to avoid blocking other lock holders.
 			if streamListener != nil {
@@ -227,8 +225,11 @@ func (s *server) listenTCP() error {
 		}
 	}
 
+	addr := streamListener.Addr().String()
+	s.lock.Lock()
 	s.streamListener = streamListener
-	s.addr = s.streamListener.Addr().String()
+	s.addr = addr
+	s.lock.Unlock()
 
 	return nil
 }
@@ -256,8 +257,11 @@ func (s *server) listenUDP() error {
 		}
 	}
 
+	addr := pktListener.LocalAddr().String()
+	s.lock.Lock()
 	s.pktListener = pktListener
-	s.addr = s.pktListener.LocalAddr().String()
+	s.addr = addr
+	s.lock.Unlock()
 
 	return nil
 }
@@ -526,14 +530,12 @@ func (s *server) RunEventLoop(newSession NewSessionCallback) {
 }
 
 func (s *server) Listener() net.Listener {
-	// #105: guard against concurrent stop() which nils s.streamListener.
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 	return s.streamListener
 }
 
 func (s *server) PacketConn() net.PacketConn {
-	// #105: guard against concurrent stop() which nils s.pktListener.
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 	return s.pktListener

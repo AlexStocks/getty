@@ -127,7 +127,7 @@ func (c *gettyConn) GetActive() time.Time {
 
 // removed unused methods send/close
 
-func (c gettyConn) ReadTimeout() time.Duration {
+func (c *gettyConn) ReadTimeout() time.Duration {
 	return c.rTimeout.Load()
 }
 
@@ -150,7 +150,7 @@ func (c *gettyConn) SetReadTimeout(rTimeout time.Duration) {
 	}
 }
 
-func (c gettyConn) WriteTimeout() time.Duration {
+func (c *gettyConn) WriteTimeout() time.Duration {
 	return c.wTimeout.Load()
 }
 
@@ -257,6 +257,12 @@ func (s *snappyWriteFlusher) Write(p []byte) (int, error) {
 		return 0, perrors.WithStack(err)
 	}
 	return n, nil
+}
+
+func (s *snappyWriteFlusher) Close() error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	return perrors.WithStack(s.writer.Close())
 }
 
 // SetCompressType set compress type(tcp: zip/snappy, websocket:zip)
@@ -383,7 +389,7 @@ func (t *gettyTCPConn) CloseConn(waitSec int) {
 	if t.conn != nil {
 		// #102: snappy writer is now wrapped in *snappyWriteFlusher.
 		if writer, ok := t.writer.(*snappyWriteFlusher); ok {
-			if err := writer.writer.Close(); err != nil {
+			if err := writer.Close(); err != nil {
 				log.Errorf("snappy.Writer.Close() = error:%+v", err)
 			}
 		}

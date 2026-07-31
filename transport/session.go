@@ -124,7 +124,9 @@ type session struct {
 	maxMsgLen int32
 
 	// heartbeat
-	period time.Duration
+	period         time.Duration
+	heartbeatTimer *gxtime.Timer
+	lifecycle      *sessionLifecycle
 
 	// done
 	wait time.Duration
@@ -136,12 +138,58 @@ type session struct {
 
 	// goroutines sync
 	grNum      uatomic.Int32
+	grWG       sync.WaitGroup
 	lock       sync.RWMutex
 	packetLock sync.RWMutex
 
 	// callbacks
 	closeCallback      callbacks
 	closeCallbackMutex sync.RWMutex
+}
+
+type sessionLifecycle struct {
+	lock   sync.Mutex
+	closed bool
+	wg     sync.WaitGroup
+}
+
+func newSessionLifecycle() *sessionLifecycle {
+	return &sessionLifecycle{}
+}
+
+func (l *sessionLifecycle) acquire() bool {
+	l.lock.Lock()
+	defer l.lock.Unlock()
+	if l.closed {
+		return false
+	}
+	l.wg.Add(1)
+	return true
+}
+
+func (l *sessionLifecycle) release() {
+	l.wg.Done()
+}
+
+func (l *sessionLifecycle) addClosingTask() {
+	l.lock.Lock()
+	l.wg.Add(1)
+	l.lock.Unlock()
+}
+
+func (l *sessionLifecycle) close() {
+	l.lock.Lock()
+	l.closed = true
+	l.lock.Unlock()
+}
+
+func (l *sessionLifecycle) wait() {
+	l.wg.Wait()
+}
+
+type heartbeatContext struct {
+	session   *session
+	lifecycle *sessionLifecycle
 }
 
 func newSession(endPoint EndPoint, conn Connection) *session {
@@ -153,7 +201,8 @@ func newSession(endPoint EndPoint, conn Connection) *session {
 
 		maxMsgLen: maxReadBufLen,
 
-		period: period,
+		period:    period,
+		lifecycle: newSessionLifecycle(),
 
 		once:  &sync.Once{},
 		done:  make(chan struct{}),
@@ -193,6 +242,11 @@ func newWSSession(conn *websocket.Conn, endPoint EndPoint) Session {
 }
 
 func (s *session) Reset() {
+	lifecycle := s.stopHeartbeat()
+	s.grWG.Wait()
+	if lifecycle != nil {
+		lifecycle.wait()
+	}
 	// #105: Reset() previously did `*s = session{...}` without holding s.lock,
 	// racing with concurrent readers. Reset the fields individually under the
 	// lock instead; replacing the whole struct would also copy the mutexes
@@ -211,6 +265,8 @@ func (s *session) Reset() {
 	s.once = &sync.Once{}
 	s.done = make(chan struct{})
 	s.period = period
+	s.heartbeatTimer = nil
+	s.lifecycle = newSessionLifecycle()
 	s.wait = pendingDuration
 	s.attrs = gxcontext.NewValuesContext(context.Background())
 	s.grNum.Store(0)
@@ -234,6 +290,8 @@ func (s *session) Conn() net.Conn {
 }
 
 func (s *session) EndPoint() EndPoint {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
 	return s.endPoint
 }
 
@@ -271,8 +329,11 @@ func (s *session) Stat() string {
 
 // IsClosed check whether the session has been closed.
 func (s *session) IsClosed() bool {
+	s.lock.RLock()
+	done := s.done
+	s.lock.RUnlock()
 	select {
-	case <-s.done:
+	case <-done:
 		return true
 
 	default:
@@ -385,12 +446,24 @@ func (s *session) RemoveAttribute(key any) {
 }
 
 func (s *session) sessionToken() string {
-	if s.IsClosed() || s.Connection == nil {
+	s.lock.RLock()
+	done := s.done
+	conn := s.Connection
+	name := s.name
+	endPoint := s.endPoint
+	s.lock.RUnlock()
+
+	select {
+	case <-done:
+		return "session-closed"
+	default:
+	}
+	if conn == nil || endPoint == nil {
 		return "session-closed"
 	}
 
 	return fmt.Sprintf("{%s:%s:%d:%s<->%s}",
-		s.name, s.EndPoint().EndPointType(), s.ID(), s.LocalAddr(), s.RemoteAddr())
+		name, endPoint.EndPointType(), conn.ID(), conn.LocalAddr(), conn.RemoteAddr())
 }
 
 func (s *session) WritePkg(pkg any, timeout time.Duration) (pkgBytesLenth int, successCount int, err error) {
@@ -571,13 +644,27 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) (int, error) {
 }
 
 func heartbeat(_ gxtime.TimerID, _ time.Time, arg any) error {
-	ss, _ := arg.(*session)
-	if ss == nil || ss.IsClosed() {
+	ctx, _ := arg.(*heartbeatContext)
+	if ctx == nil || ctx.session == nil || ctx.lifecycle == nil {
 		return ErrSessionClosed
 	}
+	ss := ctx.session
 
 	f := func() {
-		wsConn, wsFlag := ss.Connection.(*gettyWSConn)
+		if !ctx.lifecycle.acquire() {
+			return
+		}
+		defer ctx.lifecycle.release()
+
+		ss.lock.RLock()
+		conn := ss.Connection
+		listener := ss.listener
+		ss.lock.RUnlock()
+		if conn == nil || listener == nil {
+			return
+		}
+
+		wsConn, wsFlag := conn.(*gettyWSConn)
 		if wsFlag {
 			err := wsConn.writePing()
 			if err != nil {
@@ -585,11 +672,17 @@ func heartbeat(_ gxtime.TimerID, _ time.Time, arg any) error {
 			}
 		}
 
-		ss.listener.OnCron(ss)
+		listener.OnCron(ss)
 	}
 
 	// if enable task pool, run @f asynchronously.
-	if taskPool := ss.EndPoint().GetTaskPool(); taskPool != nil {
+	ss.lock.RLock()
+	endPoint := ss.endPoint
+	ss.lock.RUnlock()
+	if endPoint == nil {
+		return ErrSessionClosed
+	}
+	if taskPool := endPoint.GetTaskPool(); taskPool != nil {
 		taskPool.AddTaskAlways(f)
 		return nil
 	}
@@ -614,28 +707,62 @@ func (s *session) run() {
 		return
 	}
 
-	if _, err := defaultTimerWheel.AddTimer(heartbeat, gxtime.TimerLoop, s.period, s); err != nil {
+	s.lock.Lock()
+	lifecycle := s.lifecycle
+	timer, err := defaultTimerWheel.AddTimer(
+		heartbeat,
+		gxtime.TimerLoop,
+		s.period,
+		&heartbeatContext{session: s, lifecycle: lifecycle},
+	)
+	if err == nil {
+		s.heartbeatTimer = timer
+	}
+	s.lock.Unlock()
+	if err != nil {
 		panic(fmt.Sprintf("failed to add session %s to defaultTimerWheel err:%v", s.Stat(), err))
 	}
 
 	s.grNum.Add(1)
+	s.grWG.Add(1)
 	// start read gr
-	go s.handlePackage()
+	go func() {
+		defer s.grWG.Done()
+		s.handlePackage()
+	}()
 }
 
 func (s *session) addTask(pkg any) {
+	s.lock.RLock()
+	lifecycle := s.lifecycle
+	endPoint := s.endPoint
+	s.lock.RUnlock()
+
 	f := func() {
-		// If the session is closed, there is no need to perform CPU-intensive operations.
-		if s.IsClosed() {
-			log.Errorf("[Id:%d, name=%s, endpoint=%s] Session is closed", s.ID(), s.name, s.EndPoint())
+		if lifecycle == nil || !lifecycle.acquire() {
 			return
 		}
-		s.listener.OnMessage(s, pkg)
+		defer lifecycle.release()
+
+		// If the session is closed, there is no need to perform CPU-intensive operations.
+		if s.IsClosed() {
+			log.Errorf("%s Session is closed", s.sessionToken())
+			return
+		}
+		s.lock.RLock()
+		listener := s.listener
+		s.lock.RUnlock()
+		if listener == nil {
+			return
+		}
+		listener.OnMessage(s, pkg)
 		s.IncReadPkgNum()
 	}
-	if taskPool := s.EndPoint().GetTaskPool(); taskPool != nil {
-		taskPool.AddTaskAlways(f)
-		return
+	if endPoint != nil {
+		if taskPool := endPoint.GetTaskPool(); taskPool != nil {
+			taskPool.AddTaskAlways(f)
+			return
+		}
 	}
 	f()
 }
@@ -737,11 +864,8 @@ func (s *session) handleTCPPackage() error {
 					err = nil
 					exit = true
 					if bufLen != 0 {
-						// as https://github.com/apache/dubbo-getty/issues/77#issuecomment-939652203
-						// this branch is impossible. Even if it happens, the bufLen will be zero and the error
-						// is io.EOF when getty continues to read the socket.
-						exit = false
-						// #104: missing bufLen argument for the %d verb.
+						// Process the bytes returned with EOF below, then exit
+						// without issuing another read on the closed stream.
 						log.Infof("%s, session.conn read EOF, while the bufLen(%d) is non-zero.", s.sessionToken(), bufLen)
 					}
 					break
@@ -919,8 +1043,19 @@ func (s *session) stop() {
 				}
 			}
 			close(s.done)
+			lifecycle := s.stopHeartbeat()
 
-			go func(sessionToken string) {
+			s.closeCallbackMutex.RLock()
+			closeCallbacks := s.closeCallback
+			s.closeCallbackMutex.RUnlock()
+			if lifecycle != nil {
+				lifecycle.addClosingTask()
+			}
+
+			go func(sessionToken string, closeCallbacks callbacks, lifecycle *sessionLifecycle) {
+				if lifecycle != nil {
+					defer lifecycle.release()
+				}
 				defer func() {
 					if r := recover(); r != nil {
 						const size = 64 << 10
@@ -932,8 +1067,8 @@ func (s *session) stop() {
 					}
 				}()
 
-				s.invokeCloseCallbacks()
-			}(s.sessionToken())
+				closeCallbacks.Invoke()
+			}(s.sessionToken(), closeCallbacks, lifecycle)
 
 			clt, cltFound := s.GetAttribute(sessionClientKey).(*client)
 			ignoreReconnect, flagFound := s.GetAttribute(ignoreReconnectKey).(bool)
@@ -944,22 +1079,48 @@ func (s *session) stop() {
 	}
 }
 
+func (s *session) stopHeartbeat() *sessionLifecycle {
+	s.lock.Lock()
+	timer := s.heartbeatTimer
+	s.heartbeatTimer = nil
+	lifecycle := s.lifecycle
+	s.lock.Unlock()
+
+	if timer != nil {
+		timer.Stop()
+	}
+	if lifecycle != nil {
+		lifecycle.close()
+	}
+	return lifecycle
+}
+
 func (s *session) gc() {
 	var conn Connection
+	var wait time.Duration
+	var lifecycle *sessionLifecycle
 
 	s.lock.Lock()
 	if s.attrs != nil {
 		s.attrs = nil
 		conn = s.Connection
 		s.Connection = nil
+		wait = s.wait
+		lifecycle = s.lifecycle
 	}
 	s.lock.Unlock()
+	if conn != nil && lifecycle != nil {
+		lifecycle.addClosingTask()
+	}
 
-	go func() {
-		if conn != nil {
-			conn.CloseConn(int(s.wait))
+	go func(conn Connection, wait time.Duration, lifecycle *sessionLifecycle) {
+		if conn != nil && lifecycle != nil {
+			defer lifecycle.release()
 		}
-	}()
+		if conn != nil {
+			conn.CloseConn(int(wait))
+		}
+	}(conn, wait, lifecycle)
 }
 
 // Close will be invoked by NewSessionCallback(if return error is not nil)
