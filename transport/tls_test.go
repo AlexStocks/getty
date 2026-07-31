@@ -18,7 +18,10 @@
 package getty
 
 import (
+	"bytes"
 	"crypto/tls"
+	"crypto/x509"
+	"encoding/pem"
 	"os"
 	"path/filepath"
 	"testing"
@@ -58,6 +61,23 @@ func TestClientTLSConfigBuilderMinimumVersion(t *testing.T) {
 	}
 	if len(config.Certificates) != 1 {
 		t.Fatalf("Certificates contains %d entries, want 1", len(config.Certificates))
+	}
+	expectedRootCAs := x509.NewCertPool()
+	if !expectedRootCAs.AppendCertsFromPEM(WssClientCRT) {
+		t.Fatal("failed to parse the expected root certificate")
+	}
+	if !config.RootCAs.Equal(expectedRootCAs) {
+		t.Fatal("RootCAs does not contain the configured trust certificate")
+	}
+	expectedClientCertificate, _ := pem.Decode(WssServerCRT)
+	if expectedClientCertificate == nil {
+		t.Fatal("failed to decode the expected client certificate")
+	}
+	if len(config.Certificates[0].Certificate) == 0 {
+		t.Fatal("configured client certificate has an empty certificate chain")
+	}
+	if !bytes.Equal(config.Certificates[0].Certificate[0], expectedClientCertificate.Bytes) {
+		t.Fatal("configured client certificate does not match the requested certificate")
 	}
 }
 
