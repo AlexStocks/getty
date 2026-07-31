@@ -193,14 +193,26 @@ func newWSSession(conn *websocket.Conn, endPoint EndPoint) Session {
 }
 
 func (s *session) Reset() {
-	*s = session{
-		name:   defaultSessionName,
-		once:   &sync.Once{},
-		done:   make(chan struct{}),
-		period: period,
-		wait:   pendingDuration,
-		attrs:  gxcontext.NewValuesContext(context.Background()),
-	}
+	// #105: Reset() previously did `*s = session{...}` without holding s.lock,
+	// racing with concurrent readers. Reset the fields individually under the
+	// lock instead; replacing the whole struct would also copy the mutexes
+	// (flagged by `go vet`).
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	s.name = defaultSessionName
+	s.endPoint = nil
+	s.Connection = nil
+	s.listener = nil
+	s.reader = nil
+	s.writer = nil
+	s.maxMsgLen = 0
+	s.once = &sync.Once{}
+	s.done = make(chan struct{})
+	s.period = period
+	s.wait = pendingDuration
+	s.attrs = gxcontext.NewValuesContext(context.Background())
+	s.grNum.Store(0)
+	s.closeCallback = callbacks{}
 }
 
 func (s *session) Conn() net.Conn {
@@ -416,10 +428,28 @@ func (s *session) WritePkg(pkg any, timeout time.Duration) (pkgBytesLenth int, s
 	}
 	s.packetLock.RLock()
 	defer s.packetLock.RUnlock()
-	if 0 < timeout {
-		s.gettyConn().SetWriteTimeout(timeout)
+	// #103: read s.Connection under s.lock to guard against concurrent gc()
+	// which sets s.Connection = nil; a bare s.Connection.Send below could
+	// otherwise nil-deref. The obtained conn/gc pointers stay valid even if
+	// gc() later nils the field, because they reference the underlying obj.
+	s.lock.RLock()
+	conn := s.Connection
+	gc := s.gettyConn()
+	s.lock.RUnlock()
+	if conn == nil || gc == nil {
+		return 0, 0, ErrSessionClosed
 	}
-	successCount, err = s.Connection.Send(pkg)
+	var origWriteTimeout time.Duration
+	if 0 < timeout {
+		// #103: save & restore so a per-call timeout does not permanently
+		// rewrite the connection's write deadline for subsequent writes.
+		origWriteTimeout = gc.WriteTimeout()
+		gc.SetWriteTimeout(timeout)
+	}
+	successCount, err = conn.Send(pkg)
+	if 0 < timeout {
+		gc.SetWriteTimeout(origWriteTimeout)
+	}
 	if err != nil {
 		log.Warnf("%s, [session.WritePkg] @s.Connection.Write(pkg:%#v) = err:%+v", s.Stat(), pkg, err)
 		return len(pkgBytes), successCount, perrors.WithStack(err)
@@ -442,8 +472,16 @@ func (s *session) WriteBytes(pkg []byte) (int, error) {
 		defer s.packetLock.RUnlock()
 	}
 
+	// #103: guard s.Connection against concurrent gc() nil-ing it.
+	s.lock.RLock()
+	conn := s.Connection
+	s.lock.RUnlock()
+	if conn == nil {
+		return 0, ErrSessionClosed
+	}
+
 	for leftPackageSize > maxPacketLen {
-		_, err := s.Connection.Send(pkg[writeSize:(writeSize + maxPacketLen)])
+		_, err := conn.Send(pkg[writeSize:(writeSize + maxPacketLen)])
 		if err != nil {
 			return writeSize, perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
 		}
@@ -455,7 +493,7 @@ func (s *session) WriteBytes(pkg []byte) (int, error) {
 		return writeSize, nil
 	}
 
-	_, err := s.Connection.Send(pkg[writeSize:])
+	_, err := conn.Send(pkg[writeSize:])
 	if err != nil {
 		return writeSize, perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
 	}
@@ -473,10 +511,17 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) (int, error) {
 	}
 
 	// reduce syscall and memcopy for multiple packages
-	if _, ok := s.Connection.(*gettyTCPConn); ok {
+	// #103: guard s.Connection against concurrent gc() nil-ing it.
+	s.lock.RLock()
+	conn := s.Connection
+	s.lock.RUnlock()
+	if conn == nil {
+		return 0, ErrSessionClosed
+	}
+	if _, ok := conn.(*gettyTCPConn); ok {
 		s.packetLock.RLock()
 		defer s.packetLock.RUnlock()
-		lg, err := s.Connection.Send(pkgs)
+		lg, err := conn.Send(pkgs)
 		if err != nil {
 			return 0, perrors.Wrapf(err, "s.Connection.Write(pkgs num:%d)", len(pkgs))
 		}
@@ -691,8 +736,9 @@ func (s *session) handleTCPPackage() error {
 						// as https://github.com/apache/dubbo-getty/issues/77#issuecomment-939652203
 						// this branch is impossible. Even if it happens, the bufLen will be zero and the error
 						// is io.EOF when getty continues to read the socket.
-						exit = false
-						log.Infof("%s, session.conn read EOF, while the bufLen(%d) is non-zero.", s.sessionToken())
+					exit = false
+					// #104: missing bufLen argument for the %d verb.
+					log.Infof("%s, session.conn read EOF, while the bufLen(%d) is non-zero.", s.sessionToken(), bufLen)
 					}
 					break
 				}

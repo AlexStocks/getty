@@ -81,7 +81,7 @@ type server struct {
 	// net
 	pktListener    net.PacketConn
 	streamListener net.Listener
-	lock           sync.Mutex // for server
+	lock           sync.RWMutex // for server
 	endPointType   EndPointType
 	server         *http.Server // for ws or wss server
 	sync.Once
@@ -160,15 +160,20 @@ func (s *server) stop() {
 				cancel()
 			}
 			s.server = nil
+			// #105: read & nil the listeners under s.lock so concurrent
+			// Listener()/PacketConn() accessors don't race with stop().
+			streamListener := s.streamListener
+			s.streamListener = nil
+			pktListener := s.pktListener
+			s.pktListener = nil
 			s.lock.Unlock()
-			if s.streamListener != nil {
+			// close outside the lock to avoid blocking other lock holders.
+			if streamListener != nil {
 				// let the server exit asap when got error from RunEventLoop.
-				_ = s.streamListener.Close()
-				s.streamListener = nil
+				_ = streamListener.Close()
 			}
-			if s.pktListener != nil {
-				_ = s.pktListener.Close()
-				s.pktListener = nil
+			if pktListener != nil {
+				_ = pktListener.Close()
 			}
 		})
 	}
@@ -202,13 +207,21 @@ func (s *server) listenTCP() error {
 			return perrors.Wrapf(err, "gxnet.ListenOnTCPRandomPort(addr:%s)", s.addr)
 		}
 	} else {
-		if s.sslEnabled {
-			if sslConfig, buildTlsConfErr := s.tlsConfigBuilder.BuildTlsConfig(); buildTlsConfErr == nil && sslConfig != nil {
-				streamListener, err = tls.Listen("tcp", s.addr, sslConfig)
-			}
-		} else {
-			streamListener, err = net.Listen("tcp", s.addr)
+	if s.sslEnabled {
+		// #101: guard against a TLS config builder that returns (nil, nil);
+		// previously a nil config with nil err fell through, leaving
+		// streamListener nil, and s.streamListener.Addr() panicked below.
+		sslConfig, buildTlsConfErr := s.tlsConfigBuilder.BuildTlsConfig()
+		if buildTlsConfErr != nil {
+			return perrors.Wrapf(buildTlsConfErr, "BuildTlsConfig(addr:%s)", s.addr)
 		}
+		if sslConfig == nil {
+			return fmt.Errorf("BuildTlsConfig returned nil config without error for addr:%s", s.addr)
+		}
+		streamListener, err = tls.Listen("tcp", s.addr, sslConfig)
+	} else {
+		streamListener, err = net.Listen("tcp", s.addr)
+	}
 		if err != nil {
 			return perrors.Wrapf(err, "net.Listen(tcp, addr:%s)", s.addr)
 		}
@@ -267,7 +280,7 @@ func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 		return nil, perrors.WithStack(err)
 	}
 	if gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
-		log.Warnf("conn.localAddr{%s} == conn.RemoteAddr", conn.LocalAddr().String(), conn.RemoteAddr().String())
+		log.Warnf("conn.localAddr{%s} == conn.RemoteAddr{%s}", conn.LocalAddr().String(), conn.RemoteAddr().String())
 		return nil, perrors.WithStack(errSelfConnect)
 	}
 
@@ -384,7 +397,7 @@ func (s *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	if conn.RemoteAddr().String() == conn.LocalAddr().String() {
 		_ = conn.Close()
-		log.Warnf("conn.localAddr{%s} == conn.RemoteAddr", conn.LocalAddr().String(), conn.RemoteAddr().String())
+		log.Warnf("conn.localAddr{%s} == conn.RemoteAddr{%s}", conn.LocalAddr().String(), conn.RemoteAddr().String())
 		return
 	}
 	// conn.SetReadLimit(int64(handler.maxMsgLen))
@@ -513,10 +526,16 @@ func (s *server) RunEventLoop(newSession NewSessionCallback) {
 }
 
 func (s *server) Listener() net.Listener {
+	// #105: guard against concurrent stop() which nils s.streamListener.
+	s.lock.RLock()
+	defer s.lock.RUnlock()
 	return s.streamListener
 }
 
 func (s *server) PacketConn() net.PacketConn {
+	// #105: guard against concurrent stop() which nils s.pktListener.
+	s.lock.RLock()
+	defer s.lock.RUnlock()
 	return s.pktListener
 }
 

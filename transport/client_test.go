@@ -93,7 +93,11 @@ func newSessionCallback(session Session, handler *MessageHandler) error {
 
 func TestTCPClient(t *testing.T) {
 	listenLocalServer := func() (net.Listener, error) {
-		listener, err := net.Listen("tcp", ":0")
+		// #106: bind a concrete loopback address instead of ":0" (which
+		// resolves to the unspecified "[::]" address). Dialing "[::]:port"
+		// is not a valid connect destination, so every dial failed and the
+		// client's reconnect loop hung the test forever.
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			return nil, err
 		}

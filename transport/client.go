@@ -157,29 +157,41 @@ func (c *client) dialTCP() Session {
 		conn net.Conn
 	)
 
-	for {
-		if c.IsClosed() {
-			return nil
-		}
-		if c.sslEnabled {
-			if sslConfig, buildTlsConfErr := c.tlsConfigBuilder.BuildTlsConfig(); buildTlsConfErr == nil && sslConfig != nil {
-				d := &net.Dialer{Timeout: connectTimeout}
-				conn, err = tls.DialWithDialer(d, "tcp", c.addr, sslConfig)
-			}
-		} else {
-			conn, err = net.DialTimeout("tcp", c.addr, connectTimeout)
-		}
-		if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
-			_ = conn.Close()
-			err = errSelfConnect
-		}
-		if err == nil {
-			return newTCPSession(conn, c)
-		}
-
-		log.Infof("net.DialTimeout(addr:%s, timeout:%v) = error:%+v", c.addr, connectTimeout, perrors.WithStack(err))
-		<-gxtime.After(connectInterval)
+	// #106: this function performs a SINGLE dial attempt and returns nil on
+	// failure. The bounded retry/back-off is owned by reConnect() (which
+	// honors maxReconnectAttempts). Previously dialTCP had an unbounded
+	// for{} loop here that never returned on failure, making
+	// WithReconnectAttempts a no-op and hanging clients/tests forever when
+	// the target was unreachable.
+	if c.IsClosed() {
+		return nil
 	}
+	if c.sslEnabled {
+		// #101: guard against a TLS config builder that returns (nil, nil);
+		// previously a nil config with nil err fell through and the nil conn
+		// was dereferenced below (conn.RemoteAddr) -> panic.
+		sslConfig, buildTlsConfErr := c.tlsConfigBuilder.BuildTlsConfig()
+		if buildTlsConfErr != nil {
+			err = buildTlsConfErr
+		} else if sslConfig == nil {
+			err = fmt.Errorf("tlsConfigBuilder returned nil config without error")
+		} else {
+			d := &net.Dialer{Timeout: connectTimeout}
+			conn, err = tls.DialWithDialer(d, "tcp", c.addr, sslConfig)
+		}
+	} else {
+		conn, err = net.DialTimeout("tcp", c.addr, connectTimeout)
+	}
+	if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
+		_ = conn.Close()
+		err = errSelfConnect
+	}
+	if err == nil {
+		return newTCPSession(conn, c)
+	}
+
+	log.Infof("net.DialTimeout(addr:%s, timeout:%v) = error:%+v", c.addr, connectTimeout, perrors.WithStack(err))
+	return nil
 }
 
 func (c *client) dialUDP() Session {
@@ -193,51 +205,49 @@ func (c *client) dialUDP() Session {
 		buf       []byte
 	)
 
+	// #106: single attempt; reConnect() owns bounded retry/back-off.
+	if c.IsClosed() {
+		return nil
+	}
 	bufp = gxbytes.GetBytes(128)
 	defer gxbytes.PutBytes(bufp)
 	buf = *bufp
 	localAddr = &net.UDPAddr{IP: net.IPv4zero, Port: 0}
 	peerAddr, _ = net.ResolveUDPAddr("udp", c.addr)
-	for {
-		if c.IsClosed() {
-			return nil
-		}
-		conn, err = net.DialUDP("udp", localAddr, peerAddr)
-		if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
-			_ = conn.Close()
-			err = errSelfConnect
-		}
-		if err != nil {
-			log.Warnf("net.DialTimeout(addr:%s, timeout:%v) = error:%+v", c.addr, perrors.WithStack(err))
-			<-gxtime.After(connectInterval)
-			continue
-		}
-
-		// check connection alive by write/read action
-		if err := conn.SetWriteDeadline(time.Now().Add(1e9)); err != nil {
-			log.Warnf("failed to set write deadline: %+v", err)
-		}
-		if length, err = conn.Write(connectPingPackage[:]); err != nil {
-			_ = conn.Close()
-			log.Warnf("conn.Write(%s) = {length:%d, err:%+v}", string(connectPingPackage), length, perrors.WithStack(err))
-			<-gxtime.After(connectInterval)
-			continue
-		}
-		if err := conn.SetReadDeadline(time.Now().Add(1e9)); err != nil {
-			log.Warnf("failed to set read deadline: %+v", err)
-		}
-		length, err = conn.Read(buf)
-		if netErr, ok := perrors.Cause(err).(net.Error); ok && netErr.Timeout() {
-			err = nil
-		}
-		if err != nil {
-			log.Infof("conn{%#v}.Read() = {length:%d, err:%+v}", conn, length, perrors.WithStack(err))
-			_ = conn.Close()
-			<-gxtime.After(connectInterval)
-			continue
-		}
-		return newUDPSession(conn, c)
+	conn, err = net.DialUDP("udp", localAddr, peerAddr)
+	if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
+		_ = conn.Close()
+		err = errSelfConnect
 	}
+	if err != nil {
+		// #104: the format string referenced a timeout verb but no argument
+		// was supplied; UDP dial has no timeout, so drop the verb.
+		log.Warnf("net.DialUDP(addr:%s) = error:%+v", c.addr, perrors.WithStack(err))
+		return nil
+	}
+
+	// check connection alive by write/read action
+	if err := conn.SetWriteDeadline(time.Now().Add(1e9)); err != nil {
+		log.Warnf("failed to set write deadline: %+v", err)
+	}
+	if length, err = conn.Write(connectPingPackage[:]); err != nil {
+		_ = conn.Close()
+		log.Warnf("conn.Write(%s) = {length:%d, err:%+v}", string(connectPingPackage), length, perrors.WithStack(err))
+		return nil
+	}
+	if err := conn.SetReadDeadline(time.Now().Add(1e9)); err != nil {
+		log.Warnf("failed to set read deadline: %+v", err)
+	}
+	length, err = conn.Read(buf)
+	if netErr, ok := perrors.Cause(err).(net.Error); ok && netErr.Timeout() {
+		err = nil
+	}
+	if err != nil {
+		log.Infof("conn{%#v}.Read() = {length:%d, err:%+v}", conn, length, perrors.WithStack(err))
+		_ = conn.Close()
+		return nil
+	}
+	return newUDPSession(conn, c)
 }
 
 func (c *client) dialWS() Session {
@@ -248,29 +258,27 @@ func (c *client) dialWS() Session {
 		ss     Session
 	)
 
-	dialer.EnableCompression = true
-	for {
-		if c.IsClosed() {
-			return nil
-		}
-		conn, _, err = dialer.Dial(c.addr, nil)
-		log.Infof("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, perrors.WithStack(err))
-		if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
-			_ = conn.Close()
-			err = errSelfConnect
-		}
-		if err == nil {
-			ss = newWSSession(conn, c)
-			if ss.(*session).maxMsgLen > 0 {
-				conn.SetReadLimit(int64(ss.(*session).maxMsgLen))
-			}
-
-			return ss
-		}
-
-		log.Infof("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, perrors.WithStack(err))
-		<-gxtime.After(connectInterval)
+	// #106: single attempt; reConnect() owns bounded retry/back-off.
+	if c.IsClosed() {
+		return nil
 	}
+	dialer.EnableCompression = true
+	conn, _, err = dialer.Dial(c.addr, nil)
+	if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
+		_ = conn.Close()
+		err = errSelfConnect
+	}
+	if err == nil {
+		ss = newWSSession(conn, c)
+		if ss.(*session).maxMsgLen > 0 {
+			conn.SetReadLimit(int64(ss.(*session).maxMsgLen))
+		}
+
+		return ss
+	}
+
+	log.Infof("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, perrors.WithStack(err))
+	return nil
 }
 
 func (c *client) dialWSS() Session {
@@ -285,11 +293,16 @@ func (c *client) dialWSS() Session {
 		ss       Session
 	)
 
+	// #106: single attempt; reConnect() owns bounded retry/back-off.
+	if c.IsClosed() {
+		return nil
+	}
 	dialer.EnableCompression = true
 
-	config = &tls.Config{
-		InsecureSkipVerify: true,
-	}
+	// #100: do NOT set InsecureSkipVerify=true here. It disables certificate
+	// verification entirely and makes the RootCAs configured below useless,
+	// exposing the WSS client to MITM attacks.
+	config = &tls.Config{}
 
 	if c.cert != "" {
 		certPEMBlock, err := os.ReadFile(c.cert)
@@ -313,8 +326,9 @@ func (c *client) dialWSS() Session {
 	}
 
 	certPool = x509.NewCertPool()
-	for _, c := range config.Certificates {
-		roots, err = x509.ParseCertificates(c.Certificate[len(c.Certificate)-1])
+	// avoid shadowing the receiver `c` with the loop variable.
+	for _, cert := range config.Certificates {
+		roots, err = x509.ParseCertificates(cert.Certificate[len(cert.Certificate)-1])
 		if err != nil {
 			panic(fmt.Sprintf("error parsing server's root cert: %+v\n", perrors.WithStack(err)))
 		}
@@ -322,33 +336,28 @@ func (c *client) dialWSS() Session {
 			certPool.AddCert(root)
 		}
 	}
-	config.InsecureSkipVerify = true
+	// #100: rely on RootCAs for verification instead of InsecureSkipVerify.
 	config.RootCAs = certPool
 
 	// dialer.EnableCompression = true
 	dialer.TLSClientConfig = config
-	for {
-		if c.IsClosed() {
-			return nil
-		}
-		conn, _, err = dialer.Dial(c.addr, nil)
-		if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
-			_ = conn.Close()
-			err = errSelfConnect
-		}
-		if err == nil {
-			ss = newWSSession(conn, c)
-			if ss.(*session).maxMsgLen > 0 {
-				conn.SetReadLimit(int64(ss.(*session).maxMsgLen))
-			}
-			ss.SetName(defaultWSSSessionName)
-
-			return ss
-		}
-
-		log.Infof("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, perrors.WithStack(err))
-		<-gxtime.After(connectInterval)
+	conn, _, err = dialer.Dial(c.addr, nil)
+	if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
+		_ = conn.Close()
+		err = errSelfConnect
 	}
+	if err == nil {
+		ss = newWSSession(conn, c)
+		if ss.(*session).maxMsgLen > 0 {
+			conn.SetReadLimit(int64(ss.(*session).maxMsgLen))
+		}
+		ss.SetName(defaultWSSSessionName)
+
+		return ss
+	}
+
+	log.Infof("websocket.dialer.Dial(addr:%s) = error:%+v", c.addr, perrors.WithStack(err))
+	return nil
 }
 
 func (c *client) dial() Session {
@@ -430,6 +439,12 @@ func (c *client) RunEventLoop(newSession NewSessionCallback) {
 	c.Lock()
 	c.newSession = newSession
 	c.Unlock()
+	// #105: track the reConnect loop so Close()'s wg.Wait() actually waits
+	// for it to exit. Previously wg was never Add'ed, so Close() returned
+	// immediately even while reConnect was still running (when RunEventLoop
+	// is invoked from a goroutine).
+	c.wg.Add(1)
+	defer c.wg.Done()
 	c.reConnect()
 }
 
