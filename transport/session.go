@@ -197,6 +197,8 @@ func (s *session) Reset() {
 	// racing with concurrent readers. Reset the fields individually under the
 	// lock instead; replacing the whole struct would also copy the mutexes
 	// (flagged by `go vet`).
+	s.closeCallbackMutex.Lock()
+	defer s.closeCallbackMutex.Unlock()
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	s.name = defaultSessionName
@@ -426,8 +428,13 @@ func (s *session) WritePkg(pkg any, timeout time.Duration) (pkgBytesLenth int, s
 	} else {
 		pkg = pkgBytes
 	}
-	s.packetLock.RLock()
-	defer s.packetLock.RUnlock()
+	if 0 < timeout {
+		s.packetLock.Lock()
+		defer s.packetLock.Unlock()
+	} else {
+		s.packetLock.RLock()
+		defer s.packetLock.RUnlock()
+	}
 	// #103: read s.Connection under s.lock to guard against concurrent gc()
 	// which sets s.Connection = nil; a bare s.Connection.Send below could
 	// otherwise nil-deref. The obtained conn/gc pointers stay valid even if
@@ -439,17 +446,14 @@ func (s *session) WritePkg(pkg any, timeout time.Duration) (pkgBytesLenth int, s
 	if conn == nil || gc == nil {
 		return 0, 0, ErrSessionClosed
 	}
-	var origWriteTimeout time.Duration
 	if 0 < timeout {
 		// #103: save & restore so a per-call timeout does not permanently
 		// rewrite the connection's write deadline for subsequent writes.
-		origWriteTimeout = gc.WriteTimeout()
+		origWriteTimeout := gc.WriteTimeout()
 		gc.SetWriteTimeout(timeout)
+		defer gc.SetWriteTimeout(origWriteTimeout)
 	}
 	successCount, err = conn.Send(pkg)
-	if 0 < timeout {
-		gc.SetWriteTimeout(origWriteTimeout)
-	}
 	if err != nil {
 		log.Warnf("%s, [session.WritePkg] @s.Connection.Write(pkg:%#v) = err:%+v", s.Stat(), pkg, err)
 		return len(pkgBytes), successCount, perrors.WithStack(err)
@@ -736,9 +740,9 @@ func (s *session) handleTCPPackage() error {
 						// as https://github.com/apache/dubbo-getty/issues/77#issuecomment-939652203
 						// this branch is impossible. Even if it happens, the bufLen will be zero and the error
 						// is io.EOF when getty continues to read the socket.
-					exit = false
-					// #104: missing bufLen argument for the %d verb.
-					log.Infof("%s, session.conn read EOF, while the bufLen(%d) is non-zero.", s.sessionToken(), bufLen)
+						exit = false
+						// #104: missing bufLen argument for the %d verb.
+						log.Infof("%s, session.conn read EOF, while the bufLen(%d) is non-zero.", s.sessionToken(), bufLen)
 					}
 					break
 				}
@@ -934,7 +938,7 @@ func (s *session) stop() {
 			clt, cltFound := s.GetAttribute(sessionClientKey).(*client)
 			ignoreReconnect, flagFound := s.GetAttribute(ignoreReconnectKey).(bool)
 			if cltFound && flagFound && !ignoreReconnect {
-				clt.reConnect()
+				clt.runReconnect()
 			}
 		})
 	}

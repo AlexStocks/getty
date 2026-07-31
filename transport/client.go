@@ -22,7 +22,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"math"
 	"net"
 	"os"
 	"strings"
@@ -439,21 +438,36 @@ func (c *client) RunEventLoop(newSession NewSessionCallback) {
 	c.Lock()
 	c.newSession = newSession
 	c.Unlock()
-	// #105: track the reConnect loop so Close()'s wg.Wait() actually waits
-	// for it to exit. Previously wg was never Add'ed, so Close() returned
-	// immediately even while reConnect was still running (when RunEventLoop
-	// is invoked from a goroutine).
-	c.wg.Add(1)
-	defer c.wg.Done()
-	c.reConnect()
+	<-c.runReconnect()
+}
+
+// runReconnect starts a reconnect loop only while the client is open. The
+// client lock serializes WaitGroup.Add with stop, which prevents Add racing
+// with Close's Wait.
+func (c *client) runReconnect() <-chan struct{} {
+	done := make(chan struct{})
+	c.Lock()
+	select {
+	case <-c.done:
+		c.Unlock()
+		close(done)
+		return done
+	default:
+		c.wg.Add(1)
+	}
+	c.Unlock()
+
+	go func() {
+		defer c.wg.Done()
+		defer close(done)
+		c.reConnect()
+	}()
+	return done
 }
 
 // a for-loop connect to make sure the connection pool is valid
 func (c *client) reConnect() {
-	var (
-		sessionNum, reconnectAttempts int
-		maxReconnectInterval          int64
-	)
+	var reconnectAttempts int
 	reconnectInterval := c.reconnectInterval
 	if reconnectInterval == 0 {
 		reconnectInterval = defaultReconnectInterval
@@ -463,42 +477,48 @@ func (c *client) reConnect() {
 		maxReconnectAttempts = defaultMaxReconnectAttempts
 	}
 	connPoolSize := c.number
-	for {
+	for reconnectAttempts < maxReconnectAttempts {
 		if c.IsClosed() {
 			log.Warnf("client{peer:%s} goroutine exit now.", c.addr)
-			break
+			return
 		}
 
-		sessionNum = c.sessionNum()
-		if connPoolSize <= sessionNum || maxReconnectAttempts < reconnectAttempts {
-			//exit reconnect when the number of connection pools is sufficient or the current reconnection attempts exceeds the max reconnection attempts.
-			break
+		if connPoolSize <= c.sessionNum() {
+			return
 		}
 		c.connect()
 		reconnectAttempts++
-		maxReconnectInterval = int64(math.Min(float64(reconnectAttempts), float64(maxBackOffTimes))) * int64(reconnectInterval)
-		<-gxtime.After(time.Duration(maxReconnectInterval))
+		if c.IsClosed() || connPoolSize <= c.sessionNum() || reconnectAttempts >= maxReconnectAttempts {
+			return
+		}
+
+		backOffTimes := reconnectAttempts
+		if maxBackOffTimes < backOffTimes {
+			backOffTimes = maxBackOffTimes
+		}
+		backoff := time.Duration(int64(backOffTimes) * int64(reconnectInterval))
+		select {
+		case <-c.done:
+			return
+		case <-gxtime.After(backoff):
+		}
 	}
 }
 
 func (c *client) stop() {
-	select {
-	case <-c.done:
-		return
-	default:
-		c.Do(func() {
-			close(c.done)
-			c.Lock()
-			for s := range c.ssMap {
-				s.RemoveAttribute(sessionClientKey)
-				s.RemoveAttribute(ignoreReconnectKey)
-				s.Close()
-			}
-			c.ssMap = nil
+	c.Do(func() {
+		c.Lock()
+		close(c.done)
+		sessions := c.ssMap
+		c.ssMap = nil
+		c.Unlock()
 
-			c.Unlock()
-		})
-	}
+		for s := range sessions {
+			s.RemoveAttribute(sessionClientKey)
+			s.RemoveAttribute(ignoreReconnectKey)
+			s.Close()
+		}
+	})
 }
 
 func (c *client) IsClosed() bool {

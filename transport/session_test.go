@@ -19,6 +19,7 @@ package getty
 
 import (
 	"errors"
+	"io"
 	"net"
 	"testing"
 	"time"
@@ -30,6 +31,97 @@ type errorReader struct{}
 
 func (errorReader) Read(Session, []byte) (any, int, error) {
 	return nil, 0, errTestReadFailure
+}
+
+type timeoutTestWriter struct{}
+
+func (timeoutTestWriter) Write(Session, any) ([]byte, error) {
+	return []byte("x"), nil
+}
+
+type timeoutTestCall struct {
+	observed time.Duration
+	release  chan struct{}
+}
+
+type timeoutTestNetConn struct {
+	owner   *gettyTCPConn
+	entered chan *timeoutTestCall
+}
+
+func (c *timeoutTestNetConn) Write(p []byte) (int, error) {
+	call := &timeoutTestCall{
+		observed: c.owner.WriteTimeout(),
+		release:  make(chan struct{}),
+	}
+	c.entered <- call
+	<-call.release
+	return len(p), nil
+}
+
+func (*timeoutTestNetConn) Read([]byte) (int, error)         { return 0, io.EOF }
+func (*timeoutTestNetConn) Close() error                     { return nil }
+func (*timeoutTestNetConn) LocalAddr() net.Addr              { return &net.TCPAddr{} }
+func (*timeoutTestNetConn) RemoteAddr() net.Addr             { return &net.TCPAddr{} }
+func (*timeoutTestNetConn) SetDeadline(time.Time) error      { return nil }
+func (*timeoutTestNetConn) SetReadDeadline(time.Time) error  { return nil }
+func (*timeoutTestNetConn) SetWriteDeadline(time.Time) error { return nil }
+
+func TestConcurrentWritePkgTimeoutRestoration(t *testing.T) {
+	netConn := &timeoutTestNetConn{entered: make(chan *timeoutTestCall, 2)}
+	ss := newTCPSession(netConn, nil).(*session)
+	ss.writer = timeoutTestWriter{}
+	conn := ss.Connection.(*gettyTCPConn)
+	netConn.owner = conn
+	initialTimeout := conn.WriteTimeout()
+
+	firstDone := make(chan error, 1)
+	go func() {
+		_, _, err := ss.WritePkg("first", 3*time.Second)
+		firstDone <- err
+	}()
+	firstCall := <-netConn.entered
+
+	secondDone := make(chan error, 1)
+	go func() {
+		_, _, err := ss.WritePkg("second", 5*time.Second)
+		secondDone <- err
+	}()
+
+	select {
+	case secondCall := <-netConn.entered:
+		close(firstCall.release)
+		<-firstDone
+		close(secondCall.release)
+		<-secondDone
+		t.Fatal("second timed write entered while the first still owned the shared write timeout")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	if firstCall.observed != 3*time.Second {
+		t.Fatalf("first write observed timeout %v, want %v", firstCall.observed, 3*time.Second)
+	}
+	close(firstCall.release)
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first write failed: %v", err)
+	}
+
+	var secondCall *timeoutTestCall
+	select {
+	case secondCall = <-netConn.entered:
+	case <-time.After(time.Second):
+		t.Fatal("second timed write did not enter after the first completed")
+	}
+	if secondCall.observed != 5*time.Second {
+		t.Fatalf("second write observed timeout %v, want %v", secondCall.observed, 5*time.Second)
+	}
+	close(secondCall.release)
+	if err := <-secondDone; err != nil {
+		t.Fatalf("second write failed: %v", err)
+	}
+	if got := conn.WriteTimeout(); got != initialTimeout {
+		t.Fatalf("write timeout after concurrent calls = %v, want %v", got, initialTimeout)
+	}
 }
 
 func TestHandlePackageWithNilListenerDoesNotPanicOnError(t *testing.T) {

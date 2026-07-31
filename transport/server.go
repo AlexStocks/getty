@@ -207,21 +207,21 @@ func (s *server) listenTCP() error {
 			return perrors.Wrapf(err, "gxnet.ListenOnTCPRandomPort(addr:%s)", s.addr)
 		}
 	} else {
-	if s.sslEnabled {
-		// #101: guard against a TLS config builder that returns (nil, nil);
-		// previously a nil config with nil err fell through, leaving
-		// streamListener nil, and s.streamListener.Addr() panicked below.
-		sslConfig, buildTlsConfErr := s.tlsConfigBuilder.BuildTlsConfig()
-		if buildTlsConfErr != nil {
-			return perrors.Wrapf(buildTlsConfErr, "BuildTlsConfig(addr:%s)", s.addr)
+		if s.sslEnabled {
+			// #101: guard against a TLS config builder that returns (nil, nil);
+			// previously a nil config with nil err fell through, leaving
+			// streamListener nil, and s.streamListener.Addr() panicked below.
+			sslConfig, buildTlsConfErr := s.tlsConfigBuilder.BuildTlsConfig()
+			if buildTlsConfErr != nil {
+				return perrors.Wrapf(buildTlsConfErr, "BuildTlsConfig(addr:%s)", s.addr)
+			}
+			if sslConfig == nil {
+				return fmt.Errorf("BuildTlsConfig returned nil config without error for addr:%s", s.addr)
+			}
+			streamListener, err = tls.Listen("tcp", s.addr, sslConfig)
+		} else {
+			streamListener, err = net.Listen("tcp", s.addr)
 		}
-		if sslConfig == nil {
-			return fmt.Errorf("BuildTlsConfig returned nil config without error for addr:%s", s.addr)
-		}
-		streamListener, err = tls.Listen("tcp", s.addr, sslConfig)
-	} else {
-		streamListener, err = net.Listen("tcp", s.addr)
-	}
 		if err != nil {
 			return perrors.Wrapf(err, "net.Listen(tcp, addr:%s)", s.addr)
 		}

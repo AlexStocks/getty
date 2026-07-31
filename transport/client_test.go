@@ -19,11 +19,14 @@ package getty
 
 import (
 	"bytes"
+	"crypto/tls"
+	"errors"
 	"net"
 	"net/http"
 	"os"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -35,6 +38,130 @@ import (
 )
 
 type PackageHandler struct{}
+
+var errTestTLSConfig = errors.New("test TLS config failure")
+
+type countingTLSConfigBuilder struct {
+	calls   atomic.Int32
+	entered chan struct{}
+}
+
+func (b *countingTLSConfigBuilder) BuildTlsConfig() (*tls.Config, error) {
+	b.calls.Add(1)
+	select {
+	case b.entered <- struct{}{}:
+	default:
+	}
+	return nil, errTestTLSConfig
+}
+
+func newFailingReconnectClient(builder TlsConfigBuilder, interval time.Duration, attempts int) *client {
+	return newClient(TCP_CLIENT,
+		WithServerAddress("127.0.0.1:1"),
+		WithConnectionNumber(1),
+		WithReconnectInterval(int(interval)),
+		WithReconnectAttempts(attempts),
+		WithClientSslEnabled(true),
+		WithClientTlsConfigBuilder(builder),
+	)
+}
+
+func TestReconnectAttemptsAreExactAndSkipFinalBackoff(t *testing.T) {
+	builder := &countingTLSConfigBuilder{entered: make(chan struct{}, 4)}
+	clt := newFailingReconnectClient(builder, 100*time.Millisecond, 3)
+
+	started := time.Now()
+	clt.RunEventLoop(func(Session) error { return nil })
+	elapsed := time.Since(started)
+
+	if got := builder.calls.Load(); got != 3 {
+		t.Fatalf("TLS config build calls = %d, want exactly 3 reconnect attempts", got)
+	}
+	// Correct behavior waits after attempts one and two only: 100ms + 200ms.
+	// A final backoff adds another 300ms.
+	if elapsed >= 500*time.Millisecond {
+		t.Fatalf("reconnect loop took %v; it appears to wait after the final attempt", elapsed)
+	}
+}
+
+func TestReconnectBackoffIsCancelledByClose(t *testing.T) {
+	builder := &countingTLSConfigBuilder{entered: make(chan struct{}, 4)}
+	clt := newFailingReconnectClient(builder, 2*time.Second, 3)
+
+	eventLoopDone := make(chan struct{})
+	go func() {
+		clt.RunEventLoop(func(Session) error { return nil })
+		close(eventLoopDone)
+	}()
+	select {
+	case <-builder.entered:
+	case <-time.After(time.Second):
+		t.Fatal("first reconnect attempt did not start")
+	}
+	time.Sleep(20 * time.Millisecond)
+
+	closeDone := make(chan struct{})
+	go func() {
+		clt.Close()
+		close(closeDone)
+	}()
+
+	timedOut := false
+	select {
+	case <-closeDone:
+	case <-time.After(200 * time.Millisecond):
+		timedOut = true
+	}
+	if timedOut {
+		select {
+		case <-closeDone:
+		case <-time.After(3 * time.Second):
+			t.Fatal("Close did not return after the current backoff elapsed")
+		}
+		t.Fatal("Close did not cancel the reconnect backoff")
+	}
+	select {
+	case <-eventLoopDone:
+	case <-time.After(time.Second):
+		t.Fatal("RunEventLoop did not return after Close")
+	}
+}
+
+func TestSessionReconnectIsTrackedByClose(t *testing.T) {
+	builder := &countingTLSConfigBuilder{entered: make(chan struct{}, 4)}
+	clt := newFailingReconnectClient(builder, 2*time.Second, 3)
+	localConn, peerConn := net.Pipe()
+	defer func() {
+		_ = localConn.Close()
+		_ = peerConn.Close()
+	}()
+	ss := newTCPSession(localConn, clt).(*session)
+	ss.SetAttribute(sessionClientKey, clt)
+	ss.SetAttribute(ignoreReconnectKey, false)
+
+	sessionStopDone := make(chan struct{})
+	go func() {
+		ss.stop()
+		close(sessionStopDone)
+	}()
+	select {
+	case <-builder.entered:
+	case <-time.After(time.Second):
+		t.Fatal("session-triggered reconnect did not start")
+	}
+
+	clt.Close()
+	select {
+	case <-sessionStopDone:
+	case <-time.After(100 * time.Millisecond):
+		select {
+		case <-sessionStopDone:
+		case <-time.After(3 * time.Second):
+			t.Fatal("session stop did not return after reconnect backoff elapsed")
+		}
+		t.Fatal("Close returned while the session-triggered reconnect was still running")
+	}
+}
 
 func (h *PackageHandler) Read(ss Session, data []byte) (any, int, error) {
 	return nil, 0, nil
