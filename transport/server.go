@@ -48,6 +48,7 @@ import (
 
 var (
 	errSelfConnect        = perrors.New("connect self!")
+	errServerClosed       = perrors.New("server closed")
 	serverFastFailTimeout = time.Second * 1
 
 	serverID uatomic.Int32
@@ -198,6 +199,9 @@ func (s *server) listenTCP() error {
 		err            error
 		streamListener net.Listener
 	)
+	if s.IsClosed() {
+		return errServerClosed
+	}
 
 	if len(s.addr) == 0 || !strings.Contains(s.addr, ":") {
 		streamListener, err = gxnet.ListenOnTCPRandomPort(s.addr)
@@ -225,8 +229,19 @@ func (s *server) listenTCP() error {
 		}
 	}
 
+	return s.publishStreamListener(streamListener)
+}
+
+func (s *server) publishStreamListener(streamListener net.Listener) error {
 	addr := streamListener.Addr().String()
 	s.lock.Lock()
+	select {
+	case <-s.done:
+		s.lock.Unlock()
+		_ = streamListener.Close()
+		return errServerClosed
+	default:
+	}
 	s.streamListener = streamListener
 	s.addr = addr
 	s.lock.Unlock()
@@ -240,6 +255,9 @@ func (s *server) listenUDP() error {
 		localAddr   *net.UDPAddr
 		pktListener *net.UDPConn
 	)
+	if s.IsClosed() {
+		return errServerClosed
+	}
 
 	if len(s.addr) == 0 || !strings.Contains(s.addr, ":") {
 		pktListener, err = gxnet.ListenOnUDPRandomPort(s.addr)
@@ -257,8 +275,19 @@ func (s *server) listenUDP() error {
 		}
 	}
 
+	return s.publishPacketListener(pktListener)
+}
+
+func (s *server) publishPacketListener(pktListener net.PacketConn) error {
 	addr := pktListener.LocalAddr().String()
 	s.lock.Lock()
+	select {
+	case <-s.done:
+		s.lock.Unlock()
+		_ = pktListener.Close()
+		return errServerClosed
+	default:
+	}
 	s.pktListener = pktListener
 	s.addr = addr
 	s.lock.Unlock()
@@ -512,6 +541,9 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 // @newSession: new connection callback
 func (s *server) RunEventLoop(newSession NewSessionCallback) {
 	if err := s.listen(); err != nil {
+		if perrors.Cause(err) == errServerClosed {
+			return
+		}
 		panic(fmt.Errorf("server.listen() = error:%+v", perrors.WithStack(err)))
 	}
 

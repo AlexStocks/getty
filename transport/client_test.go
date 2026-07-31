@@ -45,6 +45,7 @@ var errTestTLSConfig = errors.New("test TLS config failure")
 type countingTLSConfigBuilder struct {
 	calls   atomic.Int32
 	entered chan struct{}
+	release <-chan struct{}
 }
 
 func (b *countingTLSConfigBuilder) BuildTlsConfig() (*tls.Config, error) {
@@ -52,6 +53,9 @@ func (b *countingTLSConfigBuilder) BuildTlsConfig() (*tls.Config, error) {
 	select {
 	case b.entered <- struct{}{}:
 	default:
+	}
+	if b.release != nil {
+		<-b.release
 	}
 	return nil, errTestTLSConfig
 }
@@ -129,7 +133,11 @@ func TestReconnectBackoffIsCancelledByClose(t *testing.T) {
 }
 
 func TestSessionReconnectIsTrackedByClose(t *testing.T) {
-	builder := &countingTLSConfigBuilder{entered: make(chan struct{}, 4)}
+	releaseReconnect := make(chan struct{})
+	builder := &countingTLSConfigBuilder{
+		entered: make(chan struct{}, 4),
+		release: releaseReconnect,
+	}
 	clt := newFailingReconnectClient(builder, 2*time.Second, 3)
 	localConn, peerConn := net.Pipe()
 	defer func() {
@@ -151,16 +159,28 @@ func TestSessionReconnectIsTrackedByClose(t *testing.T) {
 		t.Fatal("session-triggered reconnect did not start")
 	}
 
-	clt.Close()
+	closeDone := make(chan struct{})
+	go func() {
+		clt.Close()
+		close(closeDone)
+	}()
+	select {
+	case <-closeDone:
+		close(releaseReconnect)
+		t.Fatal("Close returned while the session-triggered reconnect was still running")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(releaseReconnect)
+	select {
+	case <-closeDone:
+	case <-time.After(time.Second):
+		t.Fatal("Close did not return after the session-triggered reconnect completed")
+	}
 	select {
 	case <-sessionStopDone:
-	case <-time.After(100 * time.Millisecond):
-		select {
-		case <-sessionStopDone:
-		case <-time.After(3 * time.Second):
-			t.Fatal("session stop did not return after reconnect backoff elapsed")
-		}
-		t.Fatal("Close returned while the session-triggered reconnect was still running")
+	case <-time.After(time.Second):
+		t.Fatal("session stop did not return")
 	}
 }
 

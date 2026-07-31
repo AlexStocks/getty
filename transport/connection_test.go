@@ -86,13 +86,9 @@ func TestSnappyWriteFlusherCloseWaitsForWrite(t *testing.T) {
 		entered: make(chan struct{}, 1),
 		release: make(chan struct{}),
 	}
-	defer func() {
-		select {
-		case <-underlying.release:
-		default:
-			close(underlying.release)
-		}
-	}()
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(underlying.release) }) }
+	defer release()
 
 	writer := newSnappyWriteFlusher(snappy.NewBufferedWriter(underlying))
 	writeDone := make(chan error, 1)
@@ -118,7 +114,7 @@ func TestSnappyWriteFlusherCloseWaitsForWrite(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 
-	close(underlying.release)
+	release()
 	if err := <-writeDone; err != nil {
 		t.Fatalf("Write failed: %v", err)
 	}

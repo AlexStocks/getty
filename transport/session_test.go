@@ -22,7 +22,6 @@ import (
 	"io"
 	"net"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -131,7 +130,6 @@ type resetBarrierNetConn struct {
 	release     chan struct{}
 	enteredOnce sync.Once
 	releaseOnce sync.Once
-	deadlines   atomic.Int32
 }
 
 func (c *resetBarrierNetConn) Read([]byte) (int, error) {
@@ -140,18 +138,17 @@ func (c *resetBarrierNetConn) Read([]byte) (int, error) {
 	return 0, io.EOF
 }
 
-func (*resetBarrierNetConn) Write(p []byte) (int, error) { return len(p), nil }
-func (*resetBarrierNetConn) Close() error                { return nil }
-func (*resetBarrierNetConn) LocalAddr() net.Addr         { return &net.TCPAddr{} }
-func (*resetBarrierNetConn) RemoteAddr() net.Addr        { return &net.TCPAddr{} }
-func (*resetBarrierNetConn) SetDeadline(time.Time) error { return nil }
-func (c *resetBarrierNetConn) SetReadDeadline(time.Time) error {
-	if c.deadlines.Add(1) > 1 {
-		c.releaseOnce.Do(func() { close(c.release) })
-	}
-	return nil
-}
+func (*resetBarrierNetConn) Write(p []byte) (int, error)      { return len(p), nil }
+func (*resetBarrierNetConn) Close() error                     { return nil }
+func (*resetBarrierNetConn) LocalAddr() net.Addr              { return &net.TCPAddr{} }
+func (*resetBarrierNetConn) RemoteAddr() net.Addr             { return &net.TCPAddr{} }
+func (*resetBarrierNetConn) SetDeadline(time.Time) error      { return nil }
+func (*resetBarrierNetConn) SetReadDeadline(time.Time) error  { return nil }
 func (*resetBarrierNetConn) SetWriteDeadline(time.Time) error { return nil }
+
+func (c *resetBarrierNetConn) releaseRead() {
+	c.releaseOnce.Do(func() { close(c.release) })
+}
 
 func TestConcurrentWritePkgTimeoutRestoration(t *testing.T) {
 	netConn := &timeoutTestNetConn{entered: make(chan *timeoutTestCall, 2)}
@@ -242,6 +239,7 @@ func TestResetWaitsForPackageLoop(t *testing.T) {
 	}
 
 	ss.Close()
+	netConn.releaseRead()
 	select {
 	case <-resetDone:
 	case <-time.After(time.Second):
