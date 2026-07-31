@@ -18,6 +18,8 @@
 package getty
 
 import (
+	"compress/flate"
+	"errors"
 	"io"
 	"net"
 	"sync"
@@ -32,6 +34,14 @@ import (
 type blockingSnappyWriter struct {
 	entered chan struct{}
 	release chan struct{}
+}
+
+var errFlushWriter = errors.New("flush writer failure")
+
+type flushErrorWriter struct{}
+
+func (flushErrorWriter) Write([]byte) (int, error) {
+	return 0, errFlushWriter
 }
 
 func (w *blockingSnappyWriter) Write(p []byte) (int, error) {
@@ -79,6 +89,41 @@ func TestConnectionTimeoutAccessorsDoNotCopyAtomicState(t *testing.T) {
 
 	close(start)
 	wg.Wait()
+}
+
+func TestWriteFlushersReturnConsumedBytesOnFlushError(t *testing.T) {
+	payload := []byte("payload")
+	tests := []struct {
+		name   string
+		writer io.Writer
+	}{
+		{
+			name: "flate",
+			writer: func() io.Writer {
+				writer, err := flate.NewWriter(flushErrorWriter{}, flate.DefaultCompression)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return &writeFlusher{flusher: writer}
+			}(),
+		},
+		{
+			name:   "snappy",
+			writer: newSnappyWriteFlusher(snappy.NewBufferedWriter(flushErrorWriter{})),
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			n, err := test.writer.Write(payload)
+			if !errors.Is(err, errFlushWriter) {
+				t.Fatalf("Write error = %v, want %v", err, errFlushWriter)
+			}
+			if n != len(payload) {
+				t.Fatalf("Write returned %d bytes after consuming %d", n, len(payload))
+			}
+		})
+	}
 }
 
 func TestSnappyWriteFlusherCloseWaitsForWrite(t *testing.T) {

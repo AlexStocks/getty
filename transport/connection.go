@@ -227,7 +227,7 @@ func (t *writeFlusher) Write(p []byte) (int, error) {
 		return n, perrors.WithStack(err)
 	}
 	if err := t.flusher.Flush(); err != nil {
-		return 0, perrors.WithStack(err)
+		return n, perrors.WithStack(err)
 	}
 
 	return n, nil
@@ -254,7 +254,7 @@ func (s *snappyWriteFlusher) Write(p []byte) (int, error) {
 		return n, perrors.WithStack(err)
 	}
 	if err := s.writer.Flush(); err != nil {
-		return 0, perrors.WithStack(err)
+		return n, perrors.WithStack(err)
 	}
 	return n, nil
 }
