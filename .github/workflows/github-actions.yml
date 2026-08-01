@@ -34,9 +34,6 @@ jobs:
     name: Test and Lint
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    permissions:
-      contents: read
-      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -59,9 +56,32 @@ jobs:
       - name: Lint
         run: make lint
 
+      - name: Upload Coverage Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: coverage
+          path: coverage.txt
+          if-no-files-found: error
+          retention-days: 1
+
+  coverage:
+    name: Upload Coverage
+    needs: test-and-lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download Coverage Artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: coverage
+
       - name: Upload Coverage
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f
         with:
+          version: v11.3.1
           use_oidc: true
           fail_ci_if_error: true
           files: ./coverage.txt
