@@ -158,10 +158,15 @@ fmt: install-imports-formatter
 check-fmt: install-imports-formatter
 	@temp_dir=$$(mktemp -d /tmp/getty-check-fmt.XXXXXX); \
 	trap 'case "$$temp_dir" in /tmp/getty-check-fmt.*) rm -rf -- "$$temp_dir" ;; esac' EXIT; \
+	mkdir -p "$$temp_dir/.git"; \
+	tracked_files="$$temp_dir/.git/tracked-files.z"; \
+	go_files="$$temp_dir/.git/go-files.z"; \
+	git ls-files -z > "$$tracked_files"; \
+	git ls-files -z -- '*.go' > "$$go_files"; \
 	while IFS= read -r -d '' file; do \
 		mkdir -p "$$temp_dir/$$(dirname "$$file")"; \
 		cp -p -- "$$file" "$$temp_dir/$$file"; \
-	done < <(git ls-files -z); \
+	done < "$$tracked_files"; \
 	(cd "$$temp_dir" && \
 		GOTOOLCHAIN=go1.25.0+auto go fmt ./... && \
 		GOROOT="$$(GOTOOLCHAIN=go1.25.0+auto go env GOROOT)" \
@@ -174,7 +179,7 @@ check-fmt: install-imports-formatter
 			printf 'Formatting changes are required: %s\n' "$$file"; \
 			status=1; \
 		fi; \
-	done < <(git ls-files -z -- '*.go'); \
+	done < "$$go_files"; \
 	exit "$$status"
 
 # Clean generated test files.
@@ -773,6 +778,8 @@ if ($LASTEXITCODE -ne 0) { throw 'workflow supply-chain policy validation failed
 1. `check-fmt-readonly-gofmt`：保持 import blocks 已符合项目规则，只制造 `gofmt -d` 可见的函数空格差异。先在临时副本单独执行 imports-formatter，证明 clean-filter hash 不变；再运行 `make check-fmt`，预期列出变异文件并非零退出。
 2. `check-fmt-readonly-imports`：构造 gofmt 已接受的单一 import block，但把标准库和项目内部 import 混在同一组。先确认 `gofmt -d` 输出为空，再在临时副本单独执行 imports-formatter，证明 clean-filter hash 改变；运行 `make check-fmt`，预期列出变异文件并非零退出。
 3. `check-fmt-readonly-failure`：通过导出的同名 Bash function 让 imports-formatter 明确返回 23。运行 `make check-fmt`，预期 formatter 错误向 make 非零传播，且 `/tmp/getty-check-fmt.*` 前后列表一致。
+
+另增加两个生产者故障注入门禁：让第一个 `git ls-files -z` 在输出部分或全部 tracked 路径后返回 38，确认 `make check-fmt` 非零且 formatter 未执行；让第二个 `git ls-files -z -- '*.go'` 零输出后返回 37，确认目标仍非零。两个枚举命令必须先把 NUL 清单写入临时镜像的 `.git/` 元数据目录，再由循环通过普通文件重定向读取；禁止使用会隐藏生产者退出码的 process substitution。两个故障探针都必须证明 source 字节哈希和 Git 状态不变，且 trap 没有留下临时目录。
 
 每个 probe 都必须记录被测文件的原始字节哈希和 Git 状态，并证明运行前后完全一致；不能因为检查失败而允许 formatter 改写变异文件。完整 stdout/stderr 由 agent 使用 `apply_patch` 写入 `evidence/ci-local-validation-check-fmt-readonly.txt`。
 

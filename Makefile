@@ -28,7 +28,7 @@ help:
 	@echo "  test       - Run unit tests with coverage"
 	@echo "  test-race  - Run transport race tests"
 	@echo "  fmt        - Format code"
-	@echo "  check-fmt  - Verify code formatting"
+	@echo "  check-fmt  - Verify formatting without modifying tracked files"
 	@echo "  lint       - Run golangci-lint"
 	@echo "  clean      - Clean test generate files"
 
@@ -45,10 +45,15 @@ fmt: install-imports-formatter
 check-fmt: install-imports-formatter
 	@temp_dir=$$(mktemp -d /tmp/getty-check-fmt.XXXXXX); \
 	trap 'case "$$temp_dir" in /tmp/getty-check-fmt.*) rm -rf -- "$$temp_dir" ;; esac' EXIT; \
+	mkdir -p "$$temp_dir/.git"; \
+	tracked_files="$$temp_dir/.git/tracked-files.z"; \
+	go_files="$$temp_dir/.git/go-files.z"; \
+	git ls-files -z > "$$tracked_files"; \
+	git ls-files -z -- '*.go' > "$$go_files"; \
 	while IFS= read -r -d '' file; do \
 		mkdir -p "$$temp_dir/$$(dirname "$$file")"; \
 		cp -p -- "$$file" "$$temp_dir/$$file"; \
-	done < <(git ls-files -z); \
+	done < "$$tracked_files"; \
 	(cd "$$temp_dir" && \
 		GOTOOLCHAIN=go1.25.0+auto go fmt ./... && \
 		GOROOT="$$(GOTOOLCHAIN=go1.25.0+auto go env GOROOT)" \
@@ -61,7 +66,7 @@ check-fmt: install-imports-formatter
 			printf 'Formatting changes are required: %s\n' "$$file"; \
 			status=1; \
 		fi; \
-	done < <(git ls-files -z -- '*.go'); \
+	done < "$$go_files"; \
 	exit "$$status"
 
 # Clean test generate files
