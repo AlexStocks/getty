@@ -221,11 +221,11 @@ Makefile 调整为可由本地和 CI 复用的显式门禁：
 - `test` 不再执行 `go env -w`，改为命令级 `GOTOOLCHAIN`。
 - `test` 增加 `-count=1`，同时保留 atomic coverage 输出。
 - 新增 `test-race`，只运行 `./transport` 的 race 测试。
-- 新增 `check-fmt`：执行项目格式化命令后，用 `git diff --exit-code -- . ':!coverage.txt'` 检测并输出格式化差异，同时排除测试生成的 coverage 文件。
+- 新增 `check-fmt`：把当前 tracked 工作树内容复制到 `mktemp` 临时镜像，只在临时镜像内依次执行命令级 `GOTOOLCHAIN=go1.25.0+auto go fmt ./...` 和固定的 `imports-formatter v1.0.10`。随后逐个 tracked Go 文件使用 `git hash-object --path=<原路径>` 计算应用仓库 clean filter 后的对象哈希，比较当前文件与临时格式化结果；不一致时列出文件并非零退出。
 - `imports-formatter` 从 `@latest` 固定到本次已验证的 `v1.0.10`。
 - `golangci-lint` 暂时保持当前已验证的 `v2.4.0`，避免在 CI 架构改造中混入新 lint 规则导致的源码修复；升级到 Dubbo-Go 使用的更高版本应单独处理。
 
-`check-fmt` 会在一次性 CI checkout 中运行写入式 formatter，但只用于验证差异；本地验证时必须在独立 probe 副本执行，不能改写 PR 主证据副本后再恢复。
+`fmt` 保留为开发者明确调用的写入式格式化目标；`check-fmt` 不依赖 `fmt`，也不对当前 checkout 中的 tracked 文件运行写入式 formatter。临时目录通过 `trap` 清理，复制、格式化或 formatter 任一步失败都必须非零传播。比较使用带原路径的 Git clean-filter 哈希而不是原始字节比较，因此 `core.autocrlf=true` 下语义相同的 CRLF 工作树文件与 LF 格式化结果不会误报；无论检查成功还是失败，当前文件的物理换行和字节内容都保持不变。
 
 ### 9. CodeQL
 
@@ -301,7 +301,7 @@ PR 分支阶段只能通过严格 YAML 解析和字段/结构断言验证该文�
 
 ### Makefile 验证
 
-在独立 probe 副本运行：
+在主验证副本和 `probes/` 下的独立变异副本运行：
 
 - `make check-fmt`
 - `make test`
@@ -309,7 +309,7 @@ PR 分支阶段只能通过严格 YAML 解析和字段/结构断言验证该文�
 - `make lint`
 - `git status --porcelain=v2 --branch --untracked-files=all`
 
-确认 `make test` 不改写用户级 `go env`，工具版本与设计一致，格式检查能在故意制造格式差异时失败。
+确认 `make test` 不改写用户级 `go env`，工具版本与设计一致。`check-fmt` 必须完成以下 TDD 门禁：LF clean 输入退出 0 且 tracked Go 文件聚合字节哈希和 Git 状态前后不变；`core.autocrlf=true` 的 clean CRLF 输入退出 0 且物理 EOL、字节哈希和 clean 状态不变；仅 gofmt 差异退出非零；仅项目 import order 差异在 `gofmt -d` 为空时仍退出非零；formatter 故障非零传播且临时目录被清理。所有失败探针都必须证明被测源文件的字节哈希和 Git 状态前后不变。
 
 ### Go 验证
 

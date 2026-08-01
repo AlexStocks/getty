@@ -140,7 +140,7 @@ help:
 	@echo "  test       - Run unit tests with coverage"
 	@echo "  test-race  - Run transport tests with the race detector"
 	@echo "  fmt        - Format code"
-	@echo "  check-fmt  - Verify that formatting produces no diff"
+	@echo "  check-fmt  - Verify formatting without modifying tracked files"
 	@echo "  lint       - Run go vet and golangci-lint"
 	@echo "  clean      - Clean generated test files"
 
@@ -155,11 +155,27 @@ test-race:
 fmt: install-imports-formatter
 	go fmt ./... && GOROOT=$(shell go env GOROOT) imports-formatter
 
-check-fmt: fmt
-	@git diff --exit-code -- . ':!coverage.txt' || { \
-		echo "Formatting changes are required. Run 'make fmt'."; \
-		exit 1; \
-	}
+check-fmt: install-imports-formatter
+	@temp_dir=$$(mktemp -d /tmp/getty-check-fmt.XXXXXX); \
+	trap 'case "$$temp_dir" in /tmp/getty-check-fmt.*) rm -rf -- "$$temp_dir" ;; esac' EXIT; \
+	while IFS= read -r -d '' file; do \
+		mkdir -p "$$temp_dir/$$(dirname "$$file")"; \
+		cp -p -- "$$file" "$$temp_dir/$$file"; \
+	done < <(git ls-files -z); \
+	(cd "$$temp_dir" && \
+		GOTOOLCHAIN=go1.25.0+auto go fmt ./... && \
+		GOROOT="$$(GOTOOLCHAIN=go1.25.0+auto go env GOROOT)" \
+			imports-formatter --path "$$temp_dir" --module github.com/AlexStocks/getty); \
+	status=0; \
+	while IFS= read -r -d '' file; do \
+		current_hash=$$(git hash-object --path="$$file" "$$file"); \
+		formatted_hash=$$(git hash-object --path="$$file" "$$temp_dir/$$file"); \
+		if test "$$current_hash" != "$$formatted_hash"; then \
+			printf 'Formatting changes are required: %s\n' "$$file"; \
+			status=1; \
+		fi; \
+	done < <(git ls-files -z -- '*.go'); \
+	exit "$$status"
 
 # Clean generated test files.
 clean:
@@ -688,8 +704,10 @@ git commit -m "docs: replace Travis CI references"
 
 **文件：**
 - 读取：全部实施文件
-- 验证副本：`D:\test\github\review\AlexStocks-getty-pr-108\probes\ci-check-fmt-clean`
-- 验证副本：`D:\test\github\review\AlexStocks-getty-pr-108\probes\ci-check-fmt-mutation`
+- 验证副本：`D:\test\github\review\AlexStocks-getty-pr-108\probes\check-fmt-readonly-crlf`
+- 验证副本：`D:\test\github\review\AlexStocks-getty-pr-108\probes\check-fmt-readonly-gofmt`
+- 验证副本：`D:\test\github\review\AlexStocks-getty-pr-108\probes\check-fmt-readonly-imports`
+- 验证副本：`D:\test\github\review\AlexStocks-getty-pr-108\probes\check-fmt-readonly-failure`
 - 输出：agent 仅使用 `apply_patch` 写入 `D:\test\github\review\AlexStocks-getty-pr-108\evidence\ci-local-validation-*.txt`；验证命令只向调用端返回完整 stdout/stderr
 
 - [ ] **步骤 1：对全部 workflow 运行 actionlint**
@@ -742,49 +760,21 @@ if ($LASTEXITCODE -ne 0) { throw 'workflow supply-chain policy validation failed
 
 预期：退出码 0。注释中的版本标签允许存在，但 `uses:` 的实际 ref 必须是完整 SHA。当前最终文件应为 6 个逻辑 job、14 个 `uses:`；主 CI 应为 5 个逻辑 job；`id-token: write` 只出现于 `Upload Coverage`；Codecov `version` 必须为 `v11.3.1`。
 
-- [ ] **步骤 3：在干净独立 worktree 证明 `check-fmt` 绿灯**
+- [ ] **步骤 3：证明 LF 与 CRLF clean 输入均为只读绿灯**
 
-```powershell
-git worktree add --detach D:\test\github\review\AlexStocks-getty-pr-108\probes\ci-check-fmt-clean HEAD
-wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/probes/ci-check-fmt-clean -- `
-  env PATH=/home/alex/bin/go1.25/bin:/home/alex/go/bin:/usr/local/bin:/usr/bin:/bin `
-  GOTOOLCHAIN=go1.25.0+auto make check-fmt
-if ($LASTEXITCODE -ne 0) { throw 'clean check-fmt probe failed' }
-```
+在 LF clean 的主验证副本运行 `make check-fmt`，并在命令前后分别记录 tracked Go 文件的聚合字节哈希、`git status --porcelain=v2 --branch --untracked-files=all` 和 `/tmp/getty-check-fmt.*` 列表。预期：退出码 0，三个值前后完全一致。
 
-完整保留 stdout/stderr，由 agent 使用 `apply_patch` 写入 `evidence/ci-local-validation-check-fmt-clean.txt`。预期：退出码 0，probe worktree 的 `git status --porcelain` 为空。主 source worktree 不运行写入式 formatter。
+再从固定 seed 建立 `core.autocrlf=true` 的 clean CRLF Git probe，确认 `git ls-files --eol -- '*.go'` 为 `i/lf w/crlf`。运行 `make check-fmt` 后再次核对原始字节哈希、Git clean 状态、物理 EOL 和临时目录列表。预期：退出码 0，文件仍为 CRLF，状态仍 clean，原始字节哈希不变且无临时目录残留。这一门禁证明 clean-filter hash 比较不会把 CRLF/LF 的工作树表示差异误报为格式错误。
 
-- [ ] **步骤 4：用格式变异证明 `check-fmt` 会阻断**
+- [ ] **步骤 4：用两类格式变异和 formatter 故障证明非零传播**
 
-```powershell
-git worktree add --detach D:\test\github\review\AlexStocks-getty-pr-108\probes\ci-check-fmt-mutation HEAD
-```
+建立三个独立 probe，所有变异只通过 `apply_patch` 写入 probe：
 
-在 mutation worktree 中通过 `apply_patch` 将一个已跟踪 Go 函数签名改成 gofmt 会修复的格式，例如：
+1. `check-fmt-readonly-gofmt`：保持 import blocks 已符合项目规则，只制造 `gofmt -d` 可见的函数空格差异。先在临时副本单独执行 imports-formatter，证明 clean-filter hash 不变；再运行 `make check-fmt`，预期列出变异文件并非零退出。
+2. `check-fmt-readonly-imports`：构造 gofmt 已接受的单一 import block，但把标准库和项目内部 import 混在同一组。先确认 `gofmt -d` 输出为空，再在临时副本单独执行 imports-formatter，证明 clean-filter hash 改变；运行 `make check-fmt`，预期列出变异文件并非零退出。
+3. `check-fmt-readonly-failure`：通过导出的同名 Bash function 让 imports-formatter 明确返回 23。运行 `make check-fmt`，预期 formatter 错误向 make 非零传播，且 `/tmp/getty-check-fmt.*` 前后列表一致。
 
-```diff
--func udpReadBufferSize(maxMsgLen int32) int {
-+func udpReadBufferSize( maxMsgLen int32 ) int {
-```
-
-然后运行：
-
-```powershell
-$bash = @'
-set -eu -o pipefail
-export PATH=/home/alex/bin/go1.25/bin:/home/alex/go/bin:/usr/local/bin:/usr/bin:/bin
-export GOTOOLCHAIN=go1.25.0+auto
-check_fmt_exit=0
-make check-fmt || check_fmt_exit=$?
-printf 'CHECK_FMT_EXIT=%d\n' "$check_fmt_exit"
-test "$check_fmt_exit" -ne 0
-'@
-$encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($bash))
-wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/probes/ci-check-fmt-mutation -- /bin/bash -c "printf '%s' '$encoded' | base64 -d | /bin/bash"
-if ($LASTEXITCODE -ne 0) { throw 'check-fmt mutation did not fail as required' }
-```
-
-完整保留 stdout/stderr，由 agent 使用 `apply_patch` 写入 `evidence/ci-local-validation-check-fmt-mutation.txt`。预期：formatter 修复变异后，`git diff --exit-code` 使 `make check-fmt` 非零退出；`CHECK_FMT_EXIT` 明确为非零，输出包含具体 diff 和修复提示。该 probe 不提交、不 push。
+每个 probe 都必须记录被测文件的原始字节哈希和 Git 状态，并证明运行前后完全一致；不能因为检查失败而允许 formatter 改写变异文件。完整 stdout/stderr 由 agent 使用 `apply_patch` 写入 `evidence/ci-local-validation-check-fmt-readonly.txt`。
 
 - [ ] **步骤 5：运行模块、测试、race 与 lint**
 

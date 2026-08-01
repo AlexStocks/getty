@@ -42,11 +42,27 @@ test-race:
 fmt: install-imports-formatter
 	go fmt ./... && GOROOT=$(shell go env GOROOT) imports-formatter
 
-check-fmt: fmt
-	@git diff --exit-code -- . ':!coverage.txt' || { \
-		echo "Formatting changes are required. Run 'make fmt'."; \
-		exit 1; \
-	}
+check-fmt: install-imports-formatter
+	@temp_dir=$$(mktemp -d /tmp/getty-check-fmt.XXXXXX); \
+	trap 'case "$$temp_dir" in /tmp/getty-check-fmt.*) rm -rf -- "$$temp_dir" ;; esac' EXIT; \
+	while IFS= read -r -d '' file; do \
+		mkdir -p "$$temp_dir/$$(dirname "$$file")"; \
+		cp -p -- "$$file" "$$temp_dir/$$file"; \
+	done < <(git ls-files -z); \
+	(cd "$$temp_dir" && \
+		GOTOOLCHAIN=go1.25.0+auto go fmt ./... && \
+		GOROOT="$$(GOTOOLCHAIN=go1.25.0+auto go env GOROOT)" \
+			imports-formatter --path "$$temp_dir" --module github.com/AlexStocks/getty); \
+	status=0; \
+	while IFS= read -r -d '' file; do \
+		current_hash=$$(git hash-object --path="$$file" "$$file"); \
+		formatted_hash=$$(git hash-object --path="$$file" "$$temp_dir/$$file"); \
+		if test "$$current_hash" != "$$formatted_hash"; then \
+			printf 'Formatting changes are required: %s\n' "$$file"; \
+			status=1; \
+		fi; \
+	done < <(git ls-files -z -- '*.go'); \
+	exit "$$status"
 
 # Clean test generate files
 clean:
