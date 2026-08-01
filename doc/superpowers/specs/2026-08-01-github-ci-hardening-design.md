@@ -261,6 +261,8 @@ CodeQL 显式指定 `languages: go`，使用固定 commit SHA 的 `init` 和 `an
 
 配置只负责创建依赖更新 PR，不自动 approve、merge 或修改 branch protection。
 
+PR 分支阶段只能通过严格 YAML 解析和字段/结构断言验证该文件；GitHub 是否接受并启用 Dependabot、是否按计划创建更新 PR，只能在配置合并到默认分支 `master` 后确认。PR push 后没有可证明“已接受/已启用/已排程”的 GitHub 结果，不得把本地结构验证写成平台接受证据。
+
 ### 11. README 与 Travis 清理
 
 `README.md` 和 `README_CN.md` 的 Travis badge 替换为 GitHub Actions `CI` workflow badge，并继续保留 Codecov、Go reference、Go Report Card 和 license badge。
@@ -335,7 +337,7 @@ push 后：
 3. 确认 `Test and Lint` 成功上传 `coverage` artifact，`Upload Coverage` 下载同名 artifact 后完成 Codecov 上传，且两段失败都可传播。
 4. 确认 setup-go 在 checkout 后找到 `go.sum`，不存在第二套 Go cache。
 5. 确认 CodeQL 上传 security result 成功。
-6. 确认 Dependabot 配置被 GitHub 接受。
+6. 对 Dependabot 只确认 PR 内 YAML 和结构门禁通过；实际接受、启用和排程列为合并到默认分支后的验证项。
 7. 重新获取 PR Base/Head、mergeable、mergeStateStatus、reviewDecision、required checks 和 review threads。
 
 ## 失败处理与回滚
@@ -358,7 +360,7 @@ push 后：
 5. Codecov Action 使用 CLI `v11.3.1`，上传成功，日志不再出现 HTTP 400 或被吞掉的失败。
 6. setup-go 缓存由唯一 action 管理，并在 checkout 后读取 `go.sum`。
 7. README badge 指向 GitHub Actions，旧 Travis 配置已在覆盖核对后删除。
-8. Dependabot 配置被 GitHub 接受。
+8. Dependabot 配置在 PR 内通过严格 YAML 和结构验证；合并到默认分支后另行确认 GitHub 接受、启用和排程，不把该外部结果作为 PR push 阶段可完成的条件。
 9. 最终 Head 与验证基准一致。
 10. PR #108 的 UDP P1 finding 仍单独对账，不因 CI 改造而被误报为已修复。
 11. 收尾报告明确要求轮换或吊销旧 Travis 文件中暴露的 Codecov 和第三方 webhook 凭据，并确认 PR 没有再次复制其值。

@@ -63,15 +63,14 @@ github/codeql-action@v3: a2983b8bed1923f44751c5c43237f479442827b3
 
 ```powershell
 gh pr view 108 --repo AlexStocks/getty `
-  --json number,state,headRefName,headRefOid,baseRefName,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup `
-  > D:\test\github\review\AlexStocks-getty-pr-108\evidence\ci-preflight.json
+  --json number,state,headRefName,headRefOid,baseRefName,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup
 
 gh pr view 108 --repo AlexStocks/getty `
   --json state,headRefName,headRefOid,baseRefName `
   --jq 'select(.state == "OPEN" and .headRefName == "codex/fix-issue-97-remaining" and .headRefOid == "087714342a09f1cc2318bee9d570c2b6ed028044" and .baseRefName == "master") | .headRefOid'
 ```
 
-预期：第二条命令只输出 `087714342a09f1cc2318bee9d570c2b6ed028044`。没有输出或 SHA 不同即停止，不得 push；先 fetch 并增量审查远端新增提交。
+完整保留第一条命令的 stdout/stderr，由 agent 使用 `apply_patch` 写入 `evidence/ci-preflight.json`；命令本身不得重定向或创建证据文件。预期：第二条命令只输出 `087714342a09f1cc2318bee9d570c2b6ed028044`。没有输出或 SHA 不同即停止，不得 push；先 fetch 并增量审查远端新增提交。
 
 - [ ] **步骤 2：确认本地提交链只建立在远端 Head 上**
 
@@ -87,17 +86,15 @@ git status --short --branch
 - [ ] **步骤 3：保存旧配置缺口的可复验基线**
 
 ```powershell
-@(
-  '--- workflow gaps ---'
-  (rg -n 'setup-go@|actions/cache@|codecov\.io/bash|@main|permissions:|concurrency:|timeout-minutes:|-race' .github\workflows\github-actions.yml)
-  '--- makefile gaps ---'
-  (rg -n 'go env -w|go test|imports-formatter@|check-fmt|test-race' Makefile)
-  '--- travis references ---'
-  (rg -n 'travis-ci' README.md README_CN.md)
-) | Set-Content -Encoding utf8 D:\test\github\review\AlexStocks-getty-pr-108\evidence\ci-old-policy-gaps.txt
+'--- workflow gaps ---'
+rg -n 'setup-go@|actions/cache@|codecov\.io/bash|@main|permissions:|concurrency:|timeout-minutes:|-race' .github\workflows\github-actions.yml
+'--- makefile gaps ---'
+rg -n 'go env -w|go test|imports-formatter@|check-fmt|test-race' Makefile
+'--- travis references ---'
+rg -n 'travis-ci' README.md README_CN.md
 ```
 
-预期：证据能定位 setup-go 在 checkout 前、第二套 cache、远程 Codecov bash uploader、`@main`、`go env -w`、`@latest` 和 Travis badge。不得把 `.travis.yml` 中的凭据值写入证据。
+完整保留命令 stdout/stderr，再由 agent 使用 `apply_patch` 写入 `evidence/ci-old-policy-gaps.txt`。预期：证据能定位 setup-go 在 checkout 前、第二套 cache、远程 Codecov bash uploader、`@main`、`go env -w`、`@latest` 和 Travis badge。不得把 `.travis.yml` 中的凭据值写入证据。
 
 ### 任务 2：Makefile 确定性门禁
 
@@ -107,12 +104,27 @@ git status --short --branch
 
 - [ ] **步骤 1：证明当前 Makefile 缺少新入口且会写用户级 Go 配置**
 
-```bash
-wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- bash -lc \
-  "make -n test | tee ../evidence/make-test-before.txt; ! make -n check-fmt; ! make -n test-race"
+```powershell
+$bash = @'
+set -eu -o pipefail
+export PATH=/home/alex/bin/go1.25/bin:/home/alex/go/bin:/usr/local/bin:/usr/bin:/bin
+export GOTOOLCHAIN=go1.25.0+auto
+make -n test
+check_fmt_exit=0
+make -n check-fmt || check_fmt_exit=$?
+test_race_exit=0
+make -n test-race || test_race_exit=$?
+printf 'CHECK_FMT_EXIT=%d\n' "$check_fmt_exit"
+printf 'TEST_RACE_EXIT=%d\n' "$test_race_exit"
+test "$check_fmt_exit" -ne 0
+test "$test_race_exit" -ne 0
+'@
+$encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($bash))
+wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- /bin/bash -c "printf '%s' '$encoded' | base64 -d | /bin/bash"
+if ($LASTEXITCODE -ne 0) { throw 'Makefile baseline probe failed' }
 ```
 
-预期：`make -n test` 输出包含 `go env -w GOTOOLCHAIN=...`；`check-fmt` 与 `test-race` 报 `No rule to make target`，两个否定命令因此成功。
+完整保留 stdout/stderr，由 agent 使用 `apply_patch` 写入 `evidence/make-test-before.txt`。预期：`make -n test` 输出包含 `go env -w GOTOOLCHAIN=...`；`check-fmt` 与 `test-race` 报 `No rule to make target`，且两个记录的退出码均非零。
 
 - [ ] **步骤 2：补全 phony、help 与确定性目标**
 
@@ -167,12 +179,23 @@ install-imports-formatter:
 
 - [ ] **步骤 3：验证命令展开没有全局写入且版本固定**
 
-```bash
-wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- bash -lc \
-  "make -n test test-race install-imports-formatter | tee ../evidence/make-targets-after.txt; ! rg -n 'go env -w|imports-formatter@latest' Makefile"
+```powershell
+$bash = @'
+set -eu -o pipefail
+export PATH=/home/alex/bin/go1.25/bin:/home/alex/go/bin:/usr/local/bin:/usr/bin:/bin
+export GOTOOLCHAIN=go1.25.0+auto
+make -n test test-race install-imports-formatter
+if rg -n 'go env -w|imports-formatter@latest' Makefile; then
+  printf 'forbidden Makefile pattern found\n' >&2
+  exit 1
+fi
+'@
+$encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($bash))
+wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- /bin/bash -c "printf '%s' '$encoded' | base64 -d | /bin/bash"
+if ($LASTEXITCODE -ne 0) { throw 'Makefile policy validation failed' }
 ```
 
-预期：输出包含命令级 `GOTOOLCHAIN=go1.25.0+auto`、两个 `-count=1` 和 `imports-formatter@v1.0.10`，反向检索无匹配。
+完整保留 stdout/stderr，由 agent 使用 `apply_patch` 写入 `evidence/make-targets-after.txt`。预期：输出包含命令级 `GOTOOLCHAIN=go1.25.0+auto`、两个 `-count=1` 和 `imports-formatter@v1.0.10`，反向检索无匹配。
 
 - [ ] **步骤 4：提交 Makefile 改动**
 
@@ -647,7 +670,7 @@ git commit -m "docs: replace Travis CI references"
 - 读取：全部实施文件
 - 验证副本：`D:\test\github\review\AlexStocks-getty-pr-108\probes\ci-check-fmt-clean`
 - 验证副本：`D:\test\github\review\AlexStocks-getty-pr-108\probes\ci-check-fmt-mutation`
-- 输出：`D:\test\github\review\AlexStocks-getty-pr-108\evidence\ci-local-validation-*.txt`
+- 输出：agent 仅使用 `apply_patch` 写入 `D:\test\github\review\AlexStocks-getty-pr-108\evidence\ci-local-validation-*.txt`；验证命令只向调用端返回完整 stdout/stderr
 
 - [ ] **步骤 1：对全部 workflow 运行 actionlint**
 
@@ -689,11 +712,13 @@ PY
 
 ```powershell
 git worktree add --detach D:\test\github\review\AlexStocks-getty-pr-108\probes\ci-check-fmt-clean HEAD
-wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/probes/ci-check-fmt-clean -- bash -lc `
-  'PATH=/home/alex/bin/go1.25/bin:$PATH make check-fmt |& tee ../../evidence/ci-local-validation-check-fmt-clean.txt'
+wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/probes/ci-check-fmt-clean -- `
+  env PATH=/home/alex/bin/go1.25/bin:/home/alex/go/bin:/usr/local/bin:/usr/bin:/bin `
+  GOTOOLCHAIN=go1.25.0+auto make check-fmt
+if ($LASTEXITCODE -ne 0) { throw 'clean check-fmt probe failed' }
 ```
 
-预期：退出码 0，probe worktree 的 `git status --porcelain` 为空。主 source worktree 不运行写入式 formatter。
+完整保留 stdout/stderr，由 agent 使用 `apply_patch` 写入 `evidence/ci-local-validation-check-fmt-clean.txt`。预期：退出码 0，probe worktree 的 `git status --porcelain` 为空。主 source worktree 不运行写入式 formatter。
 
 - [ ] **步骤 4：用格式变异证明 `check-fmt` 会阻断**
 
@@ -711,42 +736,60 @@ git worktree add --detach D:\test\github\review\AlexStocks-getty-pr-108\probes\c
 然后运行：
 
 ```powershell
-wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/probes/ci-check-fmt-mutation -- bash -lc `
-  'PATH=/home/alex/bin/go1.25/bin:$PATH make check-fmt |& tee ../../evidence/ci-local-validation-check-fmt-mutation.txt; test ${PIPESTATUS[0]} -ne 0'
+$bash = @'
+set -eu -o pipefail
+export PATH=/home/alex/bin/go1.25/bin:/home/alex/go/bin:/usr/local/bin:/usr/bin:/bin
+export GOTOOLCHAIN=go1.25.0+auto
+check_fmt_exit=0
+make check-fmt || check_fmt_exit=$?
+printf 'CHECK_FMT_EXIT=%d\n' "$check_fmt_exit"
+test "$check_fmt_exit" -ne 0
+'@
+$encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($bash))
+wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/probes/ci-check-fmt-mutation -- /bin/bash -c "printf '%s' '$encoded' | base64 -d | /bin/bash"
+if ($LASTEXITCODE -ne 0) { throw 'check-fmt mutation did not fail as required' }
 ```
 
-预期：formatter 修复变异后，`git diff --exit-code` 使 `make check-fmt` 非零退出；日志输出具体 diff 和修复提示。该 probe 不提交、不 push。
+完整保留 stdout/stderr，由 agent 使用 `apply_patch` 写入 `evidence/ci-local-validation-check-fmt-mutation.txt`。预期：formatter 修复变异后，`git diff --exit-code` 使 `make check-fmt` 非零退出；`CHECK_FMT_EXIT` 明确为非零，输出包含具体 diff 和修复提示。该 probe 不提交、不 push。
 
 - [ ] **步骤 5：运行模块、测试、race 与 lint**
 
-```bash
-wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- bash -lc '
-  set -o pipefail
-  export PATH=/home/alex/bin/go1.25/bin:$PATH
-  go version
-  go mod verify
-  make test
-  make test-race
-  make lint
-' |& tee /mnt/d/test/github/review/AlexStocks-getty-pr-108/evidence/ci-local-validation-go.txt
+```powershell
+$bash = @'
+set -eu -o pipefail
+export PATH=/home/alex/bin/go1.25/bin:/home/alex/go/bin:/usr/local/bin:/usr/bin:/bin
+export GOTOOLCHAIN=go1.25.0+auto
+go version
+go mod verify
+make test
+make test-race
+make lint
+'@
+$encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($bash))
+wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- /bin/bash -c "printf '%s' '$encoded' | base64 -d | /bin/bash"
+if ($LASTEXITCODE -ne 0) { throw 'Go validation failed' }
 ```
 
-预期：Go 为 `go1.25.1 linux/amd64`；所有命令退出码 0；`coverage.txt` 是唯一预期生成文件。若失败，先按 `superpowers:systematic-debugging` 区分 PR 新增、Base 既有和环境问题，不得跳过失败。
+完整保留 stdout/stderr，由 agent 使用 `apply_patch` 写入 `evidence/ci-local-validation-go.txt`。预期：Go 为 `go1.25.1 linux/amd64`；所有命令退出码 0；`coverage.txt` 是唯一预期生成文件。若失败，先按 `superpowers:systematic-debugging` 区分 PR 新增、Base 既有和环境问题，不得跳过失败。
 
 - [ ] **步骤 6：执行跨编译补充验证**
 
-```bash
-wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- bash -lc '
-  set -eu -o pipefail
-  export PATH=/home/alex/bin/go1.25/bin:$PATH
-  GOOS=windows GOARCH=amd64 go build ./...
-  GOOS=darwin GOARCH=amd64 go build ./...
-  CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build ./...
-  CGO_ENABLED=0 GOOS=linux GOARCH=riscv64 go build ./...
-' |& tee /mnt/d/test/github/review/AlexStocks-getty-pr-108/evidence/ci-local-validation-cross-build.txt
+```powershell
+$bash = @'
+set -eu -o pipefail
+export PATH=/home/alex/bin/go1.25/bin:/home/alex/go/bin:/usr/local/bin:/usr/bin:/bin
+export GOTOOLCHAIN=go1.25.0+auto
+GOOS=windows GOARCH=amd64 go build ./...
+GOOS=darwin GOARCH=amd64 go build ./...
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build ./...
+CGO_ENABLED=0 GOOS=linux GOARCH=riscv64 go build ./...
+'@
+$encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($bash))
+wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- /bin/bash -c "printf '%s' '$encoded' | base64 -d | /bin/bash"
+if ($LASTEXITCODE -ne 0) { throw 'cross-build validation failed' }
 ```
 
-预期：退出码 0。交叉编译只是补充证据，不能替代远端 Windows/macOS runner。
+完整保留 stdout/stderr，由 agent 使用 `apply_patch` 写入 `evidence/ci-local-validation-cross-build.txt`。预期：退出码 0。交叉编译只是补充证据，不能替代远端 Windows/macOS runner。
 
 - [ ] **步骤 7：检查 diff、index、意外文件和敏感值回流**
 
@@ -821,63 +864,92 @@ git commit -m "docs: align CI design with reviewed implementation"
 
 - [ ] **步骤 1：执行 `verification-before-completion` 新鲜验证**
 
-必须重新运行 actionlint、Go 门禁和四个 cross-build，并让每条命令的边界、当前 HEAD、Go 版本、开始/结束时间和退出码出现在原始输出中。actionlint 必须同时覆盖 `.yml` 与 `.yaml`：
+必须重新运行 actionlint、Go 门禁和四个 cross-build，并让每条命令的边界、当前 HEAD、Go 版本、UTC 开始/结束时间和退出码出现在原始输出中。不得把多行 Bash 直接嵌入 `wsl.exe ... bash -lc` 参数；PowerShell 必须把完整 Bash wrapper 编码为 UTF-8 Base64，WSL 内再无损解码并交给 `/bin/bash`。
 
-```bash
-wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- bash -lc '
-  set -u -o pipefail
-  export PATH=/home/alex/bin/go1.25/bin:$PATH
+先运行 harmless probe，证明 Bash 变量和值以及预期非零退出码能完整穿过 PowerShell、WSL 和 Base64 解码边界：
 
-  overall=0
-  run_check() {
-    label=$1
-    shift
-    printf "=== BEGIN %s ===\n" "$label"
-    printf "STARTED_AT=%s\n" "$(date --iso-8601=seconds)"
-    printf "HEAD=%s\n" "$(git rev-parse HEAD)"
-    printf "GO_VERSION=%s\n" "$(go version)"
-    printf "COMMAND="
-    printf "%q " "$@"
-    printf "\n"
-    "$@"
-    rc=$?
-    printf "EXIT=%d\n" "$rc"
-    printf "ENDED_AT=%s\n" "$(date --iso-8601=seconds)"
-    printf "=== END %s ===\n" "$label"
-    if [ "$rc" -ne 0 ]; then overall=1; fi
-  }
-
-  run_actionlint() {
-    shopt -s nullglob
-    workflows=(.github/workflows/*.yml .github/workflows/*.yaml)
-    test "${#workflows[@]}" -gt 0 || return 1
-    GOTOOLCHAIN=go1.25.0+auto go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 "${workflows[@]}"
-  }
-
-  printf "VALIDATION_STARTED_AT=%s\n" "$(date --iso-8601=seconds)"
-  printf "VALIDATION_HEAD=%s\n" "$(git rev-parse HEAD)"
-  printf "VALIDATION_GO_VERSION=%s\n" "$(go version)"
-  run_check actionlint run_actionlint
-  run_check go-mod-verify go mod verify
-  run_check go-test go test ./... -count=1
-  run_check go-test-race go test -race ./transport -count=1
-  run_check go-vet go vet ./...
-  run_check make-lint make lint
-  run_check build-windows-amd64 env GOOS=windows GOARCH=amd64 go build ./...
-  run_check build-darwin-amd64 env GOOS=darwin GOARCH=amd64 go build ./...
-  run_check build-linux-arm64 env CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build ./...
-  run_check build-linux-riscv64 env CGO_ENABLED=0 GOOS=linux GOARCH=riscv64 go build ./...
-  run_check git-diff-check git diff --check origin/codex/fix-issue-97-remaining...HEAD
-  run_check git-status git status --short --branch
-  printf "VALIDATION_ENDED_AT=%s\n" "$(date --iso-8601=seconds)"
-  printf "VALIDATION_EXIT=%d\n" "$overall"
-  exit "$overall"
-'
+```powershell
+$probeScript = @'
+set -eu -o pipefail
+printf 'PROBE_VALUE=%s\n' "$PROBE_VALUE"
+printf 'PROBE_EXIT=%s\n' "$PROBE_EXIT"
+exit "$PROBE_EXIT"
+'@
+$probeEncoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($probeScript))
+wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- `
+  env PROBE_VALUE=base64-transport-ok PROBE_EXIT=7 `
+  /bin/bash -c "printf '%s' '$probeEncoded' | base64 -d | /bin/bash"
+if ($LASTEXITCODE -ne 7) { throw 'PowerShell-to-WSL Base64 probe did not preserve exit 7' }
 ```
 
-保留上述完整终端原始输出，包括测试、race、vet、lint 和 build 的所有正文。随后用 `apply_patch` 新增或完整替换 `ci-pre-push-validation-raw.txt`；不得用 `>`、`tee`、脚本摘要或人工改写后的“pass”列表代替 raw。若原始输出包含意外敏感值，先停止并报告，不得把该值写入证据。
+预期原样输出 `PROBE_VALUE=base64-transport-ok` 和 `PROBE_EXIT=7`，PowerShell 观察到退出码 7。probe 不创建文件；任一值或退出码不一致都必须停止，不能继续正式验证。
 
-预期：每个边界的 `EXIT=0` 且最终 `VALIDATION_EXIT=0`；记录的 `VALIDATION_HEAD` 与待 push HEAD 一致。不得用较早日志替代该步骤的新鲜结果。
+probe 通过后运行正式 wrapper。actionlint 必须同时覆盖 `.yml` 与 `.yaml`：
+
+```powershell
+$validationScript = @'
+set -eu -o pipefail
+export PATH=/home/alex/bin/go1.25/bin:/home/alex/go/bin:/usr/local/bin:/usr/bin:/bin
+export GOTOOLCHAIN=go1.25.0+auto
+
+overall=0
+run_check() {
+  label=$1
+  shift
+  printf '=== BEGIN %s ===\n' "$label"
+  printf 'BEGIN_UTC=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf 'HEAD=%s\n' "$(git rev-parse HEAD)"
+  printf 'GO_VERSION=%s\n' "$(go version)"
+  printf 'COMMAND='
+  printf '%q ' "$@"
+  printf '\n'
+  if "$@"; then
+    rc=0
+  else
+    rc=$?
+    overall=1
+  fi
+  printf 'EXIT=%d\n' "$rc"
+  printf 'END_UTC=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '=== END %s ===\n' "$label"
+}
+
+run_actionlint() {
+  shopt -s nullglob
+  workflows=(.github/workflows/*.yml .github/workflows/*.yaml)
+  test "${#workflows[@]}" -gt 0
+  go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 "${workflows[@]}"
+}
+
+printf 'VALIDATION_BEGIN_UTC=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+printf 'VALIDATION_HEAD=%s\n' "$(git rev-parse HEAD)"
+printf 'VALIDATION_GO_VERSION=%s\n' "$(go version)"
+run_check actionlint run_actionlint
+run_check go-mod-verify go mod verify
+run_check go-test go test ./... -count=1
+run_check go-test-race go test -race ./transport -count=1
+run_check go-vet go vet ./...
+run_check make-lint make lint
+run_check build-windows-amd64 env GOOS=windows GOARCH=amd64 go build ./...
+run_check build-darwin-amd64 env GOOS=darwin GOARCH=amd64 go build ./...
+run_check build-linux-arm64 env CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build ./...
+run_check build-linux-riscv64 env CGO_ENABLED=0 GOOS=linux GOARCH=riscv64 go build ./...
+run_check git-diff-check git diff --check origin/codex/fix-issue-97-remaining...HEAD
+run_check git-status git status --short --branch
+printf 'VALIDATION_END_UTC=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+printf 'VALIDATION_EXIT=%d\n' "$overall"
+exit "$overall"
+'@
+$validationEncoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($validationScript))
+wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- `
+  /bin/bash -c "printf '%s' '$validationEncoded' | base64 -d | /bin/bash"
+$validationExit = $LASTEXITCODE
+if ($validationExit -ne 0) { throw "fresh CI validation failed with exit $validationExit" }
+```
+
+保留上述完整终端 stdout/stderr，包括测试、race、vet、lint 和 build 的所有正文。随后由 agent 使用 `apply_patch` 新增或完整替换 `ci-pre-push-validation-raw.txt`；验证命令和 wrapper 不得创建、追加或修改 evidence 文件，也不得用脚本摘要或人工改写后的“pass”列表代替 raw。若原始输出包含意外敏感值，先停止并报告，不得把该值写入证据。
+
+预期：harmless probe 证明传输边界无损；每个正式边界的 `EXIT=0` 且最终 `VALIDATION_EXIT=0`；记录的 `VALIDATION_HEAD` 与待 push HEAD 一致。任一命令失败都会把 `overall` 置为非零并传播到 PowerShell。不得用较早日志替代该步骤的新鲜结果。
 
 - [ ] **步骤 2：再次获取远端 Head 并执行显式 lease**
 
@@ -904,9 +976,9 @@ git push origin HEAD:codex/fix-issue-97-remaining
 ### 任务 10：等待并核验 GitHub 新 checks
 
 **文件：**
-- 写入证据：`D:\test\github\review\AlexStocks-getty-pr-108\evidence\ci-post-push-pr.json`
-- 写入证据：`D:\test\github\review\AlexStocks-getty-pr-108\evidence\ci-post-push-checks.txt`
-- 写入证据：各 workflow/job 的日志片段，仅保存无敏感值的诊断
+- 写入证据：agent 仅使用 `apply_patch` 更新 `D:\test\github\review\AlexStocks-getty-pr-108\evidence\ci-post-push-pr.json`
+- 写入证据：agent 仅使用 `apply_patch` 更新 `D:\test\github\review\AlexStocks-getty-pr-108\evidence\ci-post-push-checks.txt`
+- 写入证据：各 workflow/job 的完整无敏感值 stdout/stderr；GitHub 查询命令本身不得创建或修改文件
 
 - [ ] **步骤 1：获取 push 后新 Head 和 workflow runs**
 
@@ -942,11 +1014,10 @@ $headSha = gh pr view 108 --repo AlexStocks/getty --json headRefOid --jq .headRe
 $ciRunId = gh run list --repo AlexStocks/getty --branch codex/fix-issue-97-remaining --workflow CI --limit 20 `
   --json databaseId,headSha --jq ".[] | select(.headSha == \"$headSha\") | .databaseId" | Select-Object -First 1
 if (-not $ciRunId) { throw 'CI run for current Head not found' }
-gh run view $ciRunId --repo AlexStocks/getty --json headSha,status,conclusion,jobs,url `
-  > D:\test\github\review\AlexStocks-getty-pr-108\evidence\ci-post-push-checks.txt
+gh run view $ciRunId --repo AlexStocks/getty --json headSha,status,conclusion,jobs,url
 ```
 
-必须确认实际 job 包含并成功：
+完整保留命令 stdout/stderr，再由 agent 使用 `apply_patch` 写入 `evidence/ci-post-push-checks.txt`。必须确认实际 job 包含并成功：
 
 ```text
 Check License Header
@@ -977,30 +1048,32 @@ gh run view $codeqlRunId --repo AlexStocks/getty --json headSha,status,conclusio
 
 ```powershell
 gh pr view 108 --repo AlexStocks/getty `
-  --json number,state,headRefName,headRefOid,baseRefName,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup `
-  > D:\test\github\review\AlexStocks-getty-pr-108\evidence\ci-post-push-pr.json
+  --json number,state,headRefName,headRefOid,baseRefName,mergeable,mergeStateStatus,reviewDecision,statusCheckRollup
 git rev-parse HEAD
 gh pr view 108 --repo AlexStocks/getty --json headRefOid --jq .headRefOid
 ```
 
-预期：本地 HEAD 与 GitHub PR Head 完全一致。
+完整保留第一条命令 stdout/stderr，再由 agent 使用 `apply_patch` 写入 `evidence/ci-post-push-pr.json`。预期：本地 HEAD 与 GitHub PR Head 完全一致。
+
+- [ ] **步骤 6：记录 Dependabot 的 PR 阶段验证边界**
+
+PR 分支上只复用任务 5 的严格 YAML 解析和精确结构断言；PR push、CI run 或 `gh pr view` 都不能证明 GitHub 已接受、启用或排程 Dependabot。将平台接受、启用状态以及是否按计划创建更新 PR 明确列为配置合并到默认分支 `master` 后的跟进验证，不得在任务 10 中写成已完成结果。
 
 ### 任务 11：最终 Review、required checks 建议与收尾对账
 
 **文件：**
 - 读取：当前 PR 完整 files/diff、review comments、checks、branch protection/rulesets
+- 写入证据：agent 仅使用 `apply_patch` 更新 `D:\test\github\review\AlexStocks-getty-pr-108\evidence\files.json` 和 `evidence\pr.diff`
 - 可能更新：`D:\test\github\arch-practice\alg\openclaw\review-experience.md` 或 `review-AlexStocks-getty.md`，仅当本轮产生经过验证的新经验
 
 - [ ] **步骤 1：重新保存完整 PR 文件列表和 Diff**
 
 ```powershell
-gh api repos/AlexStocks/getty/pulls/108/files --paginate `
-  > D:\test\github\review\AlexStocks-getty-pr-108\files.json
-gh pr diff 108 --repo AlexStocks/getty `
-  > D:\test\github\review\AlexStocks-getty-pr-108\pr.diff
+gh api repos/AlexStocks/getty/pulls/108/files --paginate
+gh pr diff 108 --repo AlexStocks/getty
 ```
 
-逐文件增量审查 CI 改动，确认没有运行时源码漂移。若发现本轮 CI 变更引入的可定位问题，先本地修复、重新验证、普通 push，再重复任务 10；不要给自己的 CI 改动留下明知的 P0/P1。
+分别完整保留两个命令的 stdout/stderr，由 agent 使用 `apply_patch` 写入 `evidence/files.json` 和 `evidence/pr.diff`。逐文件增量审查 CI 改动，确认没有运行时源码漂移。若发现本轮 CI 变更引入的可定位问题，先本地修复、重新验证、普通 push，再重复任务 10；不要给自己的 CI 改动留下明知的 P0/P1。
 
 - [ ] **步骤 2：检索 review threads 并保留 UDP P1 独立状态**
 
@@ -1037,6 +1110,7 @@ PR、镜像路径、WSL 路径、最终 Head、Base、分类。
 gh 与 rg/fd/grep/ls 调用次数。
 actionlint、YAML、Makefile、测试、race、lint、跨平台构建结果。
 远端 CI/CodeQL/Codecov 结果和 URL。
+Dependabot 在 PR 内只验证 YAML/结构；实际接受、启用和排程待合并默认分支后确认。
 已提交行内评论及去重说明。
 所有本轮 commit 和普通 push 结果。
 未修改 branch protection；给出建议 required checks 并请求单独授权。
