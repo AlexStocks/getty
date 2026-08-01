@@ -89,6 +89,8 @@ concurrency:
 
 ```yaml
 uses: actions/checkout@<commit-sha> # v7
+with:
+  persist-credentials: false
 ```
 
 实现前重新查询并固定：
@@ -103,6 +105,8 @@ uses: actions/checkout@<commit-sha> # v7
 
 Dependabot 的 `github-actions` ecosystem 负责后续 Action 更新。不得使用 `@main`，也不得在同一 workflow 中同时保留 major tag 与完整 SHA 两套引用方式。
 
+所有 5 个 checkout step 都显式设置 `persist-credentials: false`。这些 job 在 checkout 后只执行本地源码读取、Go 构建/测试、artifact 操作和固定 SHA 的 Action，不执行需要仓库认证的 `git fetch`、`git push`、remote 或 submodule 操作，因此不应把 checkout token 或 SSH key 持久化到本地 Git 配置。CodeQL 的初始化和结果上传使用 `github/codeql-action` 自身的 `token` 输入，默认值为 `${{ github.token }}`，不依赖 checkout 写入的 Git credential；这项加固不改变既有 `permissions`。
+
 本轮正式质量审查确认：`actions/upload-artifact@v7.0.1` 的 release 与 tag ref 都指向 `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a`；`actions/download-artifact@v8.0.1` 的 release 与 tag ref 都指向 `3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c`。`download-artifact` v8.0.1 tag 下 README 仍有一处 `@v7` 示例，属于示例文本滞后；release 元数据和精确 tag ref 一致，因此实现以 release/ref 指向的完整 SHA 为准，不因 README 的单处旧示例降级到 v7。
 
 Action 固定默认采用官方稳定 release/tag 对应的完整 SHA。仅当官方 main 上的 verified commit 明确晚于最新 release，且退回该 release 会撤销安全加固或可复现性改进时，才允许在设计中记录 provenance 后固定该 verified commit；这个例外不允许使用 `@main` 等可变引用。本轮 `actions/setup-go@v7.0.0` 的 release、`v7.0.0` 与 `v7` tag 均指向 `b7ad1dad31e06c5925ef5d2fc7ad053ef454303e`，可直接替换 v6.5.0 SHA，现有输入和 Node 24 runner 要求不变。`apache/skywalking-eyes/header@315732dd4b8d3a015d8d9b91936b935a0b854817` 是 official main 上经 GitHub 验证、比 v0.8.0 release commit 多 27 个提交的固定提交；它已将内部 `setup-go` 固定到完整 SHA，并对 shell 输入进行环境变量和引用加固，因此保留该提交，避免降级到 v0.8.0。
@@ -112,7 +116,7 @@ Action 固定默认采用官方稳定 release/tag 对应的完整 SHA。仅当�
 License job：
 
 - `permissions: contents: read`
-- checkout 固定到完整 SHA
+- checkout 固定到完整 SHA，并设置 `persist-credentials: false`
 - SkyWalking Eyes 固定到完整 SHA
 - `timeout-minutes: 10`
 - 保持 `.licenserc.yaml` 和 `mode: check`
@@ -140,6 +144,8 @@ with:
 ```
 
 删除独立 `actions/cache` step，让 `setup-go` 成为 Go module/build cache 的唯一 owner。
+
+Checkout 显式禁用 credential persistence；后续 module 验证、格式检查、测试、lint 和 artifact 上传都不执行需要 Git remote 认证的命令。
 
 模块验证执行 `go mod verify`。格式检查执行 `make check-fmt`。测试执行 `make test`，生成 `coverage.txt`。Lint 执行 `make lint`。随后使用固定 SHA 的 `actions/upload-artifact@v7.0.1` 上传 artifact：名称为 `coverage`，路径为 `coverage.txt`，文件缺失时报错，保留 1 天。
 
@@ -250,7 +256,7 @@ jobs:
       security-events: write
 ```
 
-CodeQL 显式指定 `languages: go`，使用固定 commit SHA 的 `init` 和 `analyze`。当前官方形状是在 `init` 中设置 `build-mode: autobuild`，随后直接执行 `analyze`，不再增加显式 `github/codeql-action/autobuild` step。旧的 `init(build-mode: autobuild) -> autobuild -> analyze` 三步形状仍可兼容运行，但显式 `autobuild` 与 init 的 build mode 重复，属于冗余。不得复制 Dubbo-Go workflow 中手工 checkout PR merge commit 父节点的历史逻辑；使用 GitHub 当前标准 pull request checkout 语义。
+CodeQL 显式指定 `languages: go`，使用固定 commit SHA 的 `init` 和 `analyze`。其 checkout 同样设置 `persist-credentials: false`；`init` 和 `analyze` 使用 Action 自身默认的 `${{ github.token }}` 输入完成包访问和结果上传，不依赖本地 Git credential。当前官方形状是在 `init` 中设置 `build-mode: autobuild`，随后直接执行 `analyze`，不再增加显式 `github/codeql-action/autobuild` step。旧的 `init(build-mode: autobuild) -> autobuild -> analyze` 三步形状仍可兼容运行，但显式 `autobuild` 与 init 的 build mode 重复，属于冗余。不得复制 Dubbo-Go workflow 中手工 checkout PR merge commit 父节点的历史逻辑；使用 GitHub 当前标准 pull request checkout 语义。
 
 ### 10. Dependabot
 
@@ -294,6 +300,7 @@ PR 分支阶段只能通过严格 YAML 解析和字段/结构断言验证该文�
 - 使用 `actionlint v1.7.12` 检查全部 `.github/workflows/*.yml` 与 `*.yaml`
 - 解析 `.github/dependabot.yml`，确认 YAML 语法和必需字段
 - 检查所有 `uses:` 都固定为完整 40 字符 SHA
+- 确认全部 5 个 checkout step 都显式设置 `persist-credentials: false`，不存在 `true` 或缺失项，并扫描后续 step 不含需要 Git remote credential 的操作
 - 确认当前两个 workflow 共 6 个逻辑 job、14 个 `uses:`；其中主 CI 为 5 个逻辑 job
 - 确认 `id-token: write` 只出现 1 次且位于 `Upload Coverage`，`Test and Lint` 无 OIDC
 - 确认 Codecov `version` 固定为 `v11.3.1`
@@ -366,4 +373,4 @@ push 后：
 9. 最终 Head 与验证基准一致。
 10. PR #108 的 UDP P1 finding 仍单独对账，不因 CI 改造而被误报为已修复。
 11. 收尾报告明确要求轮换或吊销旧 Travis 文件中暴露的 Codecov 和第三方 webhook 凭据，并确认 PR 没有再次复制其值。
-12. 静态政策断言与最终文件一致：主 CI 5 个逻辑 job、全部 workflow 合计 6 个逻辑 job 与 14 个 `uses:`，OIDC 只授予 `Upload Coverage`。
+12. 静态政策断言与最终文件一致：主 CI 5 个逻辑 job、全部 workflow 合计 6 个逻辑 job 与 14 个 `uses:`，OIDC 只授予 `Upload Coverage`；全部 5 个 checkout step 均显式禁用 credential persistence，且后续 step 不依赖 Git remote 认证。

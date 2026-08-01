@@ -52,6 +52,8 @@ github/codeql-action@v3: a2983b8bed1923f44751c5c43237f479442827b3
 
 Action 固定默认要求官方稳定 release/tag 与完整 SHA 对应。窄例外是：official main 的 verified commit 明确晚于最新 release，并且回退 release 会撤销安全或可复现性加固；此时必须记录 ancestry、差异和完整 SHA，仍禁止 `@main` 等可变 ref。本轮 `setup-go` v7.0.0/v7 均解析为 `b7ad1dad31e06c5925ef5d2fc7ad053ef454303e`，action.yml 与 v6.5.0 的输入、输出和 Node 24 runtime 不变，所以只替换 SHA。SkyWalking Eyes v0.8.0 解析为 `61275cc80d0798a405cb070f7d3a8aaf7cf2c2c1`，而保留的 `315732dd4b8d3a015d8d9b91936b935a0b854817` 是 official main verified commit，位于其后 27 个提交，已固定内部 `setup-go` 并硬化 shell 输入；不得为了满足 release 标签而降级。
 
+`actions/checkout@v7` 官方 `action.yml` 支持 `persist-credentials`，默认值为 `true`。本计划的 5 个 checkout 后续只执行本地读取、构建、测试或使用各 Action 自身 token 的 API 上传，不需要 Git remote credential，因此全部显式设置 `persist-credentials: false`。CodeQL `init`/`analyze` 默认使用 `${{ github.token }}`，不依赖 checkout 持久化认证；不得为此扩大 workflow 或 job permissions。
+
 ### 任务 1：实时租约与旧门禁缺口基线
 
 **文件：**
@@ -291,6 +293,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
       - name: Check License Header
         uses: apache/skywalking-eyes/header@315732dd4b8d3a015d8d9b91936b935a0b854817
@@ -305,6 +309,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -361,6 +367,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -388,6 +396,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -402,7 +412,7 @@ jobs:
         run: go build ./...
 ```
 
-不得恢复独立 `actions/cache`、CodeCov bash uploader 或任何可变 Action 引用。License job 不需要显式 `GITHUB_TOKEN` 环境变量；GitHub 会为 Action 提供最小权限 token 上下文。
+不得恢复独立 `actions/cache`、CodeCov bash uploader 或任何可变 Action 引用。4 个主 CI checkout 都显式设置 `persist-credentials: false`，因为后续 step 不需要 Git remote 认证。License job 不需要显式 `GITHUB_TOKEN` 环境变量；GitHub 会为 Action 提供最小权限 token 上下文。
 
 - [ ] **步骤 3：运行政策检查并验证全部 Action 引用**
 
@@ -422,13 +432,23 @@ python3 - <<"PY"
 import pathlib
 import re
 
-paths = list(pathlib.Path(".github/workflows").glob("*.yml"))
-paths += list(pathlib.Path(".github/workflows").glob("*.yaml"))
+paths = [pathlib.Path(".github/workflows/github-actions.yml")]
+workflow_text = "\n".join(path.read_text(encoding="utf-8") for path in paths)
 for path in paths:
     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         match = re.search(r"\buses:\s+\S+@([^\s#]+)", line)
         if match and not re.fullmatch(r"[0-9a-f]{40}", match.group(1)):
             raise SystemExit(f"{path}:{number}: mutable action ref {match.group(1)}")
+checkout_pattern = r"(?m)^\s+uses:\s+actions/checkout@[0-9a-f]{40}(?:\s+#.*)?\s*$"
+checkout_false_pattern = checkout_pattern + r"\n\s+with:\s*$\n\s+persist-credentials:\s+false\s*$"
+checkout_count = len(re.findall(checkout_pattern, workflow_text))
+checkout_false_count = len(re.findall(checkout_false_pattern, workflow_text))
+checkout_true_count = len(re.findall(r"(?m)^\s+persist-credentials:\s+true\s*$", workflow_text))
+if checkout_count != 4 or checkout_false_count != 4 or checkout_true_count != 0:
+    raise SystemExit(
+        f"checkout credential policy mismatch: total={checkout_count}, "
+        f"false={checkout_false_count}, true={checkout_true_count}"
+    )
 PY
 '@
 $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($bash))
@@ -436,7 +456,7 @@ wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- /bin/ba
 if ($LASTEXITCODE -ne 0) { throw 'main workflow policy validation failed' }
 ```
 
-预期：退出码 0；无 mutable ref、重复 cache 或远程 shell uploader。主 CI 应恰好包含 5 个逻辑 job 和 11 个 `uses:`；`id-token: write` 只位于 `Upload Coverage`，Codecov `version` 为 `v11.3.1`。
+预期：退出码 0；无 mutable ref、重复 cache 或远程 shell uploader。主 CI 的 4 个 checkout 都必须显式设置 `persist-credentials: false`，不得出现 `true` 或缺失项；主 CI 应恰好包含 5 个逻辑 job 和 11 个 `uses:`；`id-token: write` 只位于 `Upload Coverage`，Codecov `version` 为 `v11.3.1`。
 
 - [ ] **步骤 4：提交主 workflow**
 
@@ -496,6 +516,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@a2983b8bed1923f44751c5c43237f479442827b3 # v3
@@ -507,7 +529,7 @@ jobs:
         uses: github/codeql-action/analyze@a2983b8bed1923f44751c5c43237f479442827b3 # v3
 ```
 
-当前官方形状为 `init` 中声明 `build-mode: autobuild` 后直接执行 `analyze`。旧的 `init(build-mode: autobuild) -> autobuild -> analyze` 三步写法仍兼容，但显式 `autobuild` 与 init 的 build mode 重复，属于冗余，不应保留在可复现计划中。
+当前官方形状为 `init` 中声明 `build-mode: autobuild` 后直接执行 `analyze`。CodeQL checkout 显式设置 `persist-credentials: false`；后续 `init`/`analyze` 使用自身默认的 `${{ github.token }}`，不依赖本地 Git credential。旧的 `init(build-mode: autobuild) -> autobuild -> analyze` 三步写法仍兼容，但显式 `autobuild` 与 init 的 build mode 重复，属于冗余，不应保留在可复现计划中。
 
 - [ ] **步骤 3：用 actionlint 验证两个 workflow**
 
@@ -751,11 +773,22 @@ import re
 
 paths = list(pathlib.Path(".github/workflows").glob("*.yml"))
 paths += list(pathlib.Path(".github/workflows").glob("*.yaml"))
+workflow_text = "\n".join(path.read_text(encoding="utf-8") for path in paths)
 for path in paths:
     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         match = re.search(r"\buses:\s+\S+@([^\s#]+)", line)
         if match and not re.fullmatch(r"[0-9a-f]{40}", match.group(1)):
             raise SystemExit(f"{path}:{number}: mutable action ref {match.group(1)}")
+checkout_pattern = r"(?m)^\s+uses:\s+actions/checkout@[0-9a-f]{40}(?:\s+#.*)?\s*$"
+checkout_false_pattern = checkout_pattern + r"\n\s+with:\s*$\n\s+persist-credentials:\s+false\s*$"
+checkout_count = len(re.findall(checkout_pattern, workflow_text))
+checkout_false_count = len(re.findall(checkout_false_pattern, workflow_text))
+checkout_true_count = len(re.findall(r"(?m)^\s+persist-credentials:\s+true\s*$", workflow_text))
+if checkout_count != 5 or checkout_false_count != 5 or checkout_true_count != 0:
+    raise SystemExit(
+        f"checkout credential policy mismatch: total={checkout_count}, "
+        f"false={checkout_false_count}, true={checkout_true_count}"
+    )
 PY
 '@
 $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($bash))
@@ -763,7 +796,7 @@ wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- /bin/ba
 if ($LASTEXITCODE -ne 0) { throw 'workflow supply-chain policy validation failed' }
 ```
 
-预期：退出码 0。注释中的版本标签允许存在，但 `uses:` 的实际 ref 必须是完整 SHA。当前最终文件应为 6 个逻辑 job、14 个 `uses:`；主 CI 应为 5 个逻辑 job；`id-token: write` 只出现于 `Upload Coverage`；Codecov `version` 必须为 `v11.3.1`。
+预期：退出码 0。注释中的版本标签允许存在，但 `uses:` 的实际 ref 必须是完整 SHA。5 个 checkout 必须全部显式设置 `persist-credentials: false`，且后续 step 扫描不得发现 `git fetch`、`git push`、remote、submodule 等认证需求。当前最终文件应为 6 个逻辑 job、14 个 `uses:`；主 CI 应为 5 个逻辑 job；`id-token: write` 只出现于 `Upload Coverage`；Codecov `version` 必须为 `v11.3.1`。
 
 - [ ] **步骤 3：证明 LF 与 CRLF clean 输入均为只读绿灯**
 
@@ -848,6 +881,7 @@ git grep -n -I -E 'travis-ci|codecov\.io/bash|go env -w GOTOOLCHAIN|imports-form
 ```text
 [ ] 唯一 Go cache owner 是 setup-go v7.0.0
 [ ] checkout 位于 setup-go 前
+[ ] 全部 5 个 checkout 显式设置 persist-credentials:false，后续 step 无 Git remote 认证需求
 [ ] 主 CI 恰好 5 个逻辑 job：License、Test and Lint、Upload Coverage、Race、Build matrix
 [ ] Test and Lint 无 OIDC，使用 upload-artifact v7.0.1 上传 coverage（missing=error、retention=1）
 [ ] Upload Coverage needs test-and-lint，权限只有 id-token:write，不 checkout/setup-go/run
