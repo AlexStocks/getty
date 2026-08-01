@@ -21,23 +21,32 @@ MAKEFLAGS += --warn-undefined-variables
 MAKEFLAGS += --no-builtin-rules
 MAKEFLAGS += --no-print-directory
 
-.PHONY: help test fmt clean lint
+.PHONY: help test test-race fmt check-fmt clean lint install-golangci-lint install-imports-formatter
 
 help:
 	@echo "Available commands:"
-	@echo "  test       - Run unit tests"
-	@echo "  clean      - Clean test generate files"
+	@echo "  test       - Run unit tests with coverage"
+	@echo "  test-race  - Run transport race tests"
 	@echo "  fmt        - Format code"
+	@echo "  check-fmt  - Verify code formatting"
 	@echo "  lint       - Run golangci-lint"
+	@echo "  clean      - Clean test generate files"
 
 # Run unit tests
 test: clean
-	# For go 1.25.0
-	go env -w GOTOOLCHAIN=go1.25.0+auto
-	go test ./... -coverprofile=coverage.txt -covermode=atomic
+	GOTOOLCHAIN=go1.25.0+auto go test ./... -count=1 -coverprofile=coverage.txt -covermode=atomic
+
+test-race:
+	GOTOOLCHAIN=go1.25.0+auto go test -race ./transport -count=1
 
 fmt: install-imports-formatter
 	go fmt ./... && GOROOT=$(shell go env GOROOT) imports-formatter
+
+check-fmt: fmt
+	@git diff --exit-code -- . ':!coverage.txt' || { \
+		echo "Formatting changes are required. Run 'make fmt'."; \
+		exit 1; \
+	}
 
 # Clean test generate files
 clean:
@@ -52,4 +61,4 @@ install-golangci-lint:
 	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.4.0
 
 install-imports-formatter:
-	go install github.com/dubbogo/tools/cmd/imports-formatter@latest
+	go install github.com/dubbogo/tools/cmd/imports-formatter@v1.0.10
