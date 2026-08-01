@@ -185,7 +185,7 @@ set -eu -o pipefail
 export PATH=/home/alex/bin/go1.25/bin:/home/alex/go/bin:/usr/local/bin:/usr/bin:/bin
 export GOTOOLCHAIN=go1.25.0+auto
 make -n test test-race install-imports-formatter
-if rg -n 'go env -w|imports-formatter@latest' Makefile; then
+if grep -En 'go env -w|imports-formatter@latest' Makefile; then
   printf 'forbidden Makefile pattern found\n' >&2
   exit 1
 fi
@@ -214,15 +214,26 @@ git commit -m "build: make CI checks deterministic"
 
 - [ ] **步骤 1：建立会使旧 workflow 失败的政策检查**
 
-```bash
-wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- bash -lc '
-  set -eu
-  workflow=.github/workflows/github-actions.yml
-  ! rg -q "actions/cache@|codecov.io/bash|@(main|latest)([[:space:]#]|$)" "$workflow"
-  first_checkout=$(rg -n "uses: actions/checkout@" "$workflow" | head -1 | cut -d: -f1)
-  first_setup=$(rg -n "uses: actions/setup-go@" "$workflow" | head -1 | cut -d: -f1)
-  test "$first_checkout" -lt "$first_setup"
-'
+```powershell
+$bash = @'
+set -eu -o pipefail
+export PATH=/home/alex/bin/go1.25/bin:/home/alex/go/bin:/usr/local/bin:/usr/bin:/bin
+export GOTOOLCHAIN=go1.25.0+auto
+workflow=.github/workflows/github-actions.yml
+policy_exit=0
+if grep -Eq "actions/cache@|codecov.io/bash|@(main|latest)([[:space:]#]|$)" "$workflow"; then
+  policy_exit=11
+else
+  first_checkout=$(grep -n "uses: actions/checkout@" "$workflow" | head -1 | cut -d: -f1)
+  first_setup=$(grep -n "uses: actions/setup-go@" "$workflow" | head -1 | cut -d: -f1)
+  if ! test "$first_checkout" -lt "$first_setup"; then policy_exit=12; fi
+fi
+printf 'POLICY_EXIT=%d\n' "$policy_exit"
+test "$policy_exit" -ne 0
+'@
+$encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($bash))
+wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- /bin/bash -c "printf '%s' '$encoded' | base64 -d | /bin/bash"
+if ($LASTEXITCODE -ne 0) { throw 'old workflow policy probe did not observe the expected failure' }
 ```
 
 预期：在修改前失败，原因至少包括旧 `actions/cache`、远程 uploader、`@main` 或 setup-go 排在 checkout 前。
@@ -372,15 +383,19 @@ jobs:
 
 - [ ] **步骤 3：运行政策检查并验证全部 Action 引用**
 
-```bash
-wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- bash -lc '
-  set -eu
-  workflow=.github/workflows/github-actions.yml
-  ! rg -n "actions/cache@|codecov.io/bash|@(main|latest)([[:space:]#]|$)" "$workflow"
-  first_checkout=$(rg -n "uses: actions/checkout@" "$workflow" | head -1 | cut -d: -f1)
-  first_setup=$(rg -n "uses: actions/setup-go@" "$workflow" | head -1 | cut -d: -f1)
-  test "$first_checkout" -lt "$first_setup"
-  python3 - <<"PY"
+```powershell
+$bash = @'
+set -eu -o pipefail
+export PATH=/home/alex/bin/go1.25/bin:/home/alex/go/bin:/usr/local/bin:/usr/bin:/bin
+export GOTOOLCHAIN=go1.25.0+auto
+workflow=.github/workflows/github-actions.yml
+if grep -En "actions/cache@|codecov.io/bash|@(main|latest)([[:space:]#]|$)" "$workflow"; then
+  exit 1
+fi
+first_checkout=$(grep -n "uses: actions/checkout@" "$workflow" | head -1 | cut -d: -f1)
+first_setup=$(grep -n "uses: actions/setup-go@" "$workflow" | head -1 | cut -d: -f1)
+test "$first_checkout" -lt "$first_setup"
+python3 - <<"PY"
 import pathlib
 import re
 
@@ -392,7 +407,10 @@ for path in paths:
         if match and not re.fullmatch(r"[0-9a-f]{40}", match.group(1)):
             raise SystemExit(f"{path}:{number}: mutable action ref {match.group(1)}")
 PY
-'
+'@
+$encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($bash))
+wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- /bin/bash -c "printf '%s' '$encoded' | base64 -d | /bin/bash"
+if ($LASTEXITCODE -ne 0) { throw 'main workflow policy validation failed' }
 ```
 
 预期：退出码 0；无 mutable ref、重复 cache 或远程 shell uploader。主 CI 应恰好包含 5 个逻辑 job 和 11 个 `uses:`；`id-token: write` 只位于 `Upload Coverage`，Codecov `version` 为 `v11.3.1`。
@@ -674,24 +692,35 @@ git commit -m "docs: replace Travis CI references"
 
 - [ ] **步骤 1：对全部 workflow 运行 actionlint**
 
-```bash
-wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- bash -lc '
-  shopt -s nullglob
-  workflows=(.github/workflows/*.yml .github/workflows/*.yaml)
-  test "${#workflows[@]}" -gt 0
-  GOTOOLCHAIN=go1.25.0+auto go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color "${workflows[@]}"
-'
+```powershell
+$bash = @'
+set -eu -o pipefail
+export PATH=/home/alex/bin/go1.25/bin:/home/alex/go/bin:/usr/local/bin:/usr/bin:/bin
+export GOTOOLCHAIN=go1.25.0+auto
+shopt -s nullglob
+workflows=(.github/workflows/*.yml .github/workflows/*.yaml)
+printf 'ACTIONLINT_FILE_COUNT=%d\n' "${#workflows[@]}"
+test "${#workflows[@]}" -gt 0
+go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color "${workflows[@]}"
+'@
+$encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($bash))
+wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- /bin/bash -c "printf '%s' '$encoded' | base64 -d | /bin/bash"
+if ($LASTEXITCODE -ne 0) { throw 'actionlint validation failed' }
 ```
 
 预期：退出码 0，无诊断。
 
 - [ ] **步骤 2：执行 workflow 供应链政策检查**
 
-```bash
-wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- bash -lc '
-  set -eu
-  ! rg -n "actions/cache@|codecov.io/bash|curl[[:space:]].*\|[[:space:]]*(ba)?sh|@(main|master|latest)([[:space:]#]|$)" .github/workflows Makefile
-  python3 - <<"PY"
+```powershell
+$bash = @'
+set -eu -o pipefail
+export PATH=/home/alex/bin/go1.25/bin:/home/alex/go/bin:/usr/local/bin:/usr/bin:/bin
+export GOTOOLCHAIN=go1.25.0+auto
+if grep -ERn "actions/cache@|codecov.io/bash|curl[[:space:]].*\|[[:space:]]*(ba)?sh|@(main|master|latest)([[:space:]#]|$)" .github/workflows Makefile; then
+  exit 1
+fi
+python3 - <<"PY"
 import pathlib
 import re
 
@@ -703,7 +732,10 @@ for path in paths:
         if match and not re.fullmatch(r"[0-9a-f]{40}", match.group(1)):
             raise SystemExit(f"{path}:{number}: mutable action ref {match.group(1)}")
 PY
-'
+'@
+$encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($bash))
+wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- /bin/bash -c "printf '%s' '$encoded' | base64 -d | /bin/bash"
+if ($LASTEXITCODE -ne 0) { throw 'workflow supply-chain policy validation failed' }
 ```
 
 预期：退出码 0。注释中的版本标签允许存在，但 `uses:` 的实际 ref 必须是完整 SHA。当前最终文件应为 6 个逻辑 job、14 个 `uses:`；主 CI 应为 5 个逻辑 job；`id-token: write` 只出现于 `Upload Coverage`；Codecov `version` 必须为 `v11.3.1`。
