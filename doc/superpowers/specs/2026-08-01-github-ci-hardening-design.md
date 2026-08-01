@@ -94,8 +94,8 @@ uses: actions/checkout@<commit-sha> # v7
 实现前重新查询并固定：
 
 - `actions/checkout@v7`
-- `actions/setup-go@v6`
-- `apache/skywalking-eyes/header` 当前核验提交
+- `actions/setup-go@v7.0.0`
+- `apache/skywalking-eyes/header` 当前核验的 official main verified commit
 - `actions/upload-artifact@v7.0.1`
 - `actions/download-artifact@v8.0.1`
 - `codecov/codecov-action@v7`
@@ -104,6 +104,8 @@ uses: actions/checkout@<commit-sha> # v7
 Dependabot 的 `github-actions` ecosystem 负责后续 Action 更新。不得使用 `@main`，也不得在同一 workflow 中同时保留 major tag 与完整 SHA 两套引用方式。
 
 本轮正式质量审查确认：`actions/upload-artifact@v7.0.1` 的 release 与 tag ref 都指向 `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a`；`actions/download-artifact@v8.0.1` 的 release 与 tag ref 都指向 `3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c`。`download-artifact` v8.0.1 tag 下 README 仍有一处 `@v7` 示例，属于示例文本滞后；release 元数据和精确 tag ref 一致，因此实现以 release/ref 指向的完整 SHA 为准，不因 README 的单处旧示例降级到 v7。
+
+Action 固定默认采用官方稳定 release/tag 对应的完整 SHA。仅当官方 main 上的 verified commit 明确晚于最新 release，且退回该 release 会撤销安全加固或可复现性改进时，才允许在设计中记录 provenance 后固定该 verified commit；这个例外不允许使用 `@main` 等可变引用。本轮 `actions/setup-go@v7.0.0` 的 release、`v7.0.0` 与 `v7` tag 均指向 `b7ad1dad31e06c5925ef5d2fc7ad053ef454303e`，可直接替换 v6.5.0 SHA，现有输入和 Node 24 runner 要求不变。`apache/skywalking-eyes/header@315732dd4b8d3a015d8d9b91936b935a0b854817` 是 official main 上经 GitHub 验证、比 v0.8.0 release commit 多 27 个提交的固定提交；它已将内部 `setup-go` 固定到完整 SHA，并对 shell 输入进行环境变量和引用加固，因此保留该提交，避免降级到 v0.8.0。
 
 ### 3. License job
 

@@ -38,8 +38,8 @@ Approved design commit: 7539afef7d495ed43f94e0ae488d8da010b9a7f5
 
 ```text
 actions/checkout@v7: 3d3c42e5aac5ba805825da76410c181273ba90b1
-actions/setup-go@v6: 924ae3a1cded613372ab5595356fb5720e22ba16
-apache/skywalking-eyes@main: 315732dd4b8d3a015d8d9b91936b935a0b854817
+actions/setup-go@v7.0.0: b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+apache/skywalking-eyes official main verified commit (post-v0.8.0): 315732dd4b8d3a015d8d9b91936b935a0b854817
 actions/upload-artifact@v7.0.1: 043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
 actions/download-artifact@v8.0.1: 3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
 codecov/codecov-action@v7: fb8b3582c8e4def4969c97caa2f19720cb33a72f
@@ -49,6 +49,8 @@ github/codeql-action@v3: a2983b8bed1923f44751c5c43237f479442827b3
 即使计划中记录了 SHA，实施时也必须再次通过 GitHub API 查询对应版本引用；若上游引用移动，记录新旧值、核验 release/tag 后再更新计划内实际使用值，不得静默使用过期或未知提交。
 
 正式质量审查已同时核对 `upload-artifact` v7.0.1 和 `download-artifact` v8.0.1 的 GitHub release 元数据与精确 tag ref，上述 SHA 均双向一致。`download-artifact` v8.0.1 tag 下 README 第 48 行仍保留一处 `@v7` 示例，但同一 release/ref 明确指向 v8.0.1 的上述提交；该示例按文档滞后处理，不覆盖 release/ref 证据。
+
+Action 固定默认要求官方稳定 release/tag 与完整 SHA 对应。窄例外是：official main 的 verified commit 明确晚于最新 release，并且回退 release 会撤销安全或可复现性加固；此时必须记录 ancestry、差异和完整 SHA，仍禁止 `@main` 等可变 ref。本轮 `setup-go` v7.0.0/v7 均解析为 `b7ad1dad31e06c5925ef5d2fc7ad053ef454303e`，action.yml 与 v6.5.0 的输入、输出和 Node 24 runtime 不变，所以只替换 SHA。SkyWalking Eyes v0.8.0 解析为 `61275cc80d0798a405cb070f7d3a8aaf7cf2c2c1`，而保留的 `315732dd4b8d3a015d8d9b91936b935a0b854817` 是 official main verified commit，位于其后 27 个提交，已固定内部 `setup-go` 并硬化 shell 输入；不得为了满足 release 标签而降级。
 
 ### 任务 1：实时租约与旧门禁缺口基线
 
@@ -284,7 +286,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
@@ -340,7 +342,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
@@ -367,7 +369,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
@@ -847,7 +849,7 @@ git grep -n -I -E 'travis-ci|codecov\.io/bash|go env -w GOTOOLCHAIN|imports-form
 核对：
 
 ```text
-[ ] 唯一 Go cache owner 是 setup-go v6
+[ ] 唯一 Go cache owner 是 setup-go v7.0.0
 [ ] checkout 位于 setup-go 前
 [ ] 主 CI 恰好 5 个逻辑 job：License、Test and Lint、Upload Coverage、Race、Build matrix
 [ ] Test and Lint 无 OIDC，使用 upload-artifact v7.0.1 上传 coverage（missing=error、retention=1）
