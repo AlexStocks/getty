@@ -315,6 +315,52 @@ func TestServer(t *testing.T) {
 	testTCPTlsServer(t, addr)
 }
 
+// Regression test for #97: normal WSS shutdown must not panic on http.ErrServerClosed.
+func TestWSSServerCloseDoesNotPanic(t *testing.T) {
+	certPath, err := filepath.Abs("../examples/profiles/wss/server_cert/server.crt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyPath, err := filepath.Abs("../examples/profiles/wss/server_cert/server.key")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	server := newServer(
+		WSS_SERVER,
+		WithLocalAddress("127.0.0.1:0"),
+		WithWebsocketServerPath("/ws"),
+		WithWebsocketServerCert(certPath),
+		WithWebsocketServerPrivateKey(keyPath),
+	)
+	server.RunEventLoop(func(Session) error { return nil })
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		server.lock.RLock()
+		serving := server.server != nil
+		server.lock.RUnlock()
+		if serving {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("WSS event loop did not publish its HTTP server")
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	closed := make(chan struct{})
+	go func() {
+		server.Close()
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("WSS server Close did not return")
+	}
+}
+
 func TestWSServeWSRequestClosesSelfConnectConn(t *testing.T) {
 	server := newServer(WS_SERVER)
 	newSessionCalled := false

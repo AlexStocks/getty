@@ -31,6 +31,29 @@ var (
 	errUnexpectedSecondRead = errors.New("unexpected second read")
 )
 
+// Regression test for #97: size the UDP read buffer from configured limits, not unread data.
+func TestUDPReadBufferSize(t *testing.T) {
+	tests := []struct {
+		name      string
+		maxMsgLen int32
+		want      int
+	}{
+		{name: "tiny message", maxMsgLen: 1, want: 2},
+		{name: "below crossover", maxMsgLen: maxReadBufLen - 1, want: 2 * (maxReadBufLen - 1)},
+		{name: "at crossover", maxMsgLen: maxReadBufLen, want: 2 * maxReadBufLen},
+		{name: "above crossover", maxMsgLen: maxReadBufLen + 1, want: 2*maxReadBufLen + 1},
+		{name: "large message", maxMsgLen: 128 * 1024, want: 128*1024 + maxReadBufLen},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := udpReadBufferSize(tt.maxMsgLen); got != tt.want {
+				t.Fatalf("udpReadBufferSize(%d) = %d, want %d", tt.maxMsgLen, got, tt.want)
+			}
+		})
+	}
+}
+
 type errorReader struct{}
 
 func (errorReader) Read(Session, []byte) (any, int, error) {

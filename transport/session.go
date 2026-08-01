@@ -64,6 +64,14 @@ const (
 	outputFormat          = "session %s, Read Bytes: %d, Write Bytes: %d, Read Pkgs: %d, Write Pkgs: %d"
 )
 
+func udpReadBufferSize(maxMsgLen int32) int {
+	maxBufLen := int(maxMsgLen + maxReadBufLen)
+	if doubledMaxMsgLen := int(maxMsgLen << 1); doubledMaxMsgLen < maxBufLen {
+		return doubledMaxMsgLen
+	}
+	return maxBufLen
+}
+
 var defaultTimerWheel *gxtime.TimerWheel
 
 func init() {
@@ -914,25 +922,20 @@ func (s *session) handleTCPPackage() error {
 // get package from udp packet
 func (s *session) handleUDPPackage() error {
 	var (
-		ok        bool
-		err       error
-		netError  net.Error
-		conn      *gettyUDPConn
-		bufLen    int
-		maxBufLen int
-		bufp      *[]byte
-		buf       []byte
-		addr      *net.UDPAddr
-		pkgLen    int
-		pkg       any
+		ok       bool
+		err      error
+		netError net.Error
+		conn     *gettyUDPConn
+		bufLen   int
+		bufp     *[]byte
+		buf      []byte
+		addr     *net.UDPAddr
+		pkgLen   int
+		pkg      any
 	)
 
 	conn = s.Connection.(*gettyUDPConn)
-	maxBufLen = int(s.maxMsgLen + maxReadBufLen)
-	if int(s.maxMsgLen<<1) < bufLen {
-		maxBufLen = int(s.maxMsgLen << 1)
-	}
-	bufp = gxbytes.AcquireBytes(maxBufLen)
+	bufp = gxbytes.AcquireBytes(udpReadBufferSize(s.maxMsgLen))
 	defer gxbytes.ReleaseBytes(bufp)
 	buf = *bufp
 	for !s.IsClosed() {
