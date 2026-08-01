@@ -195,7 +195,7 @@ wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- bash -l
   first_checkout=$(rg -n "uses: actions/checkout@" "$workflow" | head -1 | cut -d: -f1)
   first_setup=$(rg -n "uses: actions/setup-go@" "$workflow" | head -1 | cut -d: -f1)
   test "$first_checkout" -lt "$first_setup"
-' 
+'
 ```
 
 预期：在修改前失败，原因至少包括旧 `actions/cache`、远程 uploader、`@main` 或 setup-go 排在 checkout 前。
@@ -344,7 +344,7 @@ for path in pathlib.Path(".github/workflows").glob("*.yml"):
         if match and not re.fullmatch(r"[0-9a-f]{40}", match.group(1)):
             raise SystemExit(f"{path}:{number}: mutable action ref {match.group(1)}")
 PY
-' 
+'
 ```
 
 预期：退出码 0；无 mutable ref、重复 cache 或远程 shell uploader。
@@ -650,7 +650,7 @@ for path in pathlib.Path(".github/workflows").glob("*.yml"):
         if match and not re.fullmatch(r"[0-9a-f]{40}", match.group(1)):
             raise SystemExit(f"{path}:{number}: mutable action ref {match.group(1)}")
 PY
-' 
+'
 ```
 
 预期：退出码 0。注释中的版本标签允许存在，但 `uses:` 的实际 ref 必须是完整 SHA。
@@ -796,7 +796,7 @@ wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- bash -l
   go test ./... -count=1
   go test -race ./transport -count=1
   go vet ./...
-' 
+'
 ```
 
 以及：
