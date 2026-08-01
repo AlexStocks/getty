@@ -48,6 +48,7 @@ import (
 
 var (
 	errSelfConnect        = perrors.New("connect self!")
+	errServerClosed       = perrors.New("server closed")
 	serverFastFailTimeout = time.Second * 1
 
 	serverID uatomic.Int32
@@ -81,7 +82,7 @@ type server struct {
 	// net
 	pktListener    net.PacketConn
 	streamListener net.Listener
-	lock           sync.Mutex // for server
+	lock           sync.RWMutex // for server
 	endPointType   EndPointType
 	server         *http.Server // for ws or wss server
 	sync.Once
@@ -160,15 +161,18 @@ func (s *server) stop() {
 				cancel()
 			}
 			s.server = nil
+			// Snapshot the listeners under s.lock. Keep the published listener
+			// objects in place so event loops cannot race with a nil assignment.
+			streamListener := s.streamListener
+			pktListener := s.pktListener
 			s.lock.Unlock()
-			if s.streamListener != nil {
+			// close outside the lock to avoid blocking other lock holders.
+			if streamListener != nil {
 				// let the server exit asap when got error from RunEventLoop.
-				_ = s.streamListener.Close()
-				s.streamListener = nil
+				_ = streamListener.Close()
 			}
-			if s.pktListener != nil {
-				_ = s.pktListener.Close()
-				s.pktListener = nil
+			if pktListener != nil {
+				_ = pktListener.Close()
 			}
 		})
 	}
@@ -195,6 +199,9 @@ func (s *server) listenTCP() error {
 		err            error
 		streamListener net.Listener
 	)
+	if s.IsClosed() {
+		return errServerClosed
+	}
 
 	if len(s.addr) == 0 || !strings.Contains(s.addr, ":") {
 		streamListener, err = gxnet.ListenOnTCPRandomPort(s.addr)
@@ -203,9 +210,17 @@ func (s *server) listenTCP() error {
 		}
 	} else {
 		if s.sslEnabled {
-			if sslConfig, buildTlsConfErr := s.tlsConfigBuilder.BuildTlsConfig(); buildTlsConfErr == nil && sslConfig != nil {
-				streamListener, err = tls.Listen("tcp", s.addr, sslConfig)
+			// #101: guard against a TLS config builder that returns (nil, nil);
+			// previously a nil config with nil err fell through, leaving
+			// streamListener nil, and s.streamListener.Addr() panicked below.
+			sslConfig, buildTlsConfErr := s.tlsConfigBuilder.BuildTlsConfig()
+			if buildTlsConfErr != nil {
+				return perrors.Wrapf(buildTlsConfErr, "BuildTlsConfig(addr:%s)", s.addr)
 			}
+			if sslConfig == nil {
+				return fmt.Errorf("BuildTlsConfig returned nil config without error for addr:%s", s.addr)
+			}
+			streamListener, err = tls.Listen("tcp", s.addr, sslConfig)
 		} else {
 			streamListener, err = net.Listen("tcp", s.addr)
 		}
@@ -214,8 +229,22 @@ func (s *server) listenTCP() error {
 		}
 	}
 
+	return s.publishStreamListener(streamListener)
+}
+
+func (s *server) publishStreamListener(streamListener net.Listener) error {
+	addr := streamListener.Addr().String()
+	s.lock.Lock()
+	select {
+	case <-s.done:
+		s.lock.Unlock()
+		_ = streamListener.Close()
+		return errServerClosed
+	default:
+	}
 	s.streamListener = streamListener
-	s.addr = s.streamListener.Addr().String()
+	s.addr = addr
+	s.lock.Unlock()
 
 	return nil
 }
@@ -226,6 +255,9 @@ func (s *server) listenUDP() error {
 		localAddr   *net.UDPAddr
 		pktListener *net.UDPConn
 	)
+	if s.IsClosed() {
+		return errServerClosed
+	}
 
 	if len(s.addr) == 0 || !strings.Contains(s.addr, ":") {
 		pktListener, err = gxnet.ListenOnUDPRandomPort(s.addr)
@@ -243,8 +275,22 @@ func (s *server) listenUDP() error {
 		}
 	}
 
+	return s.publishPacketListener(pktListener)
+}
+
+func (s *server) publishPacketListener(pktListener net.PacketConn) error {
+	addr := pktListener.LocalAddr().String()
+	s.lock.Lock()
+	select {
+	case <-s.done:
+		s.lock.Unlock()
+		_ = pktListener.Close()
+		return errServerClosed
+	default:
+	}
 	s.pktListener = pktListener
-	s.addr = s.pktListener.LocalAddr().String()
+	s.addr = addr
+	s.lock.Unlock()
 
 	return nil
 }
@@ -267,7 +313,7 @@ func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 		return nil, perrors.WithStack(err)
 	}
 	if gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
-		log.Warnf("conn.localAddr{%s} == conn.RemoteAddr", conn.LocalAddr().String(), conn.RemoteAddr().String())
+		log.Warnf("conn.localAddr{%s} == conn.RemoteAddr{%s}", conn.LocalAddr().String(), conn.RemoteAddr().String())
 		return nil, perrors.WithStack(errSelfConnect)
 	}
 
@@ -384,7 +430,7 @@ func (s *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	if conn.RemoteAddr().String() == conn.LocalAddr().String() {
 		_ = conn.Close()
-		log.Warnf("conn.localAddr{%s} == conn.RemoteAddr", conn.LocalAddr().String(), conn.RemoteAddr().String())
+		log.Warnf("conn.localAddr{%s} == conn.RemoteAddr{%s}", conn.LocalAddr().String(), conn.RemoteAddr().String())
 		return
 	}
 	// conn.SetReadLimit(int64(handler.maxMsgLen))
@@ -495,6 +541,9 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 // @newSession: new connection callback
 func (s *server) RunEventLoop(newSession NewSessionCallback) {
 	if err := s.listen(); err != nil {
+		if perrors.Cause(err) == errServerClosed {
+			return
+		}
 		panic(fmt.Errorf("server.listen() = error:%+v", perrors.WithStack(err)))
 	}
 
@@ -513,10 +562,14 @@ func (s *server) RunEventLoop(newSession NewSessionCallback) {
 }
 
 func (s *server) Listener() net.Listener {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
 	return s.streamListener
 }
 
 func (s *server) PacketConn() net.PacketConn {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
 	return s.pktListener
 }
 

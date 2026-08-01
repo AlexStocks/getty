@@ -74,7 +74,10 @@ func (s *ServerTlsConfigBuilder) BuildTlsConfig() (*tls.Config, error) {
 		certPool = x509.NewCertPool()
 		if ok := certPool.AppendCertsFromPEM(certPem); !ok {
 			log.Error("failed to parse root certificate file")
-			return nil, err
+			// #101: err is nil here (from a successful os.ReadFile above),
+			// returning (nil, nil) causes a nil-pointer panic at the caller
+			// (listenTCP). Return an explicit error instead.
+			return nil, fmt.Errorf("failed to parse root certificate file: %s", s.ServerTrustCertCollectionPath)
 		}
 		config.ClientCAs = certPool
 		config.ClientAuth = tls.RequireAnyClientCert
@@ -107,11 +110,17 @@ func (c *ClientTlsConfigBuilder) BuildTlsConfig() (*tls.Config, error) {
 	ok := clientCertPool.AppendCertsFromPEM(certBytes)
 	if !ok {
 		log.Error("failed to parse root certificate")
-		return nil, err
+		// #101: err is nil here (from a successful os.ReadFile above),
+		// returning (nil, nil) causes a nil-pointer panic at the caller
+		// (dialTCP/dialWSS). Return an explicit error instead.
+		return nil, fmt.Errorf("failed to parse root certificate: %s", c.ClientTrustCertCollectionPath)
 	}
 	return &tls.Config{
-		RootCAs:            clientCertPool,
-		Certificates:       []tls.Certificate{cert},
-		InsecureSkipVerify: true,
+		MinVersion:   tls.VersionTLS12,
+		RootCAs:      clientCertPool,
+		Certificates: []tls.Certificate{cert},
+		// #100: do NOT set InsecureSkipVerify=true here; it disables
+		// certificate verification entirely and makes the RootCAs configured
+		// above useless, exposing the client to MITM attacks.
 	}, nil
 }

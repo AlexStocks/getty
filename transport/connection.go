@@ -127,7 +127,7 @@ func (c *gettyConn) GetActive() time.Time {
 
 // removed unused methods send/close
 
-func (c gettyConn) ReadTimeout() time.Duration {
+func (c *gettyConn) ReadTimeout() time.Duration {
 	return c.rTimeout.Load()
 }
 
@@ -150,7 +150,7 @@ func (c *gettyConn) SetReadTimeout(rTimeout time.Duration) {
 	}
 }
 
-func (c gettyConn) WriteTimeout() time.Duration {
+func (c *gettyConn) WriteTimeout() time.Duration {
 	return c.wTimeout.Load()
 }
 
@@ -227,10 +227,42 @@ func (t *writeFlusher) Write(p []byte) (int, error) {
 		return n, perrors.WithStack(err)
 	}
 	if err := t.flusher.Flush(); err != nil {
-		return 0, perrors.WithStack(err)
+		return n, perrors.WithStack(err)
 	}
 
 	return n, nil
+}
+
+// for snappy compress. #102: snappy.NewBufferedWriter buffers writes and only
+// emits data on Flush, so small packets would sit in the buffer forever if not
+// flushed after every Write. This wrapper flushes on every Write, mirroring the
+// flate writeFlusher behavior above.
+type snappyWriteFlusher struct {
+	writer *snappy.Writer
+	lock   sync.Mutex
+}
+
+func newSnappyWriteFlusher(w *snappy.Writer) *snappyWriteFlusher {
+	return &snappyWriteFlusher{writer: w}
+}
+
+func (s *snappyWriteFlusher) Write(p []byte) (int, error) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	n, err := s.writer.Write(p)
+	if err != nil {
+		return n, perrors.WithStack(err)
+	}
+	if err := s.writer.Flush(); err != nil {
+		return n, perrors.WithStack(err)
+	}
+	return n, nil
+}
+
+func (s *snappyWriteFlusher) Close() error {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	return perrors.WithStack(s.writer.Close())
 }
 
 // SetCompressType set compress type(tcp: zip/snappy, websocket:zip)
@@ -251,7 +283,9 @@ func (t *gettyTCPConn) SetCompressType(c CompressType) {
 		ioReader := io.Reader(t.conn)
 		t.reader = snappy.NewReader(ioReader)
 		ioWriter := io.Writer(t.conn)
-		t.writer = snappy.NewBufferedWriter(ioWriter)
+		// #102: wrap the buffered snappy writer so every Write is flushed,
+		// otherwise small packets never leave the internal buffer.
+		t.writer = newSnappyWriteFlusher(snappy.NewBufferedWriter(ioWriter))
 
 	default:
 		panic(fmt.Sprintf("illegal comparess type %d", c))
@@ -306,8 +340,23 @@ func (t *gettyTCPConn) Send(pkg any) (int, error) {
 	}
 
 	if buffers, ok := pkg.([][]byte); ok {
-		netBuf := net.Buffers(buffers)
-		lg, err = netBuf.WriteTo(t.conn)
+		// #102: when compression is enabled the [][]byte path must go through
+		// t.writer (the compress writer), otherwise it writes raw frames
+		// directly to t.conn and the peer receives a corrupt mix of
+		// compressed and uncompressed data.
+		if t.compress == CompressNone {
+			netBuf := net.Buffers(buffers)
+			lg, err = netBuf.WriteTo(t.conn)
+		} else {
+			for _, b := range buffers {
+				var n int
+				n, err = t.writer.Write(b)
+				if err != nil {
+					break
+				}
+				lg += int64(n)
+			}
+		}
 		if err == nil {
 			t.writeBytes.Add((uint32)(lg))
 			t.writePkgNum.Add((uint32)(len(buffers)))
@@ -338,16 +387,21 @@ func (t *gettyTCPConn) CloseConn(waitSec int) {
 	// }
 
 	if t.conn != nil {
-		if writer, ok := t.writer.(*snappy.Writer); ok {
+		// #102: snappy writer is now wrapped in *snappyWriteFlusher.
+		if writer, ok := t.writer.(*snappyWriteFlusher); ok {
 			if err := writer.Close(); err != nil {
 				log.Errorf("snappy.Writer.Close() = error:%+v", err)
 			}
 		}
+		// #103: do not hard-assert *tls.Conn; use safe type assertions so a
+		// non-TLS, non-TCP conn does not panic here.
 		if conn, ok := t.conn.(*net.TCPConn); ok {
 			_ = conn.SetLinger(waitSec)
 			_ = conn.Close()
+		} else if tlsConn, ok := t.conn.(*tls.Conn); ok {
+			_ = tlsConn.Close()
 		} else {
-			_ = t.conn.(*tls.Conn).Close()
+			_ = t.conn.Close()
 		}
 		t.conn = nil
 	}

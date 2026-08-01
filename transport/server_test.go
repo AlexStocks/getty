@@ -177,6 +177,127 @@ func testUDPServer(t *testing.T, address string) {
 	t.Logf("@address:%s, udp server addr: %v", address, addr)
 }
 
+func TestServerCloseKeepsPublishedListener(t *testing.T) {
+	t.Run("TCP", func(t *testing.T) {
+		server := newServer(TCP_SERVER, WithLocalAddress("127.0.0.1:0"))
+		if err := server.listen(); err != nil {
+			t.Fatal(err)
+		}
+		listener := server.Listener()
+		if listener == nil {
+			t.Fatal("listen did not publish the TCP listener")
+		}
+
+		server.Close()
+
+		if got := server.Listener(); got != listener {
+			t.Fatalf("Listener() after Close = %v, want the published listener %v", got, listener)
+		}
+	})
+
+	t.Run("UDP", func(t *testing.T) {
+		server := newServer(UDP_ENDPOINT, WithLocalAddress("127.0.0.1:0"))
+		if err := server.listen(); err != nil {
+			t.Fatal(err)
+		}
+		listener := server.PacketConn()
+		if listener == nil {
+			t.Fatal("listen did not publish the UDP listener")
+		}
+
+		server.Close()
+
+		if got := server.PacketConn(); got != listener {
+			t.Fatalf("PacketConn() after Close = %v, want the published listener %v", got, listener)
+		}
+	})
+}
+
+func TestServerClosePreventsLateListenerPublication(t *testing.T) {
+	t.Run("already closed", func(t *testing.T) {
+		server := newServer(TCP_SERVER, WithLocalAddress("127.0.0.1:0"))
+		server.Close()
+		server.RunEventLoop(func(Session) error { return nil })
+		if server.Listener() != nil {
+			t.Fatal("closed server opened a listener")
+		}
+	})
+
+	t.Run("TCP", func(t *testing.T) {
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		server := newServer(TCP_SERVER)
+		server.lock.Lock()
+		closeDone := make(chan struct{})
+		go func() {
+			server.Close()
+			close(closeDone)
+		}()
+		select {
+		case <-server.done:
+		case <-time.After(time.Second):
+			server.lock.Unlock()
+			t.Fatal("Close did not start shutdown")
+		}
+
+		publishDone := make(chan error, 1)
+		go func() {
+			publishDone <- server.publishStreamListener(listener)
+		}()
+		server.lock.Unlock()
+
+		if err := <-publishDone; !errors.Is(err, errServerClosed) {
+			t.Fatalf("publishStreamListener returned %v, want %v", err, errServerClosed)
+		}
+		<-closeDone
+		if server.Listener() != nil {
+			t.Fatal("closed server published a late TCP listener")
+		}
+		if _, err := listener.Accept(); err == nil {
+			t.Fatal("late TCP listener remained open after rejected publication")
+		}
+	})
+
+	t.Run("UDP", func(t *testing.T) {
+		listener, err := net.ListenPacket("udp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		server := newServer(UDP_ENDPOINT)
+		server.lock.Lock()
+		closeDone := make(chan struct{})
+		go func() {
+			server.Close()
+			close(closeDone)
+		}()
+		select {
+		case <-server.done:
+		case <-time.After(time.Second):
+			server.lock.Unlock()
+			t.Fatal("Close did not start shutdown")
+		}
+
+		publishDone := make(chan error, 1)
+		go func() {
+			publishDone <- server.publishPacketListener(listener)
+		}()
+		server.lock.Unlock()
+
+		if err := <-publishDone; !errors.Is(err, errServerClosed) {
+			t.Fatalf("publishPacketListener returned %v, want %v", err, errServerClosed)
+		}
+		<-closeDone
+		if server.PacketConn() != nil {
+			t.Fatal("closed server published a late UDP listener")
+		}
+		if _, _, err := listener.ReadFrom(make([]byte, 1)); err == nil {
+			t.Fatal("late UDP listener remained open after rejected publication")
+		}
+	})
+}
+
 func TestServer(t *testing.T) {
 	var addr string
 

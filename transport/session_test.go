@@ -19,17 +19,307 @@ package getty
 
 import (
 	"errors"
+	"io"
 	"net"
+	"sync"
 	"testing"
 	"time"
 )
 
-var errTestReadFailure = errors.New("test read failure")
+var (
+	errTestReadFailure      = errors.New("test read failure")
+	errUnexpectedSecondRead = errors.New("unexpected second read")
+)
 
 type errorReader struct{}
 
 func (errorReader) Read(Session, []byte) (any, int, error) {
 	return nil, 0, errTestReadFailure
+}
+
+type timeoutTestWriter struct{}
+
+func (timeoutTestWriter) Write(Session, any) ([]byte, error) {
+	return []byte("x"), nil
+}
+
+type timeoutTestCall struct {
+	observed time.Duration
+	release  chan struct{}
+}
+
+type timeoutTestNetConn struct {
+	owner   *gettyTCPConn
+	entered chan *timeoutTestCall
+}
+
+func (c *timeoutTestNetConn) Write(p []byte) (int, error) {
+	call := &timeoutTestCall{
+		observed: c.owner.WriteTimeout(),
+		release:  make(chan struct{}),
+	}
+	c.entered <- call
+	<-call.release
+	return len(p), nil
+}
+
+func (*timeoutTestNetConn) Read([]byte) (int, error)         { return 0, io.EOF }
+func (*timeoutTestNetConn) Close() error                     { return nil }
+func (*timeoutTestNetConn) LocalAddr() net.Addr              { return &net.TCPAddr{} }
+func (*timeoutTestNetConn) RemoteAddr() net.Addr             { return &net.TCPAddr{} }
+func (*timeoutTestNetConn) SetDeadline(time.Time) error      { return nil }
+func (*timeoutTestNetConn) SetReadDeadline(time.Time) error  { return nil }
+func (*timeoutTestNetConn) SetWriteDeadline(time.Time) error { return nil }
+
+type eofDataNetConn struct {
+	data  []byte
+	reads int
+}
+
+func (c *eofDataNetConn) Read(p []byte) (int, error) {
+	c.reads++
+	if c.reads == 1 {
+		return copy(p, c.data), io.EOF
+	}
+	return 0, errUnexpectedSecondRead
+}
+
+func (*eofDataNetConn) Write(p []byte) (int, error)      { return len(p), nil }
+func (*eofDataNetConn) Close() error                     { return nil }
+func (*eofDataNetConn) LocalAddr() net.Addr              { return &net.TCPAddr{} }
+func (*eofDataNetConn) RemoteAddr() net.Addr             { return &net.TCPAddr{} }
+func (*eofDataNetConn) SetDeadline(time.Time) error      { return nil }
+func (*eofDataNetConn) SetReadDeadline(time.Time) error  { return nil }
+func (*eofDataNetConn) SetWriteDeadline(time.Time) error { return nil }
+
+type wholeFrameReader struct{}
+
+func (wholeFrameReader) Read(_ Session, data []byte) (any, int, error) {
+	return string(data), len(data), nil
+}
+
+type recordingEventListener struct {
+	messages []any
+}
+
+func (*recordingEventListener) OnOpen(Session) error   { return nil }
+func (*recordingEventListener) OnClose(Session)        {}
+func (*recordingEventListener) OnError(Session, error) {}
+func (*recordingEventListener) OnCron(Session)         {}
+func (l *recordingEventListener) OnMessage(_ Session, v any) {
+	l.messages = append(l.messages, v)
+}
+
+type blockingCronEventListener struct {
+	entered     chan struct{}
+	release     chan struct{}
+	enteredOnce sync.Once
+}
+
+func (*blockingCronEventListener) OnOpen(Session) error   { return nil }
+func (*blockingCronEventListener) OnClose(Session)        {}
+func (*blockingCronEventListener) OnError(Session, error) {}
+func (l *blockingCronEventListener) OnCron(Session) {
+	l.enteredOnce.Do(func() { close(l.entered) })
+	<-l.release
+}
+func (*blockingCronEventListener) OnMessage(Session, any) {}
+
+type resetBarrierNetConn struct {
+	entered     chan struct{}
+	release     chan struct{}
+	enteredOnce sync.Once
+	releaseOnce sync.Once
+}
+
+func (c *resetBarrierNetConn) Read([]byte) (int, error) {
+	c.enteredOnce.Do(func() { close(c.entered) })
+	<-c.release
+	return 0, io.EOF
+}
+
+func (*resetBarrierNetConn) Write(p []byte) (int, error)      { return len(p), nil }
+func (*resetBarrierNetConn) Close() error                     { return nil }
+func (*resetBarrierNetConn) LocalAddr() net.Addr              { return &net.TCPAddr{} }
+func (*resetBarrierNetConn) RemoteAddr() net.Addr             { return &net.TCPAddr{} }
+func (*resetBarrierNetConn) SetDeadline(time.Time) error      { return nil }
+func (*resetBarrierNetConn) SetReadDeadline(time.Time) error  { return nil }
+func (*resetBarrierNetConn) SetWriteDeadline(time.Time) error { return nil }
+
+func (c *resetBarrierNetConn) releaseRead() {
+	c.releaseOnce.Do(func() { close(c.release) })
+}
+
+func TestConcurrentWritePkgTimeoutRestoration(t *testing.T) {
+	netConn := &timeoutTestNetConn{entered: make(chan *timeoutTestCall, 2)}
+	ss := newTCPSession(netConn, nil).(*session)
+	ss.writer = timeoutTestWriter{}
+	conn := ss.Connection.(*gettyTCPConn)
+	netConn.owner = conn
+	initialTimeout := conn.WriteTimeout()
+
+	firstDone := make(chan error, 1)
+	go func() {
+		_, _, err := ss.WritePkg("first", 3*time.Second)
+		firstDone <- err
+	}()
+	firstCall := <-netConn.entered
+
+	secondDone := make(chan error, 1)
+	go func() {
+		_, _, err := ss.WritePkg("second", 5*time.Second)
+		secondDone <- err
+	}()
+
+	select {
+	case secondCall := <-netConn.entered:
+		close(firstCall.release)
+		<-firstDone
+		close(secondCall.release)
+		<-secondDone
+		t.Fatal("second timed write entered while the first still owned the shared write timeout")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	if firstCall.observed != 3*time.Second {
+		t.Fatalf("first write observed timeout %v, want %v", firstCall.observed, 3*time.Second)
+	}
+	close(firstCall.release)
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first write failed: %v", err)
+	}
+
+	var secondCall *timeoutTestCall
+	select {
+	case secondCall = <-netConn.entered:
+	case <-time.After(time.Second):
+		t.Fatal("second timed write did not enter after the first completed")
+	}
+	if secondCall.observed != 5*time.Second {
+		t.Fatalf("second write observed timeout %v, want %v", secondCall.observed, 5*time.Second)
+	}
+	close(secondCall.release)
+	if err := <-secondDone; err != nil {
+		t.Fatalf("second write failed: %v", err)
+	}
+	if got := conn.WriteTimeout(); got != initialTimeout {
+		t.Fatalf("write timeout after concurrent calls = %v, want %v", got, initialTimeout)
+	}
+}
+
+func TestResetWaitsForPackageLoop(t *testing.T) {
+	netConn := &resetBarrierNetConn{
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	defer netConn.releaseOnce.Do(func() { close(netConn.release) })
+
+	ss := newTCPSession(netConn, newServer(TCP_SERVER)).(*session)
+	ss.SetReader(wholeFrameReader{})
+	ss.SetWriter(timeoutTestWriter{})
+	ss.SetEventListener(&recordingEventListener{})
+	ss.run()
+
+	select {
+	case <-netConn.entered:
+	case <-time.After(time.Second):
+		t.Fatal("package loop did not enter Read")
+	}
+
+	resetDone := make(chan struct{})
+	go func() {
+		ss.Reset()
+		close(resetDone)
+	}()
+
+	select {
+	case <-resetDone:
+		t.Fatal("Reset returned while the package loop was still running")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	ss.Close()
+	netConn.releaseRead()
+	select {
+	case <-resetDone:
+	case <-time.After(time.Second):
+		t.Fatal("Reset did not return after Close released the package loop")
+	}
+	if ss.Connection != nil {
+		t.Fatal("Reset did not clear the session connection")
+	}
+	if got := ss.grNum.Load(); got != 0 {
+		t.Fatalf("goroutine count after Reset = %d, want 0", got)
+	}
+}
+
+func TestResetWaitsForActiveHeartbeat(t *testing.T) {
+	listener := &blockingCronEventListener{
+		entered: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	ss := newTCPSession(&eofDataNetConn{}, newServer(TCP_SERVER)).(*session)
+	ss.SetEventListener(listener)
+	lifecycle := ss.lifecycle
+	ctx := &heartbeatContext{session: ss, lifecycle: lifecycle}
+
+	heartbeatDone := make(chan error, 1)
+	go func() {
+		heartbeatDone <- heartbeat(0, time.Time{}, ctx)
+	}()
+	select {
+	case <-listener.entered:
+	case <-time.After(time.Second):
+		t.Fatal("heartbeat did not enter OnCron")
+	}
+
+	resetDone := make(chan struct{})
+	go func() {
+		ss.Reset()
+		close(resetDone)
+	}()
+	select {
+	case <-resetDone:
+		t.Fatal("Reset returned while the heartbeat callback was still running")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(listener.release)
+	select {
+	case err := <-heartbeatDone:
+		if err != nil {
+			t.Fatalf("heartbeat returned error: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("heartbeat did not return")
+	}
+	select {
+	case <-resetDone:
+	case <-time.After(time.Second):
+		t.Fatal("Reset did not return after the heartbeat callback completed")
+	}
+
+	if err := heartbeat(0, time.Time{}, ctx); !errors.Is(err, ErrSessionClosed) {
+		t.Fatalf("stale heartbeat returned %v, want %v", err, ErrSessionClosed)
+	}
+}
+
+func TestHandleTCPPackageProcessesDataAndStopsOnEOF(t *testing.T) {
+	netConn := &eofDataNetConn{data: []byte("final frame")}
+	ss := newTCPSession(netConn, newServer(TCP_SERVER)).(*session)
+	listener := &recordingEventListener{}
+	ss.SetReader(wholeFrameReader{})
+	ss.SetEventListener(listener)
+
+	if err := ss.handleTCPPackage(); err != nil {
+		t.Fatalf("handleTCPPackage returned error: %v", err)
+	}
+	if netConn.reads != 1 {
+		t.Fatalf("underlying Read calls = %d, want 1", netConn.reads)
+	}
+	if len(listener.messages) != 1 || listener.messages[0] != "final frame" {
+		t.Fatalf("delivered messages = %#v, want [\"final frame\"]", listener.messages)
+	}
 }
 
 func TestHandlePackageWithNilListenerDoesNotPanicOnError(t *testing.T) {

@@ -19,11 +19,15 @@ package getty
 
 import (
 	"bytes"
+	"crypto/tls"
+	"errors"
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -35,6 +39,150 @@ import (
 )
 
 type PackageHandler struct{}
+
+var errTestTLSConfig = errors.New("test TLS config failure")
+
+type countingTLSConfigBuilder struct {
+	calls   atomic.Int32
+	entered chan struct{}
+	release <-chan struct{}
+}
+
+func (b *countingTLSConfigBuilder) BuildTlsConfig() (*tls.Config, error) {
+	b.calls.Add(1)
+	select {
+	case b.entered <- struct{}{}:
+	default:
+	}
+	if b.release != nil {
+		<-b.release
+	}
+	return nil, errTestTLSConfig
+}
+
+func newFailingReconnectClient(builder TlsConfigBuilder, interval time.Duration, attempts int) *client {
+	return newClient(TCP_CLIENT,
+		WithServerAddress("127.0.0.1:1"),
+		WithConnectionNumber(1),
+		WithReconnectInterval(int(interval)),
+		WithReconnectAttempts(attempts),
+		WithClientSslEnabled(true),
+		WithClientTlsConfigBuilder(builder),
+	)
+}
+
+func TestReconnectAttemptsAreExactAndSkipFinalBackoff(t *testing.T) {
+	builder := &countingTLSConfigBuilder{entered: make(chan struct{}, 4)}
+	clt := newFailingReconnectClient(builder, 100*time.Millisecond, 3)
+
+	started := time.Now()
+	clt.RunEventLoop(func(Session) error { return nil })
+	elapsed := time.Since(started)
+
+	if got := builder.calls.Load(); got != 3 {
+		t.Fatalf("TLS config build calls = %d, want exactly 3 reconnect attempts", got)
+	}
+	// Correct behavior waits after attempts one and two only: 100ms + 200ms.
+	// A final backoff adds another 300ms.
+	if elapsed >= 500*time.Millisecond {
+		t.Fatalf("reconnect loop took %v; it appears to wait after the final attempt", elapsed)
+	}
+}
+
+func TestReconnectBackoffIsCancelledByClose(t *testing.T) {
+	builder := &countingTLSConfigBuilder{entered: make(chan struct{}, 4)}
+	clt := newFailingReconnectClient(builder, 2*time.Second, 3)
+
+	eventLoopDone := make(chan struct{})
+	go func() {
+		clt.RunEventLoop(func(Session) error { return nil })
+		close(eventLoopDone)
+	}()
+	select {
+	case <-builder.entered:
+	case <-time.After(time.Second):
+		t.Fatal("first reconnect attempt did not start")
+	}
+	time.Sleep(20 * time.Millisecond)
+
+	closeDone := make(chan struct{})
+	go func() {
+		clt.Close()
+		close(closeDone)
+	}()
+
+	timedOut := false
+	select {
+	case <-closeDone:
+	case <-time.After(200 * time.Millisecond):
+		timedOut = true
+	}
+	if timedOut {
+		select {
+		case <-closeDone:
+		case <-time.After(3 * time.Second):
+			t.Fatal("Close did not return after the current backoff elapsed")
+		}
+		t.Fatal("Close did not cancel the reconnect backoff")
+	}
+	select {
+	case <-eventLoopDone:
+	case <-time.After(time.Second):
+		t.Fatal("RunEventLoop did not return after Close")
+	}
+}
+
+func TestSessionReconnectIsTrackedByClose(t *testing.T) {
+	releaseReconnect := make(chan struct{})
+	builder := &countingTLSConfigBuilder{
+		entered: make(chan struct{}, 4),
+		release: releaseReconnect,
+	}
+	clt := newFailingReconnectClient(builder, 2*time.Second, 3)
+	localConn, peerConn := net.Pipe()
+	defer func() {
+		_ = localConn.Close()
+		_ = peerConn.Close()
+	}()
+	ss := newTCPSession(localConn, clt).(*session)
+	ss.SetAttribute(sessionClientKey, clt)
+	ss.SetAttribute(ignoreReconnectKey, false)
+
+	sessionStopDone := make(chan struct{})
+	go func() {
+		ss.stop()
+		close(sessionStopDone)
+	}()
+	select {
+	case <-builder.entered:
+	case <-time.After(time.Second):
+		t.Fatal("session-triggered reconnect did not start")
+	}
+
+	closeDone := make(chan struct{})
+	go func() {
+		clt.Close()
+		close(closeDone)
+	}()
+	select {
+	case <-closeDone:
+		close(releaseReconnect)
+		t.Fatal("Close returned while the session-triggered reconnect was still running")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(releaseReconnect)
+	select {
+	case <-closeDone:
+	case <-time.After(time.Second):
+		t.Fatal("Close did not return after the session-triggered reconnect completed")
+	}
+	select {
+	case <-sessionStopDone:
+	case <-time.After(time.Second):
+		t.Fatal("session stop did not return")
+	}
+}
 
 func (h *PackageHandler) Read(ss Session, data []byte) (any, int, error) {
 	return nil, 0, nil
@@ -93,7 +241,11 @@ func newSessionCallback(session Session, handler *MessageHandler) error {
 
 func TestTCPClient(t *testing.T) {
 	listenLocalServer := func() (net.Listener, error) {
-		listener, err := net.Listen("tcp", ":0")
+		// #106: bind a concrete loopback address instead of ":0" (which
+		// resolves to the unspecified "[::]" address). Dialing "[::]:port"
+		// is not a valid connect destination, so every dial failed and the
+		// client's reconnect loop hung the test forever.
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			return nil, err
 		}
@@ -457,6 +609,58 @@ func DownloadFile(filepath string, content []byte) error {
 	// Write the body to file
 	_, err = out.Write(content)
 	return err
+}
+
+func TestBuildWSSClientTLSConfig(t *testing.T) {
+	t.Run("system roots", func(t *testing.T) {
+		config, err := (&client{}).buildWSSClientTLSConfig()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if config.RootCAs != nil {
+			t.Fatal("RootCAs must be nil when no custom root certificate is configured")
+		}
+		if config.MinVersion != tls.VersionTLS12 {
+			t.Fatalf("MinVersion = %d, want TLS 1.2 (%d)", config.MinVersion, tls.VersionTLS12)
+		}
+	})
+
+	t.Run("custom root certificate", func(t *testing.T) {
+		certPath := filepath.Join(t.TempDir(), "root.crt")
+		if err := os.WriteFile(certPath, WssClientCRT, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		config, err := (&client{ClientOptions: ClientOptions{cert: certPath}}).buildWSSClientTLSConfig()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if config.RootCAs == nil {
+			t.Fatal("RootCAs is nil with a configured root certificate")
+		}
+		if len(config.Certificates) != 0 {
+			t.Fatalf("client Certificates contains %d entries, want 0 for a root-only option", len(config.Certificates))
+		}
+		if config.MinVersion != tls.VersionTLS12 {
+			t.Fatalf("MinVersion = %d, want TLS 1.2 (%d)", config.MinVersion, tls.VersionTLS12)
+		}
+	})
+
+	t.Run("invalid PEM", func(t *testing.T) {
+		certPath := filepath.Join(t.TempDir(), "invalid.crt")
+		if err := os.WriteFile(certPath, []byte("not a certificate"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := (&client{ClientOptions: ClientOptions{cert: certPath}}).buildWSSClientTLSConfig(); err == nil {
+			t.Fatal("invalid PEM returned nil error")
+		}
+	})
+
+	t.Run("missing file", func(t *testing.T) {
+		certPath := filepath.Join(t.TempDir(), "missing.crt")
+		if _, err := (&client{ClientOptions: ClientOptions{cert: certPath}}).buildWSSClientTLSConfig(); err == nil {
+			t.Fatal("missing root certificate returned nil error")
+		}
+	})
 }
 
 func TestNewWSSClient(t *testing.T) {

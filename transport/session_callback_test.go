@@ -237,3 +237,54 @@ func TestSessionCallback(t *testing.T) {
 		}
 	})
 }
+
+func TestResetWaitsForCloseCallbacks(t *testing.T) {
+	s := &session{
+		once:          &sync.Once{},
+		done:          make(chan struct{}),
+		closeCallback: callbacks{},
+	}
+
+	callbackStarted := make(chan struct{})
+	releaseCallback := make(chan struct{})
+	s.AddCloseCallback("test", "blocking", func() {
+		close(callbackStarted)
+		<-releaseCallback
+	})
+
+	callbackDone := make(chan struct{})
+	go func() {
+		s.invokeCloseCallbacks()
+		close(callbackDone)
+	}()
+	<-callbackStarted
+
+	resetDone := make(chan struct{})
+	go func() {
+		s.Reset()
+		close(resetDone)
+	}()
+
+	select {
+	case <-resetDone:
+		close(releaseCallback)
+		<-callbackDone
+		t.Fatal("Reset returned while a close callback was still running")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(releaseCallback)
+	select {
+	case <-callbackDone:
+	case <-time.After(time.Second):
+		t.Fatal("close callback did not finish")
+	}
+	select {
+	case <-resetDone:
+	case <-time.After(time.Second):
+		t.Fatal("Reset did not finish after the close callback completed")
+	}
+	if got := s.closeCallback.Len(); got != 0 {
+		t.Fatalf("callback count after Reset = %d, want 0", got)
+	}
+}
