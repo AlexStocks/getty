@@ -28,7 +28,7 @@ PR #108 的 CI 日志确认了以下问题：
 2. 消除重复缓存、全局 Go 配置写入和浮动工具版本。
 3. 将 workflow 权限限制在每个 job 实际需要的最小集合。
 4. 增加跨平台构建、CodeQL 和 Dependabot，覆盖 Go 源码、GitHub Actions 与依赖维护。
-5. 固定第三方 Action 到核验过的完整 commit SHA，并保留版本注释，兼顾供应链可审计性和后续升级。
+5. 固定第三方 Action 到核验过的完整 commit SHA，并在受审查文档中保留版本与 SHA 映射，兼顾供应链可审计性和后续升级。
 6. 清理已经被 GitHub Actions 取代的 Travis CI 展示与配置。
 7. 保持 Getty 公开 Go API 和运行时行为不变。
 
@@ -81,11 +81,11 @@ concurrency:
   cancel-in-progress: true
 ```
 
-`concurrency` 用于取消同一 PR 或同一 ref 的旧运行，避免过期 Head 继续占用 runner。所有 job 都设置显式 `timeout-minutes`，防止网络测试、工具下载或 race 测试无限挂起。
+`concurrency` 用于取消同一 PR 或同一 ref 的旧运行，避免过期 Head 继续占用 runner。主 CI 最终包含 5 个逻辑 job：`Check License Header`、`Test and Lint`、`Upload Coverage`、`Race` 和 `Build` matrix。所有 job 都设置显式 `timeout-minutes`，防止网络测试、工具下载或 race 测试无限挂起。
 
 ### 2. Action 固定策略
 
-所有第三方 Action 使用完整 commit SHA，并在同行注释来源版本，例如：
+所有第三方 Action 使用完整 commit SHA。版本与 SHA 的对应关系必须在设计或计划中集中记录；workflow 同行可以保留版本注释，但不得用可变 tag 替代 SHA，例如：
 
 ```yaml
 uses: actions/checkout@<commit-sha> # v7
@@ -96,10 +96,14 @@ uses: actions/checkout@<commit-sha> # v7
 - `actions/checkout@v7`
 - `actions/setup-go@v6`
 - `apache/skywalking-eyes/header` 当前核验提交
+- `actions/upload-artifact@v7.0.1`
+- `actions/download-artifact@v8.0.1`
 - `codecov/codecov-action@v7`
 - `github/codeql-action@v3`
 
 Dependabot 的 `github-actions` ecosystem 负责后续 Action 更新。不得使用 `@main`，也不得在同一 workflow 中同时保留 major tag 与完整 SHA 两套引用方式。
+
+本轮正式质量审查确认：`actions/upload-artifact@v7.0.1` 的 release 与 tag ref 都指向 `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a`；`actions/download-artifact@v8.0.1` 的 release 与 tag ref 都指向 `3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c`。`download-artifact` v8.0.1 tag 下 README 仍有一处 `@v7` 示例，属于示例文本滞后；release 元数据和精确 tag ref 一致，因此实现以 release/ref 指向的完整 SHA 为准，不因 README 的单处旧示例降级到 v7。
 
 ### 3. License job
 
@@ -123,7 +127,7 @@ License job 不获得 `id-token`、`security-events` 或写入仓库内容的权
 4. Check format
 5. Unit tests and coverage
 6. Lint
-7. Upload coverage
+7. Upload coverage artifact
 
 Setup Go 使用：
 
@@ -135,24 +139,35 @@ with:
 
 删除独立 `actions/cache` step，让 `setup-go` 成为 Go module/build cache 的唯一 owner。
 
-模块验证执行 `go mod verify`。格式检查执行 `make check-fmt`。测试执行 `make test`，生成 `coverage.txt`。Lint 执行 `make lint`。
+模块验证执行 `go mod verify`。格式检查执行 `make check-fmt`。测试执行 `make test`，生成 `coverage.txt`。Lint 执行 `make lint`。随后使用固定 SHA 的 `actions/upload-artifact@v7.0.1` 上传 artifact：名称为 `coverage`，路径为 `coverage.txt`，文件缺失时报错，保留 1 天。
 
-### 5. Codecov OIDC
+`Test and Lint` 继承 workflow 顶层的 `contents: read`，不声明也不获得 `id-token: write`。OIDC 权限只授予后续隔离的 `Upload Coverage` job。
 
-Coverage 上传使用固定到完整 SHA 的 `codecov/codecov-action`，不再下载并执行 Codecov bash uploader。
+### 5. Coverage artifact 与隔离的 Codecov OIDC
 
-`Test and Lint` job 的权限为：
+新增 `Upload Coverage` job，`needs: test-and-lint`。它不 checkout 源码、不 setup Go，也不执行 shell 命令；只下载前一 job 产生的 `coverage` artifact，再调用固定到完整 SHA 的 `codecov/codecov-action`。这样只有 coverage 上传边界获得 OIDC 权限，不再下载并执行 Codecov bash uploader。
+
+`Upload Coverage` job 的权限只有：
 
 ```yaml
 permissions:
-  contents: read
   id-token: write
+```
+
+artifact 下载固定为：
+
+```yaml
+- name: Download Coverage Artifact
+  uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+  with:
+    name: coverage
 ```
 
 Codecov 参数至少包含：
 
 ```yaml
 with:
+  version: v11.3.1
   use_oidc: true
   fail_ci_if_error: true
   files: ./coverage.txt
@@ -164,6 +179,7 @@ with:
 - 上传失败必须使 job 失败。
 - 不依赖 `CODECOV_TOKEN` 仓库 secret。
 - 只上传明确生成的 `coverage.txt`，不扫描工作区中的其他 coverage 文件。
+- `id-token: write` 只能出现在 `Upload Coverage` job；`Test and Lint`、License、Race 和 Build 均不得获得 OIDC。
 - push 后必须核对日志中没有 HTTP 400、tokenless upload 错误或被吞掉的非零状态。
 
 ### 6. Race job
@@ -203,7 +219,7 @@ Makefile 调整为可由本地和 CI 复用的显式门禁：
 - `test` 不再执行 `go env -w`，改为命令级 `GOTOOLCHAIN`。
 - `test` 增加 `-count=1`，同时保留 atomic coverage 输出。
 - 新增 `test-race`，只运行 `./transport` 的 race 测试。
-- 新增 `check-fmt`：执行项目格式化命令后，用 `git diff --exit-code --quiet` 检测是否产生差异，并输出差异文件。
+- 新增 `check-fmt`：执行项目格式化命令后，用 `git diff --exit-code -- . ':!coverage.txt'` 检测并输出格式化差异，同时排除测试生成的 coverage 文件。
 - `imports-formatter` 从 `@latest` 固定到本次已验证的 `v1.0.10`。
 - `golangci-lint` 暂时保持当前已验证的 `v2.4.0`，避免在 CI 架构改造中混入新 lint 规则导致的源码修复；升级到 Dubbo-Go 使用的更高版本应单独处理。
 
@@ -232,7 +248,7 @@ jobs:
       security-events: write
 ```
 
-CodeQL 显式指定 `languages: go`，使用固定 commit SHA 的 `init` 和 `analyze`，构建模式采用适合 Go 的自动构建。不得复制 Dubbo-Go workflow 中手工 checkout PR merge commit 父节点的历史逻辑；使用 GitHub 当前标准 pull request checkout 语义。
+CodeQL 显式指定 `languages: go`，使用固定 commit SHA 的 `init` 和 `analyze`。当前官方形状是在 `init` 中设置 `build-mode: autobuild`，随后直接执行 `analyze`，不再增加显式 `github/codeql-action/autobuild` step。旧的 `init(build-mode: autobuild) -> autobuild -> analyze` 三步形状仍可兼容运行，但显式 `autobuild` 与 init 的 build mode 重复，属于冗余。不得复制 Dubbo-Go workflow 中手工 checkout PR merge commit 父节点的历史逻辑；使用 GitHub 当前标准 pull request checkout 语义。
 
 ### 10. Dependabot
 
@@ -259,9 +275,10 @@ CodeQL 显式指定 `languages: go`，使用固定 commit SHA 的 `init` 和 `an
 
 - `Check License Header`
 - `Test and Lint`
+- `Upload Coverage`
 - `Race`
 - 三个平台的 `Build` matrix checks
-- `CodeQL` 分析 check
+- `Analyze (Go)`（CodeQL workflow 的真实 check 名预计值）
 
 实际 check 名称以 GitHub 新运行返回值为准。修改 branch protection/ruleset 前必须再次获取现有配置，使用增量更新，保留 force-push、review、conversation resolution 等与本任务无关的设置，并获得单独确认。
 
@@ -270,9 +287,12 @@ CodeQL 显式指定 `languages: go`，使用固定 commit SHA 的 `init` 和 `an
 ### 静态与语法验证
 
 - `git diff --check`
-- 使用 `actionlint v1.7.12` 检查全部 `.github/workflows/*.yml`
+- 使用 `actionlint v1.7.12` 检查全部 `.github/workflows/*.yml` 与 `*.yaml`
 - 解析 `.github/dependabot.yml`，确认 YAML 语法和必需字段
 - 检查所有 `uses:` 都固定为完整 40 字符 SHA
+- 确认当前两个 workflow 共 6 个逻辑 job、14 个 `uses:`；其中主 CI 为 5 个逻辑 job
+- 确认 `id-token: write` 只出现 1 次且位于 `Upload Coverage`，`Test and Lint` 无 OIDC
+- 确认 Codecov `version` 固定为 `v11.3.1`
 - 检查不存在 `@main`、`@latest`、`curl | bash` 或 process substitution 远程执行
 
 ### Makefile 验证
@@ -312,7 +332,7 @@ push 后：
 
 1. 等待全部新 workflow run 完成。
 2. 核对每个 job 的真实命令、平台、结论和日志。
-3. 确认 Codecov 上传成功且失败可传播。
+3. 确认 `Test and Lint` 成功上传 `coverage` artifact，`Upload Coverage` 下载同名 artifact 后完成 Codecov 上传，且两段失败都可传播。
 4. 确认 setup-go 在 checkout 后找到 `go.sum`，不存在第二套 Go cache。
 5. 确认 CodeQL 上传 security result 成功。
 6. 确认 Dependabot 配置被 GitHub 接受。
@@ -334,11 +354,12 @@ push 后：
 1. 本设计列出的仓库文件完成修改，且没有越过非目标边界。
 2. 本地 workflow、YAML、Makefile、Go 测试、race、lint 和交叉编译验证获得新鲜证据。
 3. 新提交以普通 push 进入 PR #108，不覆盖远端新增提交。
-4. GitHub 上 License、Test and Lint、Race、Build matrix、CodeQL 全部产生可识别的 checks。
-5. Codecov 上传成功，日志不再出现 HTTP 400 或被吞掉的失败。
+4. GitHub 上 License、Test and Lint、Upload Coverage、Race、Build matrix、CodeQL 全部产生可识别的 checks。
+5. Codecov Action 使用 CLI `v11.3.1`，上传成功，日志不再出现 HTTP 400 或被吞掉的失败。
 6. setup-go 缓存由唯一 action 管理，并在 checkout 后读取 `go.sum`。
 7. README badge 指向 GitHub Actions，旧 Travis 配置已在覆盖核对后删除。
 8. Dependabot 配置被 GitHub 接受。
 9. 最终 Head 与验证基准一致。
 10. PR #108 的 UDP P1 finding 仍单独对账，不因 CI 改造而被误报为已修复。
 11. 收尾报告明确要求轮换或吊销旧 Travis 文件中暴露的 Codecov 和第三方 webhook 凭据，并确认 PR 没有再次复制其值。
+12. 静态政策断言与最终文件一致：主 CI 5 个逻辑 job、全部 workflow 合计 6 个逻辑 job 与 14 个 `uses:`，OIDC 只授予 `Upload Coverage`。

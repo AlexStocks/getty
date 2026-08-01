@@ -4,15 +4,15 @@
 
 **目标：** 在 PR #108 中把 Getty 的 GitHub CI 改造成可复现、失败可传播、最小权限、供应链可审计的门禁，并增加 race、真实跨平台构建、CodeQL 与 Dependabot；同时删除已失效且暴露明文凭据的 Travis 配置。
 
-**架构：** 主 `CI` workflow 负责 license、格式、单测/coverage、lint、race 和三平台构建；独立 `CodeQL` workflow 负责安全分析；Dependabot 负责 Go module 与 GitHub Actions 更新。Makefile 提供本地与 CI 共用的确定性入口。所有 Action 固定到核验过的完整 commit SHA，Go 缓存只由 `setup-go` 管理，Codecov 使用 OIDC 并在上传失败时使 job 失败。
+**架构：** 主 `CI` workflow 包含 license、Test and Lint、隔离的 Upload Coverage、race 和三平台构建 5 个逻辑 job；独立 `CodeQL` workflow 负责安全分析；Dependabot 负责 Go module 与 GitHub Actions 更新。Makefile 提供本地与 CI 共用的确定性入口。所有 Action 固定到核验过的完整 commit SHA，Go 缓存只由 `setup-go` 管理，coverage 先通过 artifact 在 job 间传递，再由只拥有 OIDC 权限的上传 job 调用 Codecov，并在任一阶段失败时使 check 失败。
 
-**技术栈：** GitHub Actions、Go 1.25、GNU Make/Bash、`actionlint v1.7.12`、Codecov Action v7 OIDC、GitHub CodeQL Action v3、Dependabot、WSL/Linux 与 GitHub-hosted Ubuntu/Windows/macOS runner。
+**技术栈：** GitHub Actions、Go 1.25、GNU Make/Bash、`actionlint v1.7.12`、Codecov Action v7 OIDC（CLI 固定 `v11.3.1`）、GitHub CodeQL Action v3、Dependabot、WSL/Linux 与 GitHub-hosted Ubuntu/Windows/macOS runner。
 
 ---
 
 ## 文件结构与职责
 
-- 修改 `.github/workflows/github-actions.yml`：主 CI 门禁、最小权限、并发取消、超时、唯一缓存、OIDC coverage、race 与三平台构建。
+- 修改 `.github/workflows/github-actions.yml`：主 CI 门禁、最小权限、并发取消、超时、唯一缓存、coverage artifact 与隔离 OIDC 上传、race 与三平台构建。
 - 新增 `.github/workflows/codeql.yml`：Go CodeQL pull request、push 和每周扫描。
 - 新增 `.github/dependabot.yml`：Go module 与 GitHub Actions 的受控自动更新。
 - 修改 `Makefile`：确定性 `test`、只读结果门禁 `check-fmt`、独立 `test-race` 和固定工具版本。
@@ -40,11 +40,15 @@ Approved design commit: 7539afef7d495ed43f94e0ae488d8da010b9a7f5
 actions/checkout@v7: 3d3c42e5aac5ba805825da76410c181273ba90b1
 actions/setup-go@v6: 924ae3a1cded613372ab5595356fb5720e22ba16
 apache/skywalking-eyes@main: 315732dd4b8d3a015d8d9b91936b935a0b854817
+actions/upload-artifact@v7.0.1: 043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+actions/download-artifact@v8.0.1: 3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
 codecov/codecov-action@v7: fb8b3582c8e4def4969c97caa2f19720cb33a72f
 github/codeql-action@v3: a2983b8bed1923f44751c5c43237f479442827b3
 ```
 
 即使计划中记录了 SHA，实施时也必须再次通过 GitHub API 查询对应版本引用；若上游引用移动，记录新旧值、核验 release/tag 后再更新计划内实际使用值，不得静默使用过期或未知提交。
+
+正式质量审查已同时核对 `upload-artifact` v7.0.1 和 `download-artifact` v8.0.1 的 GitHub release 元数据与精确 tag ref，上述 SHA 均双向一致。`download-artifact` v8.0.1 tag 下 README 第 48 行仍保留一处 `@v7` 示例，但同一 release/ref 明确指向 v8.0.1 的上述提交；该示例按文档滞后处理，不覆盖 release/ref 证据。
 
 ### 任务 1：实时租约与旧门禁缺口基线
 
@@ -228,11 +232,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
-      - name: Check license headers
-        uses: apache/skywalking-eyes/header@315732dd4b8d3a015d8d9b91936b935a0b854817 # main, verified 2026-08-01
+      - name: Check License Header
+        uses: apache/skywalking-eyes/header@315732dd4b8d3a015d8d9b91936b935a0b854817
         with:
           config: .licenserc.yaml
           mode: check
@@ -241,34 +245,53 @@ jobs:
     name: Test and Lint
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    permissions:
-      contents: read
-      id-token: write
     steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
-      - name: Verify modules
+      - name: Verify Go Modules
         run: go mod verify
 
-      - name: Check format
+      - name: Check Code Format
         run: make check-fmt
 
-      - name: Run unit tests with coverage
+      - name: Unit Test
         run: make test
 
-      - name: Run lint
+      - name: Lint
         run: make lint
 
-      - name: Upload coverage
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
+      - name: Upload Coverage Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
+          name: coverage
+          path: coverage.txt
+          if-no-files-found: error
+          retention-days: 1
+
+  coverage:
+    name: Upload Coverage
+    needs: test-and-lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+    steps:
+      - name: Download Coverage Artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: coverage
+
+      - name: Upload Coverage
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f
+        with:
+          version: v11.3.1
           use_oidc: true
           fail_ci_if_error: true
           files: ./coverage.txt
@@ -279,19 +302,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
-      - name: Verify modules
+      - name: Verify Go Modules
         run: go mod verify
 
-      - name: Run race detector
+      - name: Race Test
         run: make test-race
 
   build:
@@ -306,19 +329,19 @@ jobs:
           - windows-latest
           - macos-latest
     steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
-      - name: Verify modules
+      - name: Verify Go Modules
         run: go mod verify
 
-      - name: Build packages
+      - name: Build
         run: go build ./...
 ```
 
@@ -338,7 +361,9 @@ wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- bash -l
 import pathlib
 import re
 
-for path in pathlib.Path(".github/workflows").glob("*.yml"):
+paths = list(pathlib.Path(".github/workflows").glob("*.yml"))
+paths += list(pathlib.Path(".github/workflows").glob("*.yaml"))
+for path in paths:
     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         match = re.search(r"\buses:\s+\S+@([^\s#]+)", line)
         if match and not re.fullmatch(r"[0-9a-f]{40}", match.group(1)):
@@ -347,7 +372,7 @@ PY
 '
 ```
 
-预期：退出码 0；无 mutable ref、重复 cache 或远程 shell uploader。
+预期：退出码 0；无 mutable ref、重复 cache 或远程 shell uploader。主 CI 应恰好包含 5 个逻辑 job 和 11 个 `uses:`；`id-token: write` 只位于 `Upload Coverage`，Codecov `version` 为 `v11.3.1`。
 
 - [ ] **步骤 4：提交主 workflow**
 
@@ -414,12 +439,11 @@ jobs:
           languages: go
           build-mode: autobuild
 
-      - name: Build
-        uses: github/codeql-action/autobuild@a2983b8bed1923f44751c5c43237f479442827b3 # v3
-
       - name: Analyze
         uses: github/codeql-action/analyze@a2983b8bed1923f44751c5c43237f479442827b3 # v3
 ```
+
+当前官方形状为 `init` 中声明 `build-mode: autobuild` 后直接执行 `analyze`。旧的 `init(build-mode: autobuild) -> autobuild -> analyze` 三步写法仍兼容，但显式 `autobuild` 与 init 的 build mode 重复，属于冗余，不应保留在可复现计划中。
 
 - [ ] **步骤 3：用 actionlint 验证两个 workflow**
 
@@ -628,8 +652,12 @@ git commit -m "docs: replace Travis CI references"
 - [ ] **步骤 1：对全部 workflow 运行 actionlint**
 
 ```bash
-wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- bash -lc \
-  "GOTOOLCHAIN=go1.25.0+auto go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color |& tee ../evidence/ci-local-validation-actionlint.txt"
+wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- bash -lc '
+  shopt -s nullglob
+  workflows=(.github/workflows/*.yml .github/workflows/*.yaml)
+  test "${#workflows[@]}" -gt 0
+  GOTOOLCHAIN=go1.25.0+auto go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color "${workflows[@]}"
+'
 ```
 
 预期：退出码 0，无诊断。
@@ -644,7 +672,9 @@ wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- bash -l
 import pathlib
 import re
 
-for path in pathlib.Path(".github/workflows").glob("*.yml"):
+paths = list(pathlib.Path(".github/workflows").glob("*.yml"))
+paths += list(pathlib.Path(".github/workflows").glob("*.yaml"))
+for path in paths:
     for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         match = re.search(r"\buses:\s+\S+@([^\s#]+)", line)
         if match and not re.fullmatch(r"[0-9a-f]{40}", match.group(1)):
@@ -653,7 +683,7 @@ PY
 '
 ```
 
-预期：退出码 0。注释中的版本标签允许存在，但 `uses:` 的实际 ref 必须是完整 SHA。
+预期：退出码 0。注释中的版本标签允许存在，但 `uses:` 的实际 ref 必须是完整 SHA。当前最终文件应为 6 个逻辑 job、14 个 `uses:`；主 CI 应为 5 个逻辑 job；`id-token: write` 只出现于 `Upload Coverage`；Codecov `version` 必须为 `v11.3.1`。
 
 - [ ] **步骤 3：在干净独立 worktree 证明 `check-fmt` 绿灯**
 
@@ -734,7 +764,8 @@ git grep -n -I -E 'travis-ci|codecov\.io/bash|go env -w GOTOOLCHAIN|imports-form
 
 **文件：**
 - 复核：本计划列出的全部变更文件
-- 可能修改：只限 CI、Makefile、README 与设计/计划中已授权的文件
+- 可能修改：只限设计和计划文档，用于同步已通过正式质量审查的实现偏差
+- 阻塞边界：若 CI、Makefile、Dependabot、README 或 Go 源码仍有 Critical/Important 问题，报告 `BLOCKED`，不得在本任务中自行修改实现文件
 
 - [ ] **步骤 1：逐项对照批准设计的完成标准**
 
@@ -743,16 +774,19 @@ git grep -n -I -E 'travis-ci|codecov\.io/bash|go env -w GOTOOLCHAIN|imports-form
 ```text
 [ ] 唯一 Go cache owner 是 setup-go v6
 [ ] checkout 位于 setup-go 前
-[ ] Test and Lint 具有 contents:read + id-token:write，其他 job 无多余权限
-[ ] Codecov 使用 OIDC、显式 coverage 文件、fail_ci_if_error
+[ ] 主 CI 恰好 5 个逻辑 job：License、Test and Lint、Upload Coverage、Race、Build matrix
+[ ] Test and Lint 无 OIDC，使用 upload-artifact v7.0.1 上传 coverage（missing=error、retention=1）
+[ ] Upload Coverage needs test-and-lint，权限只有 id-token:write，不 checkout/setup-go/run
+[ ] Upload Coverage 使用 download-artifact v8.0.1 后调用 Codecov；CLI 固定 v11.3.1，显式 coverage 文件并启用 fail_ci_if_error
 [ ] Race 独立执行 transport race
 [ ] Build matrix 使用真实 ubuntu/windows/macos runner
-[ ] CodeQL 是独立 workflow，权限最小且 Action 固定 SHA
+[ ] CodeQL 是独立 workflow，形状为 init(build-mode: autobuild) -> analyze，权限最小且 Action 固定 SHA
 [ ] Dependabot 只有 gomod 与 github-actions 两个受控入口
 [ ] Makefile 无 go env -w、无浮动工具版本，测试禁用缓存
 [ ] 两个 README 使用 GitHub Actions badge
 [ ] .travis.yml 从当前树删除
 [ ] 未修改运行时 Go 源码、branch protection 或 GitHub ruleset
+[ ] 全部 workflow 合计 6 个逻辑 job、14 个 uses；id-token:write 只出现 1 次
 ```
 
 - [ ] **步骤 2：审阅提交边界和提交消息**
@@ -766,13 +800,14 @@ git show --check --stat HEAD
 
 - [ ] **步骤 3：如果复核发现 CI 配置问题，先取得失败证据再修正**
 
-只允许修正本计划范围内文件。每个修正运行直接相关的 actionlint、YAML、Makefile 或 Go 验证后，以普通提交记录：
+只允许修正设计和计划文档，使代码/YAML 片段、job/uses 数量、权限断言、Codecov 版本和 required checks 建议与最终实现一致。每次修正后运行文档直接相关的 `git diff --check`、代码围栏/占位符检查和旧冲突模式扫描，并对全部 workflow 重跑 actionlint。
 
-例如 actionlint 发现 CodeQL build mode 配置错误时，只暂存该 workflow 并使用具体消息：
+只暂存两份文档并使用具体消息：
 
 ```powershell
-git add .github/workflows/codeql.yml
-git commit -m "ci: fix CodeQL build configuration"
+git add doc/superpowers/specs/2026-08-01-github-ci-hardening-design.md `
+  doc/superpowers/plans/2026-08-01-github-ci-hardening.md
+git commit -m "docs: align CI design with reviewed implementation"
 ```
 
 不得 amend 已提交历史，不得用 force push。
@@ -781,32 +816,68 @@ git commit -m "ci: fix CodeQL build configuration"
 
 **文件：**
 - 读取：PR #108 实时状态、远端分支 SHA、本地提交链
+- 写入证据：`D:\test\github\review\AlexStocks-getty-pr-108\evidence\ci-pre-push-validation-raw.txt`，只能用 `apply_patch` 保存完整原始输出
 - 不修改：branch protection、ruleset、review threads
 
 - [ ] **步骤 1：执行 `verification-before-completion` 新鲜验证**
 
-至少重新运行：
+必须重新运行 actionlint、Go 门禁和四个 cross-build，并让每条命令的边界、当前 HEAD、Go 版本、开始/结束时间和退出码出现在原始输出中。actionlint 必须同时覆盖 `.yml` 与 `.yaml`：
 
 ```bash
 wsl.exe --cd /mnt/d/test/github/review/AlexStocks-getty-pr-108/source -- bash -lc '
-  set -eu -o pipefail
+  set -u -o pipefail
   export PATH=/home/alex/bin/go1.25/bin:$PATH
-  GOTOOLCHAIN=go1.25.0+auto go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-  go mod verify
-  go test ./... -count=1
-  go test -race ./transport -count=1
-  go vet ./...
+
+  overall=0
+  run_check() {
+    label=$1
+    shift
+    printf "=== BEGIN %s ===\n" "$label"
+    printf "STARTED_AT=%s\n" "$(date --iso-8601=seconds)"
+    printf "HEAD=%s\n" "$(git rev-parse HEAD)"
+    printf "GO_VERSION=%s\n" "$(go version)"
+    printf "COMMAND="
+    printf "%q " "$@"
+    printf "\n"
+    "$@"
+    rc=$?
+    printf "EXIT=%d\n" "$rc"
+    printf "ENDED_AT=%s\n" "$(date --iso-8601=seconds)"
+    printf "=== END %s ===\n" "$label"
+    if [ "$rc" -ne 0 ]; then overall=1; fi
+  }
+
+  run_actionlint() {
+    shopt -s nullglob
+    workflows=(.github/workflows/*.yml .github/workflows/*.yaml)
+    test "${#workflows[@]}" -gt 0 || return 1
+    GOTOOLCHAIN=go1.25.0+auto go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 "${workflows[@]}"
+  }
+
+  printf "VALIDATION_STARTED_AT=%s\n" "$(date --iso-8601=seconds)"
+  printf "VALIDATION_HEAD=%s\n" "$(git rev-parse HEAD)"
+  printf "VALIDATION_GO_VERSION=%s\n" "$(go version)"
+  run_check actionlint run_actionlint
+  run_check go-mod-verify go mod verify
+  run_check go-test go test ./... -count=1
+  run_check go-test-race go test -race ./transport -count=1
+  run_check go-vet go vet ./...
+  run_check make-lint make lint
+  run_check build-windows-amd64 env GOOS=windows GOARCH=amd64 go build ./...
+  run_check build-darwin-amd64 env GOOS=darwin GOARCH=amd64 go build ./...
+  run_check build-linux-arm64 env CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build ./...
+  run_check build-linux-riscv64 env CGO_ENABLED=0 GOOS=linux GOARCH=riscv64 go build ./...
+  run_check git-diff-check git diff --check origin/codex/fix-issue-97-remaining...HEAD
+  run_check git-status git status --short --branch
+  printf "VALIDATION_ENDED_AT=%s\n" "$(date --iso-8601=seconds)"
+  printf "VALIDATION_EXIT=%d\n" "$overall"
+  exit "$overall"
 '
 ```
 
-以及：
+保留上述完整终端原始输出，包括测试、race、vet、lint 和 build 的所有正文。随后用 `apply_patch` 新增或完整替换 `ci-pre-push-validation-raw.txt`；不得用 `>`、`tee`、脚本摘要或人工改写后的“pass”列表代替 raw。若原始输出包含意外敏感值，先停止并报告，不得把该值写入证据。
 
-```powershell
-git diff --check origin/codex/fix-issue-97-remaining...HEAD
-git status --short --branch
-```
-
-预期：全部退出码 0；不得用较早日志替代该步骤的新鲜结果。
+预期：每个边界的 `EXIT=0` 且最终 `VALIDATION_EXIT=0`；记录的 `VALIDATION_HEAD` 与待 push HEAD 一致。不得用较早日志替代该步骤的新鲜结果。
 
 - [ ] **步骤 2：再次获取远端 Head 并执行显式 lease**
 
@@ -880,13 +951,14 @@ gh run view $ciRunId --repo AlexStocks/getty --json headSha,status,conclusion,jo
 ```text
 Check License Header
 Test and Lint
+Upload Coverage
 Race
 Build (ubuntu-latest)
 Build (windows-latest)
 Build (macos-latest)
 ```
 
-同时从 `Test and Lint` 日志确认：setup-go 在 checkout 后读取 `go.mod`/`go.sum`，没有第二个 `actions/cache`，coverage 上传没有 HTTP 400、tokenless upload 错误或被吞掉的失败。
+同时从 `Test and Lint` 日志确认：setup-go 在 checkout 后读取 `go.mod`/`go.sum`，没有第二个 `actions/cache`，并成功上传名为 `coverage` 的 artifact。再从 `Upload Coverage` 日志确认：只下载该 artifact，Codecov CLI 为 `v11.3.1`，没有 HTTP 400、tokenless upload 错误或被吞掉的失败。
 
 - [ ] **步骤 4：核对 CodeQL result 上传**
 
@@ -941,6 +1013,7 @@ gh pr diff 108 --repo AlexStocks/getty `
 ```text
 Check License Header
 Test and Lint
+Upload Coverage
 Race
 Build (ubuntu-latest)
 Build (windows-latest)
