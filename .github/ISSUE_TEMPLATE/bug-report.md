@@ -11,7 +11,7 @@ labels: kind/bug
 
 ## Environment
 
-<!-- Required: missing environment info may make the issue unreproducible, please fill in carefully -->
+<!-- Please provide: missing environment info may make the issue unreproducible, please fill in carefully -->
 
 **Go version**: <!-- Run `go version` to get it, e.g. go1.23.0 -->
 
