@@ -76,8 +76,14 @@ type Connection interface {
 // ///////////////////////////////////////
 
 type gettyConn struct {
-	id            uint32
-	compress      CompressType
+	id       uint32
+	compress CompressType
+	// isCompressed reports whether reader/writer have been replaced by a codec.
+	// compress == CompressNone is not a substitute: CompressNone is
+	// flate.NoCompression(0), so SetCompressType(CompressNone) still installs a
+	// flate codec that frames the stream into deflate blocks. Such a stream is
+	// stateful and must not be treated like a raw connection.
+	isCompressed  bool
 	readBytes     uatomic.Uint32   // read bytes
 	writeBytes    uatomic.Uint32   // write bytes
 	readPkgNum    uatomic.Uint32   // send pkg number
@@ -204,6 +210,13 @@ func newGettyTCPConn(conn net.Conn) *gettyTCPConn {
 	}
 }
 
+// buffersWriter is implemented by writers that can take a whole batch at once.
+// The compress writers implement it so a batch becomes one compressed block
+// instead of one block per packet.
+type buffersWriter interface {
+	WriteBuffers(buffers [][]byte) (int64, error)
+}
+
 // for zip compress
 type writeFlusher struct {
 	flusher *flate.Writer
@@ -226,6 +239,25 @@ func (t *writeFlusher) Write(p []byte) (int, error) {
 	}
 
 	return n, nil
+}
+
+// WriteBuffers writes the whole batch into the compressor and flushes once at
+// the end. Calling Write per buffer would flush every time and degrade into N
+// separate deflate blocks: N syscalls, and no way to exploit patterns that
+// repeat across the packets.
+func (t *writeFlusher) WriteBuffers(buffers [][]byte) (int64, error) {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+
+	var total int64
+	for _, b := range buffers {
+		n, err := t.flusher.Write(b)
+		total += int64(n)
+		if err != nil {
+			return total, perrors.WithStack(err)
+		}
+	}
+	return total, perrors.WithStack(t.flusher.Flush())
 }
 
 // for snappy compress. #102: snappy.NewBufferedWriter buffers writes and only
@@ -252,6 +284,23 @@ func (s *snappyWriteFlusher) Write(p []byte) (int, error) {
 		return n, perrors.WithStack(err)
 	}
 	return n, nil
+}
+
+// WriteBuffers mirrors writeFlusher.WriteBuffers: write the whole batch, flush
+// once at the end, so a batch leaves as a single snappy block.
+func (s *snappyWriteFlusher) WriteBuffers(buffers [][]byte) (int64, error) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	var total int64
+	for _, b := range buffers {
+		n, err := s.writer.Write(b)
+		total += int64(n)
+		if err != nil {
+			return total, perrors.WithStack(err)
+		}
+	}
+	return total, perrors.WithStack(s.writer.Flush())
 }
 
 func (s *snappyWriteFlusher) Close() error {
@@ -285,6 +334,10 @@ func (t *gettyTCPConn) SetCompressType(c CompressType) {
 	default:
 		panic(fmt.Sprintf("illegal comparess type %d", c))
 	}
+	// Both branches replaced reader/writer with a codec (CompressNone included,
+	// see the isCompressed comment), so the conn is no longer raw: no deadlines,
+	// and all IO must go through t.reader/t.writer.
+	t.isCompressed = true
 	t.compress = c
 }
 
@@ -297,7 +350,9 @@ func (t *gettyTCPConn) recv(p []byte) (int, error) {
 	)
 
 	// set read timeout deadline
-	if t.compress == CompressNone && t.rTimeout.Load() > 0 {
+	// No deadline on a codec stream: one timeout leaves half a block in the
+	// decoder and every byte after it is misaligned.
+	if !t.isCompressed && t.rTimeout.Load() > 0 {
 		// Set Deadline every time, since golang has fixed the performance issue
 		// See https://github.com/golang/go/issues/15133#issuecomment-271571395 for details
 		currentTime = time.Now()
@@ -324,7 +379,7 @@ func (t *gettyTCPConn) Send(pkg any) (int, error) {
 		lg          int64
 	)
 
-	if t.compress == CompressNone && t.wTimeout.Load() > 0 {
+	if !t.isCompressed && t.wTimeout.Load() > 0 {
 		// Set Deadline every time, since golang has fixed the performance issue
 		// See https://github.com/golang/go/issues/15133#issuecomment-271571395 for details
 		currentTime = time.Now()
@@ -339,11 +394,12 @@ func (t *gettyTCPConn) Send(pkg any) (int, error) {
 		// t.writer (the compress writer), otherwise it writes raw frames
 		// directly to t.conn and the peer receives a corrupt mix of
 		// compressed and uncompressed data.
-		if t.compress == CompressNone {
-			if _, isRaw := t.writer.(net.Conn); isRaw {
-				netBuf := net.Buffers(buffers)
-				lg, err = netBuf.WriteTo(t.conn)
-			}
+		if !t.isCompressed {
+			// only a raw conn here, so writev the whole batch in one syscall.
+			netBuf := net.Buffers(buffers)
+			lg, err = netBuf.WriteTo(t.conn)
+		} else if bw, ok := t.writer.(buffersWriter); ok {
+			lg, err = bw.WriteBuffers(buffers)
 		} else {
 			for _, b := range buffers {
 				var n int
