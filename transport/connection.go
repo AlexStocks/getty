@@ -25,19 +25,14 @@ import (
 	"net"
 	"sync"
 	"time"
-)
 
-import (
 	"github.com/golang/snappy"
-
 	"github.com/gorilla/websocket"
 
 	perrors "github.com/pkg/errors"
 
 	uatomic "go.uber.org/atomic"
-)
 
-import (
 	log "github.com/AlexStocks/getty/util"
 )
 
@@ -345,8 +340,10 @@ func (t *gettyTCPConn) Send(pkg any) (int, error) {
 		// directly to t.conn and the peer receives a corrupt mix of
 		// compressed and uncompressed data.
 		if t.compress == CompressNone {
-			netBuf := net.Buffers(buffers)
-			lg, err = netBuf.WriteTo(t.conn)
+			if _, isRaw := t.writer.(net.Conn); isRaw {
+				netBuf := net.Buffers(buffers)
+				lg, err = netBuf.WriteTo(t.conn)
+			}
 		} else {
 			for _, b := range buffers {
 				var n int
