@@ -21,8 +21,8 @@ import (
 	"bytes"
 	"crypto/tls"
 	"errors"
+	"io"
 	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -250,7 +250,22 @@ func TestTCPClient(t *testing.T) {
 			return nil, err
 		}
 
-		go func() { _ = http.Serve(listener, nil) }()
+		// Read and discard everything the client sends. The peer must not
+		// interpret the bytes as HTTP: once the codec batch path is enabled,
+		// it receives deflate/snappy frames, and an HTTP server closes the
+		// connection mid-test, making the write accounting assertions flaky.
+		go func() {
+			for {
+				conn, err := listener.Accept()
+				if err != nil {
+					return
+				}
+				go func() {
+					defer func() { _ = conn.Close() }()
+					_, _ = io.Copy(io.Discard, conn)
+				}()
+			}
+		}()
 		return listener, nil
 	}
 

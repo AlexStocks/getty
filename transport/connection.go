@@ -25,14 +25,19 @@ import (
 	"net"
 	"sync"
 	"time"
+)
 
+import (
 	"github.com/golang/snappy"
+
 	"github.com/gorilla/websocket"
 
 	perrors "github.com/pkg/errors"
 
 	uatomic "go.uber.org/atomic"
+)
 
+import (
 	log "github.com/AlexStocks/getty/util"
 )
 
@@ -78,12 +83,12 @@ type Connection interface {
 type gettyConn struct {
 	id       uint32
 	compress CompressType
-	// isCompressed reports whether reader/writer have been replaced by a codec.
+	// codecEnabled reports whether reader/writer have been replaced by a codec.
 	// compress == CompressNone is not a substitute: CompressNone is
 	// flate.NoCompression(0), so SetCompressType(CompressNone) still installs a
 	// flate codec that frames the stream into deflate blocks. Such a stream is
 	// stateful and must not be treated like a raw connection.
-	isCompressed  bool
+	codecEnabled  bool
 	readBytes     uatomic.Uint32   // read bytes
 	writeBytes    uatomic.Uint32   // write bytes
 	readPkgNum    uatomic.Uint32   // send pkg number
@@ -335,9 +340,9 @@ func (t *gettyTCPConn) SetCompressType(c CompressType) {
 		panic(fmt.Sprintf("illegal comparess type %d", c))
 	}
 	// Both branches replaced reader/writer with a codec (CompressNone included,
-	// see the isCompressed comment), so the conn is no longer raw: no deadlines,
+	// see the codecEnabled comment), so the conn is no longer raw: no deadlines,
 	// and all IO must go through t.reader/t.writer.
-	t.isCompressed = true
+	t.codecEnabled = true
 	t.compress = c
 }
 
@@ -352,7 +357,7 @@ func (t *gettyTCPConn) recv(p []byte) (int, error) {
 	// set read timeout deadline
 	// No deadline on a codec stream: one timeout leaves half a block in the
 	// decoder and every byte after it is misaligned.
-	if !t.isCompressed && t.rTimeout.Load() > 0 {
+	if !t.codecEnabled && t.rTimeout.Load() > 0 {
 		// Set Deadline every time, since golang has fixed the performance issue
 		// See https://github.com/golang/go/issues/15133#issuecomment-271571395 for details
 		currentTime = time.Now()
@@ -379,7 +384,7 @@ func (t *gettyTCPConn) Send(pkg any) (int, error) {
 		lg          int64
 	)
 
-	if !t.isCompressed && t.wTimeout.Load() > 0 {
+	if !t.codecEnabled && t.wTimeout.Load() > 0 {
 		// Set Deadline every time, since golang has fixed the performance issue
 		// See https://github.com/golang/go/issues/15133#issuecomment-271571395 for details
 		currentTime = time.Now()
@@ -390,11 +395,10 @@ func (t *gettyTCPConn) Send(pkg any) (int, error) {
 	}
 
 	if buffers, ok := pkg.([][]byte); ok {
-		// #102: when compression is enabled the [][]byte path must go through
-		// t.writer (the compress writer), otherwise it writes raw frames
-		// directly to t.conn and the peer receives a corrupt mix of
-		// compressed and uncompressed data.
-		if !t.isCompressed {
+		// #102: when a codec is installed the [][]byte path must go through
+		// t.writer (the codec writer), otherwise it writes raw frames directly
+		// to t.conn and the peer receives a corrupt mix of coded and raw data.
+		if !t.codecEnabled {
 			// only a raw conn here, so writev the whole batch in one syscall.
 			netBuf := net.Buffers(buffers)
 			lg, err = netBuf.WriteTo(t.conn)

@@ -18,6 +18,7 @@
 package getty
 
 import (
+	"bytes"
 	"compress/flate"
 	"errors"
 	"io"
@@ -165,5 +166,144 @@ func TestSnappyWriteFlusherCloseWaitsForWrite(t *testing.T) {
 	}
 	if err := <-closeDone; err != nil {
 		t.Fatalf("Close failed: %v", err)
+	}
+}
+
+func newTCPConnPair(t *testing.T) (*gettyTCPConn, *gettyTCPConn) {
+	t.Helper()
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = listener.Close() }()
+
+	type acceptResult struct {
+		conn net.Conn
+		err  error
+	}
+	accepted := make(chan acceptResult, 1)
+	go func() {
+		conn, err := listener.Accept()
+		accepted <- acceptResult{conn: conn, err: err}
+	}()
+
+	clientRaw, err := net.Dial("tcp", listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := <-accepted
+	if result.err != nil {
+		_ = clientRaw.Close()
+		t.Fatal(result.err)
+	}
+
+	client := newGettyTCPConn(clientRaw)
+	server := newGettyTCPConn(result.conn)
+	t.Cleanup(func() {
+		client.CloseConn(0)
+		server.CloseConn(0)
+	})
+	return client, server
+}
+
+// startReceiver continuously decodes from conn until wantLen bytes have been
+// read. A tiny buffer forces reads to cross codec block boundaries.
+func startReceiver(conn *gettyTCPConn, wantLen int, bufSize int) (<-chan []byte, <-chan error) {
+	gotCh := make(chan []byte, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		var got []byte
+		buf := make([]byte, bufSize)
+		for len(got) < wantLen {
+			n, err := conn.recv(buf)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			if n == 0 {
+				continue
+			}
+			got = append(got, buf[:n]...)
+		}
+		gotCh <- got
+	}()
+	return gotCh, errCh
+}
+
+// TestSendMixedSingleAndBatchOverCompressNoneCodec pins the #102/#107 wire
+// format: SetCompressType(CompressNone) installs a real flate codec, so every
+// Send path, including [][]byte, must go through the codec writer. Otherwise
+// one connection carries a corrupt mix of coded []byte sends and raw
+// [][]byte sends and the peer's decoder fails.
+func TestSendMixedSingleAndBatchOverCompressNoneCodec(t *testing.T) {
+	client, server := newTCPConnPair(t)
+	client.SetCompressType(CompressNone)
+	server.SetCompressType(CompressNone)
+
+	single := []byte("single-packet-")
+	batch := [][]byte{
+		[]byte("batch-part-0-"),
+		[]byte("batch-part-1-"),
+		[]byte("batch-part-2"),
+	}
+	tail := []byte("-tail")
+	expected := bytes.Join([][]byte{
+		single,
+		batch[0],
+		batch[1],
+		batch[2],
+		tail,
+	}, nil)
+
+	gotCh, errCh := startReceiver(server, len(expected), 3)
+	for _, pkg := range []any{single, batch, tail} {
+		if _, err := client.Send(pkg); err != nil {
+			t.Fatalf("Send(%T) failed: %v", pkg, err)
+		}
+	}
+
+	select {
+	case got := <-gotCh:
+		if !bytes.Equal(got, expected) {
+			t.Fatalf("decoded stream mismatch:\n got: %q\nwant: %q", got, expected)
+		}
+	case err := <-errCh:
+		t.Fatalf("peer failed to decode codec stream: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for the decoded stream")
+	}
+}
+
+// TestSendBatchRawWithoutCompressType keeps the raw writev path covered: when
+// SetCompressType was never called, a [][]byte send must reach the peer
+// untouched (net.Buffers.WriteTo(t.conn), a single writev on *net.TCPConn).
+func TestSendBatchRawWithoutCompressType(t *testing.T) {
+	client, server := newTCPConnPair(t)
+	if client.codecEnabled {
+		t.Fatal("new connection unexpectedly has a codec installed")
+	}
+
+	batch := [][]byte{
+		[]byte("raw-part-0-"),
+		[]byte("raw-part-1-"),
+		[]byte("raw-part-2"),
+	}
+	expected := bytes.Join(batch, nil)
+
+	gotCh, errCh := startReceiver(server, len(expected), 3)
+	if _, err := client.Send(batch); err != nil {
+		t.Fatalf("Send([][]byte) failed: %v", err)
+	}
+
+	select {
+	case got := <-gotCh:
+		if !bytes.Equal(got, expected) {
+			t.Fatalf("raw stream mismatch:\n got: %q\nwant: %q", got, expected)
+		}
+	case err := <-errCh:
+		t.Fatalf("peer failed to read raw stream: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for the raw stream")
 	}
 }
