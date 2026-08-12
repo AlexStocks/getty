@@ -20,9 +20,11 @@ package getty
 import (
 	"compress/flate"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"sync"
 	"time"
 )
@@ -45,6 +47,33 @@ var (
 	launchTime = time.Now()
 	connID     uatomic.Uint32
 )
+
+// ErrCodecStreamBroken is returned once a codec(compressed) stream cannot be
+// trusted any more: a read/write timed out or failed in the middle of a codec
+// block, so the decoder/encoder state and the bytes already on the wire are
+// desynchronized. flate/snappy latch such errors forever, hence the connection
+// is unusable and the session must be closed and rebuilt. It deliberately does
+// not unwrap to a net.Error, so session.handleTCPPackage treats it as fatal
+// instead of as a benign read timeout that can be retried.
+var ErrCodecStreamBroken = errors.New("getty: codec stream is broken, connection must be closed")
+
+// CodecStallTimeout is the read deadline used on a codec(compressed) stream,
+// and thus the upper bound on how long a stalled peer can block a read.
+//
+// It exists because the connection read timeout (see SetReadTimeout, 1s by
+// default) is a poll interval, not an idle timeout: session.handleTCPPackage
+// retries after every read timeout. A codec stream cannot be retried
+// (flate/snappy latch read errors forever), so arming rTimeout on it would tear
+// down every compressed connection that stays idle for one second. Hence codec
+// reads get this much wider deadline instead, and hitting it means the peer
+// really stalled mid-stream: the connection is declared broken.
+//
+// Keep it well above the read timeout and above the application heartbeat
+// period, otherwise idle compressed connections get killed. Set it to 0 to arm
+// no read deadline at all on codec streams (a stalled peer then blocks until
+// the session is closed). It is read once, when SetCompressType installs the
+// codec, so set it before creating connections.
+var CodecStallTimeout = 5 * time.Minute
 
 // Connection wrap some connection params and operations
 type Connection interface {
@@ -184,6 +213,14 @@ type gettyTCPConn struct {
 	reader io.Reader
 	writer io.Writer
 	conn   net.Conn
+	// codecBroken is set once a codec read/write failed in the middle of the
+	// stream. Written by the read goroutine and read by writer goroutines, so
+	// it has to be atomic. Once set, recv/Send fail fast: touching the codec
+	// again would only produce more garbage on the wire.
+	codecBroken uatomic.Bool
+	// codecStallTimeout is the per-conn copy of CodecStallTimeout, taken when
+	// the codec is installed. 0 arms no read deadline on the codec stream.
+	codecStallTimeout time.Duration
 }
 
 // create gettyTCPConn
@@ -340,10 +377,98 @@ func (t *gettyTCPConn) SetCompressType(c CompressType) {
 		panic(fmt.Sprintf("illegal comparess type %d", c))
 	}
 	// Both branches replaced reader/writer with a codec (CompressNone included,
-	// see the codecEnabled comment), so the conn is no longer raw: no deadlines,
-	// and all IO must go through t.reader/t.writer.
+	// see the codecEnabled comment), so the conn is no longer raw: all IO must
+	// go through t.reader/t.writer, and a read/write error can no longer be
+	// retried on this stream.
 	t.codecEnabled = true
+	t.codecStallTimeout = CodecStallTimeout
 	t.compress = c
+}
+
+// readDeadlineTimeout returns the deadline to arm before a read.
+//
+// A raw conn uses rTimeout, whose timeouts session.handleTCPPackage simply
+// retries. A codec stream cannot be retried, so it gets CodecStallTimeout
+// instead - see that variable for why rTimeout is unusable here. The larger of
+// the two wins: raising rTimeout widens the codec bound, and lowering
+// CodecStallTimeout tightens it.
+func (t *gettyTCPConn) readDeadlineTimeout() time.Duration {
+	timeout := t.rTimeout.Load()
+	if !t.codecEnabled {
+		return timeout
+	}
+	if t.codecStallTimeout <= 0 {
+		// stall cap disabled: no deadline, the read blocks until data arrives
+		// or session.stop() arms a deadline to unblock it.
+		return 0
+	}
+	if timeout < t.codecStallTimeout {
+		return t.codecStallTimeout
+	}
+	return timeout
+}
+
+// codecIOError maps a timeout on a codec stream to the fatal
+// ErrCodecStreamBroken and latches the connection as broken.
+//
+// A timed out read leaves half a block in the decoder and misaligns every byte
+// after it; a timed out write leaves half a block on the wire and misaligns the
+// peer's decoder. Either way the stream cannot be reused, so the timeout is
+// reported as ErrCodecStreamBroken instead of as a net.Error: that is what makes
+// session.handleTCPPackage treat it as fatal and close the session (a client
+// then reconnects) rather than retry the read.
+//
+// The socket is closed as well, so the codec connection is terminated rather
+// than left half-alive: it unblocks any concurrent Read/Write and lets the
+// session tear down even when the stalled side is the writer. CloseConn is not
+// used here because closing the snappy writer can block on the very peer that
+// stalled; closing the raw conn is enough. t.conn is left in place (session.gc
+// nils it via CloseConn) so a concurrent recv/Send never sees a nil conn, and
+// CloseConn skips the broken writer when it eventually runs.
+//
+// Any other failure keeps its own identity - io.EOF above all, which the session
+// read loop matches on to detect a clean peer shutdown. Those need no latch:
+// flate/snappy record the failure internally and emit nothing more, every
+// further Read/Write just returns it again.
+func (t *gettyTCPConn) codecIOError(err error) error {
+	if err == nil || !t.codecEnabled || !isTimeoutError(err) {
+		return perrors.WithStack(err)
+	}
+
+	t.codecBroken.Store(true)
+	if conn := t.conn; conn != nil {
+		_ = conn.Close()
+	}
+	return perrors.Wrapf(ErrCodecStreamBroken, "codec stream stalled: %v", err)
+}
+
+// codecReadError is codecIOError for the read path, where a timeout raised while
+// the session is closing must be passed through: session.stop() deliberately
+// arms a read deadline to unblock this goroutine, and that timeout is a shutdown
+// signal, not a stalled peer. Latching it would make every normal close of a
+// compressed session report an error to the listener. The write path has no such
+// exemption - a timed out write desynchronizes the peer whether we are closing
+// or not.
+func (t *gettyTCPConn) codecReadError(err error) error {
+	if t.codecEnabled && isTimeoutError(err) && t.sessionClosing() {
+		return perrors.WithStack(err)
+	}
+	return t.codecIOError(err)
+}
+
+func (t *gettyTCPConn) sessionClosing() bool {
+	// t.ss is set by newSession before any IO goroutine starts; it is nil only
+	// for a connection used without a session (unit tests).
+	ss := t.ss
+	return ss != nil && ss.IsClosed()
+}
+
+func isTimeoutError(err error) bool {
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	return errors.Is(err, os.ErrDeadlineExceeded)
 }
 
 // tcp connection read
@@ -354,14 +479,16 @@ func (t *gettyTCPConn) recv(p []byte) (int, error) {
 		length      int
 	)
 
+	if t.codecBroken.Load() {
+		return 0, perrors.WithStack(ErrCodecStreamBroken)
+	}
+
 	// set read timeout deadline
-	// No deadline on a codec stream: one timeout leaves half a block in the
-	// decoder and every byte after it is misaligned.
-	if !t.codecEnabled && t.rTimeout.Load() > 0 {
+	if timeout := t.readDeadlineTimeout(); timeout > 0 {
 		// Set Deadline every time, since golang has fixed the performance issue
 		// See https://github.com/golang/go/issues/15133#issuecomment-271571395 for details
 		currentTime = time.Now()
-		if err = t.conn.SetReadDeadline(currentTime.Add(t.rTimeout.Load())); err != nil {
+		if err = t.conn.SetReadDeadline(currentTime.Add(timeout)); err != nil {
 			// just a timeout error
 			return 0, perrors.WithStack(err)
 		}
@@ -370,7 +497,7 @@ func (t *gettyTCPConn) recv(p []byte) (int, error) {
 
 	length, err = t.reader.Read(p)
 	t.readBytes.Add(uint32(length))
-	return length, perrors.WithStack(err)
+	return length, t.codecReadError(err)
 }
 
 // tcp connection write
@@ -384,7 +511,16 @@ func (t *gettyTCPConn) Send(pkg any) (int, error) {
 		lg          int64
 	)
 
-	if !t.codecEnabled && t.wTimeout.Load() > 0 {
+	if t.codecBroken.Load() {
+		return 0, perrors.WithStack(ErrCodecStreamBroken)
+	}
+
+	// The write deadline applies to a codec stream too: unlike a read, a write
+	// only blocks when the peer stopped reading, so it never fires on an idle
+	// connection and there is nothing to poll for. Skipping it here used to make
+	// SetWriteTimeout - and the per-call WritePkg(pkg, timeout) - silently
+	// ineffective, letting a stalled peer block writers forever.
+	if t.wTimeout.Load() > 0 {
 		// Set Deadline every time, since golang has fixed the performance issue
 		// See https://github.com/golang/go/issues/15133#issuecomment-271571395 for details
 		currentTime = time.Now()
@@ -420,7 +556,7 @@ func (t *gettyTCPConn) Send(pkg any) (int, error) {
 		}
 		log.Debugf("localAddr: %s, remoteAddr:%s, now:%s, length:%d, err:%s",
 			t.conn.LocalAddr(), t.conn.RemoteAddr(), currentTime, length, err)
-		return int(lg), perrors.WithStack(err)
+		return int(lg), t.codecIOError(err)
 	}
 
 	if p, ok = pkg.([]byte); ok {
@@ -431,7 +567,7 @@ func (t *gettyTCPConn) Send(pkg any) (int, error) {
 		}
 		log.Debugf("localAddr: %s, remoteAddr:%s, now:%s, length:%d, err:%v",
 			t.conn.LocalAddr(), t.conn.RemoteAddr(), currentTime, length, err)
-		return length, perrors.WithStack(err)
+		return length, t.codecIOError(err)
 	}
 
 	return 0, perrors.Errorf("illegal @pkg{%#v} type", pkg)
@@ -445,9 +581,14 @@ func (t *gettyTCPConn) CloseConn(waitSec int) {
 
 	if t.conn != nil {
 		// #102: snappy writer is now wrapped in *snappyWriteFlusher.
-		if writer, ok := t.writer.(*snappyWriteFlusher); ok {
-			if err := writer.Close(); err != nil {
-				log.Errorf("snappy.Writer.Close() = error:%+v", err)
+		// A broken codec must not be flushed: the stream is already
+		// desynchronized, and Close would only push more garbage into a socket
+		// that may still be stalled.
+		if !t.codecBroken.Load() {
+			if writer, ok := t.writer.(*snappyWriteFlusher); ok {
+				if err := writer.Close(); err != nil {
+					log.Errorf("snappy.Writer.Close() = error:%+v", err)
+				}
 			}
 		}
 		// #103: do not hard-assert *tls.Conn; use safe type assertions so a

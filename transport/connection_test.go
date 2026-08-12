@@ -30,6 +30,8 @@ import (
 
 import (
 	"github.com/golang/snappy"
+
+	perrors "github.com/pkg/errors"
 )
 
 type blockingSnappyWriter struct {
@@ -305,5 +307,288 @@ func TestSendBatchRawWithoutCompressType(t *testing.T) {
 		t.Fatalf("peer failed to read raw stream: %v", err)
 	case <-time.After(10 * time.Second):
 		t.Fatal("timed out waiting for the raw stream")
+	}
+}
+
+// codecStallCases covers both codec families: they take different branches in
+// SetCompressType and both latch IO errors, so the stall handling has to hold
+// for each.
+var codecStallCases = []struct {
+	name     string
+	compress CompressType
+}{
+	{name: "flate", compress: CompressZip},
+	{name: "snappy", compress: CompressSnappy},
+}
+
+// halfCodecBlock returns the first half of a valid, flushed codec block: a prefix
+// the decoder cannot finish decoding, i.e. exactly what a peer that dies
+// mid-write leaves behind.
+func halfCodecBlock(t *testing.T, c CompressType, payload string) []byte {
+	t.Helper()
+
+	var (
+		buf    bytes.Buffer
+		writer interface {
+			io.Writer
+			Flush() error
+		}
+	)
+	if c == CompressSnappy {
+		writer = snappy.NewBufferedWriter(&buf)
+	} else {
+		flateWriter, err := flate.NewWriter(&buf, int(c))
+		if err != nil {
+			t.Fatal(err)
+		}
+		writer = flateWriter
+	}
+	if _, err := writer.Write([]byte(payload)); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	block := buf.Bytes()
+	if len(block) < 4 {
+		t.Fatalf("codec block too small to truncate: %d bytes", len(block))
+	}
+	return block[:len(block)/2]
+}
+
+// assertCodecStreamBroken checks the error a stalled codec stream must produce.
+// The last two assertions are the actual encoding of the fix: session.handleTCPPackage
+// classifies read errors by perrors.Cause(), retrying net.Error timeouts and
+// treating io.EOF as a clean peer shutdown. A stalled codec stream must fall
+// into neither bucket, otherwise the session keeps reading from a decoder that
+// has already latched the error.
+func assertCodecStreamBroken(t *testing.T, err error) {
+	t.Helper()
+
+	if err == nil {
+		t.Fatal("stalled codec stream returned no error")
+	}
+	if !errors.Is(err, ErrCodecStreamBroken) {
+		t.Fatalf("error = %v, want ErrCodecStreamBroken", err)
+	}
+	cause := perrors.Cause(err)
+	if netErr, ok := cause.(net.Error); ok && netErr.Timeout() {
+		t.Fatalf("cause %v is a retryable net.Error timeout; the session would keep using the dead codec", cause)
+	}
+	if cause == io.EOF {
+		t.Fatalf("cause %v would be treated as a clean peer shutdown", cause)
+	}
+}
+
+// TestCodecRecvStalledPeerBreaksStream covers the P1: a peer that sends half a
+// codec block and then goes silent must not block the reader forever. The read
+// deadline has to reach the socket even though a codec is installed, and the
+// resulting timeout must terminate the connection instead of being retried on a
+// decoder that has already latched the error.
+func TestCodecRecvStalledPeerBreaksStream(t *testing.T) {
+	for _, test := range codecStallCases {
+		t.Run(test.name, func(t *testing.T) {
+			client, server := newTCPConnPair(t)
+			client.SetReadTimeout(20 * time.Millisecond)
+			client.SetCompressType(test.compress)
+			client.codecStallTimeout = 200 * time.Millisecond
+
+			if _, err := server.conn.Write(halfCodecBlock(t, test.compress, "stalled-peer-payload")); err != nil {
+				t.Fatalf("peer write failed: %v", err)
+			}
+			// the peer now stalls: no more bytes, and the connection stays open.
+
+			// recv runs in a goroutine so a regression (no deadline on the codec
+			// stream) fails the test in seconds instead of hanging until the test
+			// binary panics.
+			recvErr := make(chan error, 1)
+			go func() {
+				buf := make([]byte, 64)
+				for callsLeft := 1000; callsLeft > 0; callsLeft-- {
+					if _, err := client.recv(buf); err != nil {
+						recvErr <- err
+						return
+					}
+				}
+				recvErr <- nil
+			}()
+
+			var err error
+			select {
+			case err = <-recvErr:
+			case <-time.After(3 * time.Second):
+				t.Fatal("recv never returned: the read deadline did not reach the socket")
+			}
+
+			assertCodecStreamBroken(t, err)
+			if !client.codecBroken.Load() {
+				t.Fatal("connection was not latched as broken")
+			}
+			// the codec connection must be terminated, not just marked unusable:
+			// the peer has to observe the close instead of a silent open socket.
+			if err := client.conn.SetReadDeadline(time.Now()); err == nil {
+				t.Fatal("underlying conn is still open after a stalled read")
+			}
+			_ = server.conn.SetReadDeadline(time.Now().Add(time.Second))
+			if _, err := server.conn.Read(make([]byte, 8)); err == nil {
+				t.Fatal("peer read still succeeded after the codec connection was terminated")
+			}
+			// a broken stream must fail fast instead of touching the codec again
+			if _, err := client.recv(make([]byte, 64)); !errors.Is(err, ErrCodecStreamBroken) {
+				t.Fatalf("recv after break = %v, want ErrCodecStreamBroken", err)
+			}
+			if _, err := client.Send([]byte("nope")); !errors.Is(err, ErrCodecStreamBroken) {
+				t.Fatalf("Send after break = %v, want ErrCodecStreamBroken", err)
+			}
+		})
+	}
+}
+
+// TestCodecSendStalledPeerBreaksStream covers the write half of the P1: a peer
+// that stops reading must not block Send forever. net.Pipe is unbuffered, so a
+// write blocks until the peer reads - exactly the stalled-reader condition.
+func TestCodecSendStalledPeerBreaksStream(t *testing.T) {
+	for _, test := range codecStallCases {
+		t.Run(test.name, func(t *testing.T) {
+			clientRaw, peerRaw := net.Pipe()
+			t.Cleanup(func() {
+				_ = clientRaw.Close()
+				_ = peerRaw.Close()
+			})
+
+			client := newGettyTCPConn(clientRaw)
+			client.SetWriteTimeout(200 * time.Millisecond)
+			client.SetCompressType(test.compress)
+
+			sendErr := make(chan error, 1)
+			go func() {
+				_, err := client.Send([]byte("peer never reads this"))
+				sendErr <- err
+			}()
+
+			var err error
+			select {
+			case err = <-sendErr:
+			case <-time.After(3 * time.Second):
+				t.Fatal("Send never returned: the write deadline did not reach the socket")
+			}
+			assertCodecStreamBroken(t, err)
+			if !client.codecBroken.Load() {
+				t.Fatal("connection was not latched as broken")
+			}
+			// the codec connection must be terminated: the stalled peer has to
+			// observe the close instead of a still-open pipe.
+			if err := client.conn.SetWriteDeadline(time.Now()); err == nil {
+				t.Fatal("underlying conn is still open after a stalled write")
+			}
+			if _, err := peerRaw.Write([]byte("ping")); err == nil {
+				t.Fatal("peer write still succeeded after the codec connection was terminated")
+			}
+
+			// the second Send must fail fast rather than block on the dead codec
+			start := time.Now()
+			if _, err = client.Send([]byte("still nope")); !errors.Is(err, ErrCodecStreamBroken) {
+				t.Fatalf("Send after break = %v, want ErrCodecStreamBroken", err)
+			}
+			if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
+				t.Fatalf("Send after break blocked for %s, want an immediate failure", elapsed)
+			}
+		})
+	}
+}
+
+// TestCodecRecvIdleThenResume is the regression guard for the deadline value: a
+// codec stream must survive an idle period of many read timeouts. The read
+// timeout is a poll interval (session.handleTCPPackage retries it), so arming it
+// on a codec stream would kill every idle compressed connection - flate/snappy
+// latch the timeout and never decode again.
+func TestCodecRecvIdleThenResume(t *testing.T) {
+	for _, test := range codecStallCases {
+		t.Run(test.name, func(t *testing.T) {
+			client, server := newTCPConnPair(t)
+			client.SetReadTimeout(20 * time.Millisecond)
+			server.SetWriteTimeout(time.Second)
+			client.SetCompressType(test.compress)
+			server.SetCompressType(test.compress)
+			client.codecStallTimeout = 2 * time.Second
+
+			const idle = 200 * time.Millisecond // 10 read timeouts
+			payload := []byte("packet-after-idle")
+			writeErr := make(chan error, 1)
+			go func() {
+				time.Sleep(idle)
+				_, err := server.Send(payload)
+				writeErr <- err
+			}()
+
+			got := make([]byte, 0, len(payload))
+			buf := make([]byte, 64)
+			for len(got) < len(payload) {
+				n, err := client.recv(buf)
+				if err != nil {
+					t.Fatalf("recv after %s of idling failed: %v", idle, err)
+				}
+				got = append(got, buf[:n]...)
+			}
+			if err := <-writeErr; err != nil {
+				t.Fatalf("peer Send failed: %v", err)
+			}
+			if !bytes.Equal(got, payload) {
+				t.Fatalf("decoded %q, want %q", got, payload)
+			}
+			if client.codecBroken.Load() {
+				t.Fatal("an idle codec stream was wrongly latched as broken")
+			}
+		})
+	}
+}
+
+// TestRawConnRecvTimeoutStaysRetryable pins the other half of the contract: on a
+// raw connection a read timeout is still a benign, retryable net.Error - it is
+// the poll that lets session.handleTCPPackage notice a closed session.
+func TestRawConnRecvTimeoutStaysRetryable(t *testing.T) {
+	client, _ := newTCPConnPair(t)
+	client.SetReadTimeout(50 * time.Millisecond)
+
+	_, err := client.recv(make([]byte, 64))
+	if err == nil {
+		t.Fatal("recv on a silent peer returned no error")
+	}
+	if errors.Is(err, ErrCodecStreamBroken) {
+		t.Fatalf("raw conn read timeout reported as a broken codec stream: %v", err)
+	}
+	netErr, ok := perrors.Cause(err).(net.Error)
+	if !ok || !netErr.Timeout() {
+		t.Fatalf("cause = %v, want a net.Error timeout", perrors.Cause(err))
+	}
+	if client.codecBroken.Load() {
+		t.Fatal("raw conn was latched as broken")
+	}
+}
+
+// TestCodecRecvPeerCloseKeepsErrorIdentity pins the deliberate scope of the
+// latch: only a timeout means "stalled mid-stream". A clean peer close must keep
+// its own EOF-family error, which session.handleTCPPackage matches on to skip
+// reconnecting, and must not latch the connection - otherwise a concurrent
+// WritePkg would report ErrCodecStreamBroken instead of the real cause.
+func TestCodecRecvPeerCloseKeepsErrorIdentity(t *testing.T) {
+	for _, test := range codecStallCases {
+		t.Run(test.name, func(t *testing.T) {
+			client, server := newTCPConnPair(t)
+			client.SetReadTimeout(time.Second)
+			client.SetCompressType(test.compress)
+			server.CloseConn(0)
+
+			_, err := client.recv(make([]byte, 64))
+			if err == nil {
+				t.Fatal("recv on a closed peer returned no error")
+			}
+			if errors.Is(err, ErrCodecStreamBroken) {
+				t.Fatalf("clean peer close reported as a stalled codec stream: %v", err)
+			}
+			if client.codecBroken.Load() {
+				t.Fatal("clean peer close latched the connection as broken")
+			}
+		})
 	}
 }
