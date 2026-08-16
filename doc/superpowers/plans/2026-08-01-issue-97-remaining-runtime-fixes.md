@@ -1,6 +1,6 @@
 # Issue #97 剩余确定性运行时问题实现计划
 
-> **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法跟踪进度。用户未授权 commit，因此每个任务以 diff/status 检查代替提交。
+> **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法跟踪进度。原始任务 1-3 保留历史完成状态；2026-08-17 review follow-up 已授权 commit 并 push 到现有 PR #108 分支，但未授权 merge。
 
 **目标：** 修复 WSS 正常关闭 panic 和 UDP 接收缓冲区计算死分支，并用先失败、后通过的回归测试锁定行为。
 
@@ -14,10 +14,10 @@
 
 - 修改 `transport/server_test.go`：增加 WSS 启动后正常关闭的集成回归测试。
 - 修改 `transport/server.go`：将 WSS `Serve` 返回分类为预期关闭或需记录的运行错误。
-- 修改 `transport/session_test.go`：增加 UDP buffer 大小的表驱动边界测试。
-- 修改 `transport/session.go`：增加包内私有 `udpReadBufferSize` 并在 UDP 接收路径使用。
-- 保留 `doc/superpowers/specs/2026-08-01-issue-97-remaining-runtime-fixes-design.md`：批准后的设计依据。
-- 新增本计划文件：记录 TDD、验证和范围边界。
+- 修改 `transport/session_test.go`：增加 UDP buffer 大小的表驱动边界测试和真实 UDP 接收路径测试。
+- 修改 `transport/session.go`：使 `udpReadBufferSize` 对非正值、溢出和 UDP 物理上限保持安全，并规范化 `SetMaxMsgLen` 输入。
+- 修改 `doc/superpowers/specs/2026-08-01-issue-97-remaining-runtime-fixes-design.md`：记录 review follow-up 的已批准设计。
+- 修改本计划文件：保留原始执行记录，并追加 review follow-up 的 TDD、变异和发布步骤。
 
 ### 任务 1：WSS 正常关闭回归测试与最小修复
 
@@ -307,4 +307,152 @@ git diff --stat
 git diff -- transport/server.go transport/server_test.go transport/session.go transport/session_test.go
 ```
 
-预期：无空白错误；生产代码和测试只覆盖方案 A；规格和计划文件未超出批准范围；不 commit、不 push。
+预期：无空白错误；生产代码和测试只覆盖原始批准范围。
+
+### 任务 4：2026-08-17 review follow-up 测试红灯
+
+**文件：**
+- 修改：`transport/server_test.go`
+- 修改：`transport/session_test.go`
+
+- [ ] **步骤 1：用真实 TLS 握手替换 WSS 字段发布屏障**
+
+读取 `server.crt`，加入测试 Root CA，并在 `server.RunEventLoop` 返回后执行：
+
+```go
+certPEM, err := os.ReadFile(certPath)
+if err != nil {
+	t.Fatal(err)
+}
+roots := x509.NewCertPool()
+if !roots.AppendCertsFromPEM(certPEM) {
+	t.Fatal("failed to add WSS test certificate to root pool")
+}
+
+conn, err := tls.Dial("tcp", server.Listener().Addr().String(), &tls.Config{
+	MinVersion: tls.VersionTLS12,
+	RootCAs:    roots,
+})
+if err != nil {
+	server.Close()
+	t.Fatalf("WSS TLS handshake failed: %v", err)
+}
+if err := conn.Close(); err != nil {
+	t.Fatal(err)
+}
+```
+
+删除轮询 `server.server != nil` 的 readiness loop。真实 TLS 握手成功才允许测试调用 `server.Close()`。
+
+- [ ] **步骤 2：增加 UDP 非正值、极值和生产调用链测试**
+
+将 `TestUDPReadBufferSize` 的大消息预期改为 `maxUDPReadBufferSize`，并增加 `0`、`-1`、`math.MaxInt32`。增加一个 Reader，把收到的切片长度写入有缓冲 channel；真实 UDP 测试使用 `maxMsgLen=1`、发送 3 字节，并断言 Reader 收到 `udpReadBufferSize(1)` 即 2 字节：
+
+```go
+type udpReadSizeReader struct {
+	readLen chan int
+}
+
+func (r *udpReadSizeReader) Read(_ Session, data []byte) (any, int, error) {
+	r.readLen <- len(data)
+	return nil, 0, errTestReadFailure
+}
+```
+
+测试必须启动真实 `handleUDPPackage`，在断言后关闭 UDP listener，并有界等待 handler 返回；不向生产代码添加测试 hook。
+
+- [ ] **步骤 3：运行边界测试并确认红灯原因**
+
+运行：
+
+```bash
+go test ./transport -run '^(TestUDPReadBufferSize|TestHandleUDPPackageUsesConfiguredReadBuffer)$' -count=1
+```
+
+预期：`TestUDPReadBufferSize` 因 `udpReadBufferSize(0)` 返回 0、负值或极值溢出而 FAIL；真实生产路径子测试可以 PASS。失败必须来自缺失边界行为，不得来自测试夹具、端口或超时。
+
+### 任务 5：UDP 最小修复与测试绿灯
+
+**文件：**
+- 修改：`transport/session.go`
+- 测试：`transport/session_test.go`
+
+- [ ] **步骤 1：实现安全、有界的 UDP buffer 计算**
+
+在常量块增加 `maxUDPReadBufferSize = 64 * 1024`，并将 helper 改为：
+
+```go
+func udpReadBufferSize(maxMsgLen int32) int {
+	if maxMsgLen <= 0 {
+		return maxUDPReadBufferSize
+	}
+
+	bufferSize := int64(maxMsgLen) + int64(maxReadBufLen)
+	if doubledMaxMsgLen := int64(maxMsgLen) * 2; doubledMaxMsgLen < bufferSize {
+		bufferSize = doubledMaxMsgLen
+	}
+	if bufferSize > maxUDPReadBufferSize {
+		return maxUDPReadBufferSize
+	}
+	return int(bufferSize)
+}
+```
+
+`SetMaxMsgLen` 将 `length <= 0` 保存为 0，将超过 `math.MaxInt32` 的正数保存为 `math.MaxInt32`，其余值按现有 `int32` 字段保存。公开方法签名不变。
+
+- [ ] **步骤 2：运行目标测试确认绿灯**
+
+运行：
+
+```bash
+go test ./transport -run '^(TestWSSServerCloseDoesNotPanic|TestUDPReadBufferSize|TestHandleUDPPackageUsesConfiguredReadBuffer)$' -count=1
+```
+
+预期：三个测试 PASS，WSS 测试完成真实 TLS 握手，UDP handler 在关闭 listener 后有界返回。
+
+- [ ] **步骤 3：验证两个回归测试能杀死对应变异**
+
+先将 `runWSSEventLoop` 的错误分类临时替换为 `if err != nil { panic(err) }`，运行 `TestWSSServerCloseDoesNotPanic`，预期出现 `panic: http: Server closed`；立即恢复文件。
+
+再将 `handleUDPPackage` 的分配临时恢复为旧逻辑：
+
+```go
+maxBufLen := int(s.maxMsgLen + maxReadBufLen)
+if int(s.maxMsgLen<<1) < bufLen {
+	maxBufLen = int(s.maxMsgLen << 1)
+}
+bufp = gxbytes.AcquireBytes(maxBufLen)
+```
+
+运行 `TestHandleUDPPackageUsesConfiguredReadBuffer`，预期收到 3 字节而不是 2 字节并 FAIL；立即恢复文件。恢复后重跑三个目标测试并要求 PASS。
+
+### 任务 6：review follow-up 完整验证与发布
+
+**文件：**
+- 验证：全部修改文件
+- GitHub：PR #108 当前 Head、检查和八个原 review 线程
+
+- [ ] **步骤 1：运行格式、race、静态和全仓门禁**
+
+```bash
+gofmt -w transport/server_test.go transport/session.go transport/session_test.go
+git diff --check
+go test -race ./transport -run '^(TestWSSServerCloseDoesNotPanic|TestUDPReadBufferSize|TestHandleUDPPackageUsesConfiguredReadBuffer)$' -count=20
+go test -race ./transport -count=1
+go vet ./...
+go test ./... -count=1
+```
+
+每条命令必须读取实际退出码和输出；Windows Go 1.26.2 的既有 `TestTCPClient` 基线失败单独记录，不修改该无关测试。
+
+- [ ] **步骤 2：检查范围并 commit**
+
+检查 `git status --short`、`git diff --stat`、完整 diff 和 `git diff --check`。只暂存两份文档、`transport/server_test.go`、`transport/session.go`、`transport/session_test.go`，使用符合本地 Lore hook 的叙述式 commit message、Signed-off-by 和 `Co-authored-by: OmX <omx@oh-my-codex.dev>`。
+
+- [ ] **步骤 3：推送并复核最终 Head**
+
+推送 `codex/fix-issue-97-remaining`，重新获取 PR 的 `headRefOid`、完整检查、review decision、顶层评论和所有 review threads。Head 必须等于本地提交，检查失败或新反馈不得被旧证据覆盖。
+
+- [ ] **步骤 4：在原线程回复并核对状态**
+
+使用 `repos/AlexStocks/getty/pulls/108/comments/{id}/replies` 回复对应行内线程，说明具体修复和验证；同根因线程分别回复但不新建重复顶层评论。回复后重新获取 `isResolved`、`isOutdated`；不代替 reviewer Resolve，也不 merge PR。
