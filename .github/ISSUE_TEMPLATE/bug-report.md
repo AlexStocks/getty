@@ -9,11 +9,26 @@ labels: kind/bug
 
 -->
 
+## Environment
 
-**What happened**:
+<!-- Please provide: missing environment info may make the issue unreproducible, please fill in carefully -->
 
-**What you expected to happen**:
+**Go version**: <!-- Run `go version` to get it, e.g. go1.23.0 -->
 
-**How to reproduce it (as minimally and precisely as possible)**:
+**Operating system**: <!-- e.g. Linux / macOS / Windows -->
 
-**Anything else we need to know?**:
+**Getty version**: <!-- e.g. v1.5.2 -->
+
+**Dependency versions** (relevant `go.mod` content): <!-- Paste the relevant dependencies so we can reproduce your build environment -->
+
+## Issue Details
+
+**What happened**: <!-- Describe what actually happened, attach error messages, stack traces, or logs -->
+
+**What you expected to happen**: <!-- Describe the behavior you expected -->
+
+**How to reproduce it (as minimally and precisely as possible)**: <!-- Provide the minimal reproduction steps, optionally with minimal reproduction code or a repo link: -->
+
+**Reproduction prerequisites**: <!-- Prerequisites to reproduce, e.g. network environment, specific config files, external service dependencies, etc. -->
+
+**Anything else we need to know?**: <!-- Any additional info, such as screenshots or log files -->
