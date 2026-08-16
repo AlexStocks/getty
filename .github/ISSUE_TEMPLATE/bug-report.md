@@ -17,7 +17,7 @@ labels: kind/bug
 
 **Operating system**: <!-- e.g. Linux / macOS / Windows -->
 
-**Project version**: <!-- e.g. v3.3.2 -->
+**Getty version**: <!-- e.g. v1.5.2 -->
 
 **Dependency versions** (relevant `go.mod` content): <!-- Paste the relevant dependencies so we can reproduce your build environment -->
 
