@@ -329,7 +329,7 @@ if !roots.AppendCertsFromPEM(certPEM) {
 	t.Fatal("failed to add WSS test certificate to root pool")
 }
 
-conn, err := tls.Dial("tcp", server.Listener().Addr().String(), &tls.Config{
+conn, err := tls.DialWithDialer(&net.Dialer{Timeout: time.Second}, "tcp", server.Listener().Addr().String(), &tls.Config{
 	MinVersion: tls.VersionTLS12,
 	RootCAs:    roots,
 })
@@ -405,10 +405,10 @@ func udpReadBufferSize(maxMsgLen int32) int {
 运行：
 
 ```bash
-go test ./transport -run '^(TestWSSServerCloseDoesNotPanic|TestUDPReadBufferSize|TestHandleUDPPackageUsesConfiguredReadBuffer)$' -count=1
+go test ./transport -run '^(TestWSSServerCloseDoesNotPanic|TestUDPReadBufferSize|TestSetMaxMsgLenNormalizesLimits|TestHandleUDPPackageUsesConfiguredReadBuffer)$' -count=1
 ```
 
-预期：三个测试 PASS，WSS 测试完成真实 TLS 握手，UDP handler 在关闭 listener 后有界返回。
+预期：四个测试 PASS，WSS 测试完成真实 TLS 握手，UDP handler 在关闭 listener 后有界返回。
 
 - [ ] **步骤 3：验证两个回归测试能杀死对应变异**
 
@@ -435,9 +435,9 @@ bufp = gxbytes.AcquireBytes(maxBufLen)
 - [ ] **步骤 1：运行格式、race、静态和全仓门禁**
 
 ```bash
-gofmt -w transport/server_test.go transport/session.go transport/session_test.go
+gofmt -w transport/server.go transport/server_test.go transport/session.go transport/session_test.go
 git diff --check
-go test -race ./transport -run '^(TestWSSServerCloseDoesNotPanic|TestUDPReadBufferSize|TestHandleUDPPackageUsesConfiguredReadBuffer)$' -count=20
+go test -race ./transport -run '^(TestWSSServerCloseDoesNotPanic|TestUDPReadBufferSize|TestSetMaxMsgLenNormalizesLimits|TestHandleUDPPackageUsesConfiguredReadBuffer)$' -count=20
 go test -race ./transport -count=1
 go vet ./...
 go test ./... -count=1
@@ -447,7 +447,7 @@ go test ./... -count=1
 
 - [ ] **步骤 2：检查范围并 commit**
 
-检查 `git status --short`、`git diff --stat`、完整 diff 和 `git diff --check`。只暂存两份文档、`transport/server_test.go`、`transport/session.go`、`transport/session_test.go`，使用符合本地 Lore hook 的叙述式 commit message、Signed-off-by 和 `Co-authored-by: OmX <omx@oh-my-codex.dev>`。
+检查 `git status --short`、`git diff --stat`、完整 diff 和 `git diff --check`。只暂存两份文档、`transport/server.go`、`transport/server_test.go`、`transport/session.go`、`transport/session_test.go`，使用符合本地 Lore hook 的叙述式 commit message、Signed-off-by 和 `Co-authored-by: OmX <omx@oh-my-codex.dev>`。
 
 - [ ] **步骤 3：推送并复核最终 Head**
 

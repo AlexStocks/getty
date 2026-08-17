@@ -100,8 +100,8 @@ func udpReadBufferSize(maxMsgLen int32) int
 实现完成后在 WSL/Linux、Go 1.25.1 下依次运行：
 
 ```bash
-go test ./transport -run '^(TestWSSServerCloseDoesNotPanic|TestUDPReadBufferSize|TestHandleUDPPackageUsesConfiguredReadBuffer)$' -count=1
-go test -race ./transport -run '^(TestWSSServerCloseDoesNotPanic|TestUDPReadBufferSize|TestHandleUDPPackageUsesConfiguredReadBuffer)$' -count=1
+go test ./transport -run '^(TestWSSServerCloseDoesNotPanic|TestUDPReadBufferSize|TestSetMaxMsgLenNormalizesLimits|TestHandleUDPPackageUsesConfiguredReadBuffer)$' -count=1
+go test -race ./transport -run '^(TestWSSServerCloseDoesNotPanic|TestUDPReadBufferSize|TestSetMaxMsgLenNormalizesLimits|TestHandleUDPPackageUsesConfiguredReadBuffer)$' -count=1
 go test -race ./transport -count=1
 go vet ./...
 go test ./... -count=1
