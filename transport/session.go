@@ -23,6 +23,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"runtime"
 	"sync"
@@ -46,10 +47,11 @@ import (
 )
 
 const (
-	maxReadBufLen   = 4 * 1024
-	netIOTimeout    = 1e9      // 1s
-	period          = 60 * 1e9 // 1 minute
-	pendingDuration = 3e9
+	maxReadBufLen        = 4 * 1024
+	maxUDPReadBufferSize = 64 * 1024
+	netIOTimeout         = 1e9      // 1s
+	period               = 60 * 1e9 // 1 minute
+	pendingDuration      = 3e9
 	// MaxWheelTimeSpan 900s, 15 minute
 	MaxWheelTimeSpan = 900e9
 	maxPacketLen     = 16 * 1024
@@ -63,6 +65,21 @@ const (
 	defaultWSSSessionName = "wss-session"
 	outputFormat          = "session %s, Read Bytes: %d, Write Bytes: %d, Read Pkgs: %d, Write Pkgs: %d"
 )
+
+func udpReadBufferSize(maxMsgLen int32) int {
+	if maxMsgLen <= 0 {
+		return maxUDPReadBufferSize
+	}
+
+	bufferSize := int64(maxMsgLen) + int64(maxReadBufLen)
+	if doubledMaxMsgLen := int64(maxMsgLen) * 2; doubledMaxMsgLen < bufferSize {
+		bufferSize = doubledMaxMsgLen
+	}
+	if bufferSize > maxUDPReadBufferSize {
+		return maxUDPReadBufferSize
+	}
+	return int(bufferSize)
+}
 
 var defaultTimerWheel *gxtime.TimerWheel
 
@@ -346,7 +363,14 @@ func (s *session) SetMaxMsgLen(length int) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	s.maxMsgLen = int32(length)
+	switch {
+	case length <= 0:
+		s.maxMsgLen = 0
+	case int64(length) > int64(math.MaxInt32):
+		s.maxMsgLen = math.MaxInt32
+	default:
+		s.maxMsgLen = int32(length)
+	}
 }
 
 // SetName set session name
@@ -914,25 +938,20 @@ func (s *session) handleTCPPackage() error {
 // get package from udp packet
 func (s *session) handleUDPPackage() error {
 	var (
-		ok        bool
-		err       error
-		netError  net.Error
-		conn      *gettyUDPConn
-		bufLen    int
-		maxBufLen int
-		bufp      *[]byte
-		buf       []byte
-		addr      *net.UDPAddr
-		pkgLen    int
-		pkg       any
+		ok       bool
+		err      error
+		netError net.Error
+		conn     *gettyUDPConn
+		bufLen   int
+		bufp     *[]byte
+		buf      []byte
+		addr     *net.UDPAddr
+		pkgLen   int
+		pkg      any
 	)
 
 	conn = s.Connection.(*gettyUDPConn)
-	maxBufLen = int(s.maxMsgLen + maxReadBufLen)
-	if int(s.maxMsgLen<<1) < bufLen {
-		maxBufLen = int(s.maxMsgLen << 1)
-	}
-	bufp = gxbytes.AcquireBytes(maxBufLen)
+	bufp = gxbytes.AcquireBytes(udpReadBufferSize(s.maxMsgLen))
 	defer gxbytes.ReleaseBytes(bufp)
 	buf = *bufp
 	for !s.IsClosed() {

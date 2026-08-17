@@ -20,7 +20,9 @@ package getty
 import (
 	"errors"
 	"io"
+	"math"
 	"net"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -30,6 +32,135 @@ var (
 	errTestReadFailure      = errors.New("test read failure")
 	errUnexpectedSecondRead = errors.New("unexpected second read")
 )
+
+// Regression test for #97: size the UDP read buffer from configured limits, not unread data.
+func TestUDPReadBufferSize(t *testing.T) {
+	tests := []struct {
+		name      string
+		maxMsgLen int32
+		want      int
+	}{
+		{name: "tiny message", maxMsgLen: 1, want: 2},
+		{name: "below crossover", maxMsgLen: maxReadBufLen - 1, want: 2 * (maxReadBufLen - 1)},
+		{name: "at crossover", maxMsgLen: maxReadBufLen, want: 2 * maxReadBufLen},
+		{name: "above crossover", maxMsgLen: maxReadBufLen + 1, want: 2*maxReadBufLen + 1},
+		{name: "zero message limit", maxMsgLen: 0, want: 64 * 1024},
+		{name: "negative message limit", maxMsgLen: -1, want: 64 * 1024},
+		{name: "large message", maxMsgLen: 128 * 1024, want: 64 * 1024},
+		{name: "maximum message limit", maxMsgLen: math.MaxInt32, want: 64 * 1024},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := udpReadBufferSize(tt.maxMsgLen); got != tt.want {
+				t.Fatalf("udpReadBufferSize(%d) = %d, want %d", tt.maxMsgLen, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSetMaxMsgLenNormalizesLimits(t *testing.T) {
+	type testCase struct {
+		name   string
+		length int
+		want   int32
+	}
+	tests := []testCase{
+		{name: "negative becomes unlimited", length: -1, want: 0},
+		{name: "zero remains unlimited", length: 0, want: 0},
+	}
+	if strconv.IntSize == 64 {
+		oversized := int64(math.MaxInt32) + 1
+		tests = append(tests, testCase{name: "oversized value is clamped", length: int(oversized), want: math.MaxInt32})
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ss := &session{}
+			ss.SetMaxMsgLen(tt.length)
+			if ss.maxMsgLen != tt.want {
+				t.Fatalf("SetMaxMsgLen(%d) stored %d, want %d", tt.length, ss.maxMsgLen, tt.want)
+			}
+		})
+	}
+}
+
+type recordingErrorReader struct {
+	dataLengths chan<- int
+}
+
+func (r recordingErrorReader) Read(_ Session, data []byte) (any, int, error) {
+	r.dataLengths <- len(data)
+	return nil, 0, errTestReadFailure
+}
+
+func TestHandleUDPPackageUsesConfiguredReadBuffer(t *testing.T) {
+	listener, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("127.0.0.1")})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sender, err := net.DialUDP("udp", nil, listener.LocalAddr().(*net.UDPAddr))
+	if err != nil {
+		_ = listener.Close()
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := sender.Close(); err != nil {
+			t.Errorf("close UDP sender: %v", err)
+		}
+	}()
+
+	dataLengths := make(chan int, 1)
+	ss := newUDPSession(listener, newServer(UDP_ENDPOINT)).(*session)
+	ss.SetMaxMsgLen(1)
+	ss.SetReader(recordingErrorReader{dataLengths: dataLengths})
+	want := udpReadBufferSize(1)
+	if want != 2 {
+		t.Fatalf("udpReadBufferSize(1) = %d, want 2", want)
+	}
+
+	handlerDone := make(chan error, 1)
+	go func() {
+		handlerDone <- ss.handleUDPPackage()
+	}()
+
+	handlerStopped := false
+	stopHandler := func() bool {
+		if handlerStopped {
+			return true
+		}
+		_ = listener.Close()
+		select {
+		case <-handlerDone:
+			handlerStopped = true
+			return true
+		case <-time.After(time.Second):
+			return false
+		}
+	}
+	defer func() {
+		if !stopHandler() {
+			t.Error("handleUDPPackage did not return after closing the UDP listener")
+		}
+	}()
+
+	if _, err := sender.Write([]byte{1, 2, 3}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case got := <-dataLengths:
+		if got != want {
+			t.Fatalf("Reader data length = %d, want udpReadBufferSize(1) = %d", got, want)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Reader did not receive the UDP datagram")
+	}
+
+	if !stopHandler() {
+		t.Fatal("handleUDPPackage did not return after closing the UDP listener")
+	}
+}
 
 type errorReader struct{}
 

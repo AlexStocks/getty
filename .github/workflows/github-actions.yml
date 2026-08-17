@@ -2,66 +2,141 @@ name: CI
 
 on:
   push:
-    branches: [ master ]
+    branches:
+      - master
   pull_request:
-    branches: "*"
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   license:
     name: Check License Header
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
       - name: Check License Header
-        uses: apache/skywalking-eyes/header@main #NOSONAR
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: apache/skywalking-eyes/header@315732dd4b8d3a015d8d9b91936b935a0b854817 # verified main, post-v0.8.0
         with:
           config: .licenserc.yaml
           mode: check
 
-  CI:
-    name: CI
+  test-and-lint:
+    name: Test and Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Verify Go Modules
+        run: go mod verify
+
+      - name: Check Code Format
+        run: make check-fmt
+
+      - name: Unit Test
+        run: make test
+
+      - name: Lint
+        run: make lint
+
+      - name: Upload Coverage Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: coverage
+          path: coverage.txt
+          if-no-files-found: error
+          retention-days: 1
+
+  coverage:
+    name: Upload Coverage
+    needs: test-and-lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+    steps:
+      - name: Download Coverage Artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: coverage
+
+      - name: Upload Coverage
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f
+        with:
+          version: v11.3.1
+          use_oidc: true
+          fail_ci_if_error: true
+          files: ./coverage.txt
+          disable_search: true
+
+  race:
+    name: Race
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Verify Go Modules
+        run: go mod verify
+
+      - name: Race Test
+        run: make test-race
+
+  build:
+    name: Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
-      # If you want to matrix build , you can append the following list.
+      fail-fast: false
       matrix:
-        go_version:
-          - '1.25'
         os:
           - ubuntu-latest
-
+          - windows-latest
+          - macos-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
 
-    - name: Set up Go ${{ matrix.go_version }}
-      uses: actions/setup-go@v5
-      with:
-        go-version: ${{ matrix.go_version }}
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
 
-    - name: Check out code into the Go module directory
-      uses: actions/checkout@v4
+      - name: Verify Go Modules
+        run: go mod verify
 
-    - name: Cache Go Dependence
-      # ref: https://github.com/actions/cache/blob/main/examples.md#go---module
-      uses: actions/cache@v4
-      with:
-        # Cache, works only on Linux
-        path: |
-          ~/.cache/go-build
-          ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-        # An ordered list of keys to use for restoring the cache if no cache hit occurred for key
-        restore-keys: ${{ runner.os }}-go-
-
-    - name: Check Code Format
-      run: make fmt && git status && [[ -z `git status -s` ]]
-
-    - name: Unit Test
-      run: make test
-
-    - name: Lint
-      run: make lint
-
-    - name: Coverage
-      run: bash <(curl -s https://codecov.io/bash)
+      - name: Build
+        run: go build ./...

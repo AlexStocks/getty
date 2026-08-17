@@ -21,6 +21,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -530,9 +531,8 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 		s.server = server
 		s.lock.Unlock()
 		err = server.Serve(tls.NewListener(s.streamListener, config))
-		if err != nil {
+		if err != nil && !errors.Is(err, http.ErrServerClosed) && !s.IsClosed() {
 			log.Errorf("http.server.Serve(addr{%s}) = err:%+v", s.addr, perrors.WithStack(err))
-			panic(err)
 		}
 	}()
 }
