@@ -424,7 +424,7 @@ if int(s.maxMsgLen<<1) < bufLen {
 bufp = gxbytes.AcquireBytes(maxBufLen)
 ```
 
-运行 `TestHandleUDPPackageUsesConfiguredReadBuffer`，预期收到 3 字节而不是 2 字节并 FAIL；立即恢复文件。恢复后重跑三个目标测试并要求 PASS。
+运行 `TestHandleUDPPackageUsesConfiguredReadBuffer`，预期收到 3 字节而不是 2 字节并 FAIL；立即恢复文件。恢复后重跑步骤 2 中相同的四个目标测试并要求 PASS。
 
 ### 任务 6：review follow-up 完整验证与发布
 
