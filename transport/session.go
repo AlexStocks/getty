@@ -23,6 +23,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"runtime"
 	"sync"
@@ -46,10 +47,11 @@ import (
 )
 
 const (
-	maxReadBufLen   = 4 * 1024
-	netIOTimeout    = 1e9      // 1s
-	period          = 60 * 1e9 // 1 minute
-	pendingDuration = 3e9
+	maxReadBufLen        = 4 * 1024
+	maxUDPReadBufferSize = 64 * 1024
+	netIOTimeout         = 1e9      // 1s
+	period               = 60 * 1e9 // 1 minute
+	pendingDuration      = 3e9
 	// MaxWheelTimeSpan 900s, 15 minute
 	MaxWheelTimeSpan = 900e9
 	maxPacketLen     = 16 * 1024
@@ -65,11 +67,18 @@ const (
 )
 
 func udpReadBufferSize(maxMsgLen int32) int {
-	maxBufLen := int(maxMsgLen + maxReadBufLen)
-	if doubledMaxMsgLen := int(maxMsgLen << 1); doubledMaxMsgLen < maxBufLen {
-		return doubledMaxMsgLen
+	if maxMsgLen <= 0 {
+		return maxUDPReadBufferSize
 	}
-	return maxBufLen
+
+	bufferSize := int64(maxMsgLen) + int64(maxReadBufLen)
+	if doubledMaxMsgLen := int64(maxMsgLen) * 2; doubledMaxMsgLen < bufferSize {
+		bufferSize = doubledMaxMsgLen
+	}
+	if bufferSize > maxUDPReadBufferSize {
+		return maxUDPReadBufferSize
+	}
+	return int(bufferSize)
 }
 
 var defaultTimerWheel *gxtime.TimerWheel
@@ -354,7 +363,14 @@ func (s *session) SetMaxMsgLen(length int) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	s.maxMsgLen = int32(length)
+	switch {
+	case length <= 0:
+		s.maxMsgLen = 0
+	case int64(length) > int64(math.MaxInt32):
+		s.maxMsgLen = math.MaxInt32
+	default:
+		s.maxMsgLen = int32(length)
+	}
 }
 
 // SetName set session name
