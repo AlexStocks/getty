@@ -3,7 +3,7 @@ module github.com/AlexStocks/getty
 go 1.25
 
 require (
-	github.com/AlexStocks/goext v0.3.2
+	github.com/AlexStocks/goext v0.3.3
 	github.com/dubbogo/gost v1.13.1
 	github.com/golang/snappy v0.0.1
 	github.com/gorilla/websocket v1.4.2
