@@ -105,7 +105,11 @@ func TestHandleUDPPackageUsesConfiguredReadBuffer(t *testing.T) {
 		_ = listener.Close()
 		t.Fatal(err)
 	}
-	defer sender.Close()
+	defer func() {
+		if err := sender.Close(); err != nil {
+			t.Errorf("close UDP sender: %v", err)
+		}
+	}()
 
 	dataLengths := make(chan int, 1)
 	ss := newUDPSession(listener, newServer(UDP_ENDPOINT)).(*session)
