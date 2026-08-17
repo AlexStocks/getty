@@ -21,10 +21,13 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -335,30 +338,45 @@ func TestWSSServerCloseDoesNotPanic(t *testing.T) {
 	)
 	server.RunEventLoop(func(Session) error { return nil })
 
-	deadline := time.Now().Add(time.Second)
-	for {
-		server.lock.RLock()
-		serving := server.server != nil
-		server.lock.RUnlock()
-		if serving {
-			break
+	closeServer := func() {
+		t.Helper()
+		closed := make(chan struct{})
+		go func() {
+			server.Close()
+			close(closed)
+		}()
+		select {
+		case <-closed:
+		case <-time.After(2 * time.Second):
+			t.Error("WSS server Close did not return")
 		}
-		if time.Now().After(deadline) {
-			t.Fatal("WSS event loop did not publish its HTTP server")
+	}
+	defer func() {
+		if !server.IsClosed() {
+			closeServer()
 		}
-		time.Sleep(time.Millisecond)
+	}()
+
+	certPEM, err := os.ReadFile(certPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootCAs := x509.NewCertPool()
+	if !rootCAs.AppendCertsFromPEM(certPEM) {
+		t.Fatal("failed to parse WSS server certificate")
+	}
+	clientConn, err := tls.DialWithDialer(&net.Dialer{Timeout: time.Second}, "tcp", server.Listener().Addr().String(), &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		RootCAs:    rootCAs,
+	})
+	if err != nil {
+		t.Fatalf("TLS handshake with WSS server failed: %v", err)
+	}
+	if err := clientConn.Close(); err != nil {
+		t.Fatalf("close TLS client connection: %v", err)
 	}
 
-	closed := make(chan struct{})
-	go func() {
-		server.Close()
-		close(closed)
-	}()
-	select {
-	case <-closed:
-	case <-time.After(2 * time.Second):
-		t.Fatal("WSS server Close did not return")
-	}
+	closeServer()
 }
 
 func TestWSServeWSRequestClosesSelfConnectConn(t *testing.T) {
