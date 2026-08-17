@@ -300,7 +300,9 @@ func TestTCPClient(t *testing.T) {
 	assert.Nil(t, err)
 	active := ss.GetActive()
 	assert.NotNil(t, active)
-	ss.SetCompressType(CompressNone)
+	// the session read loop already started IO, so reconfiguring the codec
+	// mid-stream must be rejected (see SetCompressType)
+	assert.Panics(t, func() { ss.SetCompressType(CompressNone) })
 	conn := ss.(*session).Connection.(*gettyTCPConn)
 	assert.True(t, conn.compress == CompressNone)
 	beforeWriteBytes := conn.writeBytes
@@ -328,7 +330,7 @@ func TestTCPClient(t *testing.T) {
 	beforeWriteBytes.Add(10)
 	assert.Equal(t, beforeWritePkgNum, conn.writePkgNum)
 	assert.Equal(t, beforeWriteBytes, conn.writeBytes)
-	ss.SetCompressType(CompressSnappy)
+	assert.Panics(t, func() { ss.SetCompressType(CompressSnappy) })
 	var anotherPkgs [][]byte
 	anotherPkgs = append(anotherPkgs, []byte("hello"), []byte("hello"))
 	l, err = ss.WriteBytesArray(anotherPkgs...)
@@ -338,7 +340,7 @@ func TestTCPClient(t *testing.T) {
 	beforeWriteBytes.Add(10)
 	assert.Equal(t, beforeWritePkgNum, conn.writePkgNum)
 	assert.Equal(t, beforeWriteBytes, conn.writeBytes)
-	assert.True(t, conn.compress == CompressSnappy)
+	assert.True(t, conn.compress == CompressNone)
 
 	batchSize := 128 * 1023
 	source := make([]byte, batchSize)

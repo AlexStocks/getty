@@ -78,6 +78,9 @@ var CodecStallTimeout = 5 * time.Minute
 // Connection wrap some connection params and operations
 type Connection interface {
 	ID() uint32
+	// SetCompressType sets the compress type. It must be called before any
+	// recv/Send on the connection, typically in NewSessionCallback; a TCP
+	// connection panics if it is called after IO started.
 	SetCompressType(CompressType)
 	LocalAddr() string
 	RemoteAddr() string
@@ -210,9 +213,14 @@ func (c *gettyConn) SetWriteTimeout(wTimeout time.Duration) {
 
 type gettyTCPConn struct {
 	gettyConn
-	reader io.Reader
-	writer io.Writer
-	conn   net.Conn
+	// lock guards the codec fields below; streamStarted is set by the first
+	// recv/Send and freezes the codec configuration (see SetCompressType).
+	lock          sync.Mutex
+	streamStarted bool
+	reader        io.Reader
+	writer        io.Writer
+	conn          net.Conn // immutable after construction, closed via closeOnce
+	closeOnce     sync.Once
 	// codecBroken is set once a codec read/write failed in the middle of the
 	// stream. Written by the read goroutine and read by writer goroutines, so
 	// it has to be atomic. Once set, recv/Send fail fast: touching the codec
@@ -351,8 +359,18 @@ func (s *snappyWriteFlusher) Close() error {
 	return perrors.WithStack(s.writer.Close())
 }
 
-// SetCompressType set compress type(tcp: zip/snappy, websocket:zip)
+// SetCompressType set compress type(tcp: zip/snappy, websocket:zip).
+// It must be called before the first recv/Send on the connection, typically
+// inside NewSessionCallback; there is no codec renegotiation protocol, so
+// switching the stream format after IO started would desynchronize the peer's
+// decoder. Calling it on a started stream panics.
 func (t *gettyTCPConn) SetCompressType(c CompressType) {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	if t.streamStarted {
+		log.Errorf("SetCompressType(%d) called after IO started on connection{local:%s, peer:%s}", c, t.local, t.peer)
+		panic("SetCompressType must be called before any recv/Send on the connection, e.g. in NewSessionCallback")
+	}
 	switch c {
 	case CompressNone, CompressZip, CompressBestSpeed, CompressBestCompression, CompressHuffman:
 		ioReader := io.Reader(t.conn)
@@ -408,6 +426,23 @@ func (t *gettyTCPConn) readDeadlineTimeout() time.Duration {
 	return timeout
 }
 
+// beginRecv/beginSend mark the stream as started and snapshot the codec state,
+// so the blocking IO below runs without the lock and cannot race with
+// SetCompressType.
+func (t *gettyTCPConn) beginRecv() (io.Reader, time.Duration) {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	t.streamStarted = true
+	return t.reader, t.readDeadlineTimeout()
+}
+
+func (t *gettyTCPConn) beginSend() (io.Writer, bool) {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	t.streamStarted = true
+	return t.writer, t.codecEnabled
+}
+
 // codecIOError maps a timeout on a codec stream to the fatal
 // ErrCodecStreamBroken and latches the connection as broken.
 //
@@ -422,9 +457,8 @@ func (t *gettyTCPConn) readDeadlineTimeout() time.Duration {
 // than left half-alive: it unblocks any concurrent Read/Write and lets the
 // session tear down even when the stalled side is the writer. CloseConn is not
 // used here because closing the snappy writer can block on the very peer that
-// stalled; closing the raw conn is enough. t.conn is left in place (session.gc
-// nils it via CloseConn) so a concurrent recv/Send never sees a nil conn, and
-// CloseConn skips the broken writer when it eventually runs.
+// stalled; closing the raw conn is enough, and CloseConn skips the broken
+// writer when it eventually runs.
 //
 // Any other failure keeps its own identity - io.EOF above all, which the session
 // read loop matches on to detect a clean peer shutdown. Those need no latch:
@@ -436,9 +470,7 @@ func (t *gettyTCPConn) codecIOError(err error) error {
 	}
 
 	t.codecBroken.Store(true)
-	if conn := t.conn; conn != nil {
-		_ = conn.Close()
-	}
+	_ = t.conn.Close()
 	return perrors.Wrapf(ErrCodecStreamBroken, "codec stream stalled: %v", err)
 }
 
@@ -483,8 +515,10 @@ func (t *gettyTCPConn) recv(p []byte) (int, error) {
 		return 0, perrors.WithStack(ErrCodecStreamBroken)
 	}
 
+	reader, timeout := t.beginRecv()
+
 	// set read timeout deadline
-	if timeout := t.readDeadlineTimeout(); timeout > 0 {
+	if timeout > 0 {
 		// Set Deadline every time, since golang has fixed the performance issue
 		// See https://github.com/golang/go/issues/15133#issuecomment-271571395 for details
 		currentTime = time.Now()
@@ -495,7 +529,7 @@ func (t *gettyTCPConn) recv(p []byte) (int, error) {
 		t.rLastDeadline.Store(currentTime)
 	}
 
-	length, err = t.reader.Read(p)
+	length, err = reader.Read(p)
 	t.readBytes.Add(uint32(length))
 	return length, t.codecReadError(err)
 }
@@ -514,6 +548,8 @@ func (t *gettyTCPConn) Send(pkg any) (int, error) {
 	if t.codecBroken.Load() {
 		return 0, perrors.WithStack(ErrCodecStreamBroken)
 	}
+
+	writer, codecEnabled := t.beginSend()
 
 	// The write deadline applies to a codec stream too: unlike a read, a write
 	// only blocks when the peer stopped reading, so it never fires on an idle
@@ -534,16 +570,16 @@ func (t *gettyTCPConn) Send(pkg any) (int, error) {
 		// #102: when a codec is installed the [][]byte path must go through
 		// t.writer (the codec writer), otherwise it writes raw frames directly
 		// to t.conn and the peer receives a corrupt mix of coded and raw data.
-		if !t.codecEnabled {
+		if !codecEnabled {
 			// only a raw conn here, so writev the whole batch in one syscall.
 			netBuf := net.Buffers(buffers)
 			lg, err = netBuf.WriteTo(t.conn)
-		} else if bw, ok := t.writer.(buffersWriter); ok {
+		} else if bw, ok := writer.(buffersWriter); ok {
 			lg, err = bw.WriteBuffers(buffers)
 		} else {
 			for _, b := range buffers {
 				var n int
-				n, err = t.writer.Write(b)
+				n, err = writer.Write(b)
 				if err != nil {
 					break
 				}
@@ -560,7 +596,7 @@ func (t *gettyTCPConn) Send(pkg any) (int, error) {
 	}
 
 	if p, ok = pkg.([]byte); ok {
-		length, err = t.writer.Write(p)
+		length, err = writer.Write(p)
 		if err == nil {
 			t.writeBytes.Add((uint32)(len(p)))
 			t.writePkgNum.Add(1)
@@ -575,17 +611,16 @@ func (t *gettyTCPConn) Send(pkg any) (int, error) {
 
 // close tcp connection
 func (t *gettyTCPConn) CloseConn(waitSec int) {
-	// if tcpConn, ok := t.conn.(*net.TCPConn); ok {
-	// tcpConn.SetLinger(0)
-	// }
-
-	if t.conn != nil {
+	t.closeOnce.Do(func() {
+		t.lock.Lock()
+		writer := t.writer
+		t.lock.Unlock()
 		// #102: snappy writer is now wrapped in *snappyWriteFlusher.
 		// A broken codec must not be flushed: the stream is already
 		// desynchronized, and Close would only push more garbage into a socket
 		// that may still be stalled.
 		if !t.codecBroken.Load() {
-			if writer, ok := t.writer.(*snappyWriteFlusher); ok {
+			if writer, ok := writer.(*snappyWriteFlusher); ok {
 				if err := writer.Close(); err != nil {
 					log.Errorf("snappy.Writer.Close() = error:%+v", err)
 				}
@@ -601,8 +636,7 @@ func (t *gettyTCPConn) CloseConn(waitSec int) {
 		} else {
 			_ = t.conn.Close()
 		}
-		t.conn = nil
-	}
+	})
 }
 
 // ///////////////////////////////////////
@@ -621,7 +655,8 @@ func (c UDPContext) String() string {
 type gettyUDPConn struct {
 	gettyConn
 	compressType CompressType
-	conn         *net.UDPConn // for server
+	conn         *net.UDPConn // for server; immutable after construction, closed via closeOnce
+	closeOnce    sync.Once
 }
 
 // create gettyUDPConn
@@ -730,10 +765,9 @@ func (u *gettyUDPConn) Send(udpCtx any) (int, error) {
 
 // close udp connection
 func (u *gettyUDPConn) CloseConn(_ int) {
-	if u.conn != nil {
+	u.closeOnce.Do(func() {
 		_ = u.conn.Close()
-		u.conn = nil
-	}
+	})
 }
 
 // ///////////////////////////////////////

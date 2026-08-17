@@ -592,3 +592,92 @@ func TestCodecRecvPeerCloseKeepsErrorIdentity(t *testing.T) {
 		})
 	}
 }
+
+// TestSetCompressTypeAfterIORejected pins the codec configuration contract:
+// once a connection has sent or received, SetCompressType must panic instead
+// of replacing the codec under in-flight IO and desynchronizing the peer.
+func TestSetCompressTypeAfterIORejected(t *testing.T) {
+	client, server := newTCPConnPair(t)
+
+	payload := []byte("started")
+	gotCh, errCh := startReceiver(server, len(payload), 8)
+	if _, err := client.Send(payload); err != nil {
+		t.Fatalf("Send failed: %v", err)
+	}
+	select {
+	case <-gotCh:
+	case err := <-errCh:
+		t.Fatalf("peer failed to read: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for the payload")
+	}
+
+	for name, conn := range map[string]*gettyTCPConn{"sender": client, "receiver": server} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Fatalf("SetCompressType on a started %s did not panic", name)
+				}
+			}()
+			conn.SetCompressType(CompressSnappy)
+		}()
+	}
+}
+
+// TestSetCompressTypeConcurrentWithSend is the race regression for the PR#107
+// review: SetCompressType(CompressSnappy) racing with Send([]byte) on a started
+// stream must be rejected, stay race-free under `go test -race` and leave the
+// raw stream intact.
+func TestSetCompressTypeConcurrentWithSend(t *testing.T) {
+	client, server := newTCPConnPair(t)
+
+	payload := []byte("payload-")
+	const sends = 100
+	expected := bytes.Repeat(payload, sends+1)
+	gotCh, errCh := startReceiver(server, len(expected), 16)
+
+	// start the stream, so the SetCompressType below is guaranteed to be late
+	if _, err := client.Send(payload); err != nil {
+		t.Fatalf("Send failed: %v", err)
+	}
+
+	start := make(chan struct{})
+	panicked := make(chan bool, 1)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		<-start
+		for i := 0; i < sends; i++ {
+			if _, err := client.Send(payload); err != nil {
+				t.Errorf("Send failed: %v", err)
+				return
+			}
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		defer func() { panicked <- recover() != nil }()
+		<-start
+		client.SetCompressType(CompressSnappy)
+	}()
+	close(start)
+	wg.Wait()
+
+	if !<-panicked {
+		t.Fatal("late SetCompressType was not rejected")
+	}
+	if client.codecEnabled {
+		t.Fatal("rejected SetCompressType still installed a codec")
+	}
+	select {
+	case got := <-gotCh:
+		if !bytes.Equal(got, expected) {
+			t.Fatalf("stream corrupted:\n got: %q\nwant: %q", got, expected)
+		}
+	case err := <-errCh:
+		t.Fatalf("peer failed to read: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for the stream")
+	}
+}
