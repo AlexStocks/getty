@@ -590,8 +590,8 @@ func (t *gettyTCPConn) Send(pkg any) (int, error) {
 			t.writeBytes.Add((uint32)(lg))
 			t.writePkgNum.Add((uint32)(len(buffers)))
 		}
-		log.Debugf("localAddr: %s, remoteAddr:%s, now:%s, length:%d, err:%s",
-			t.conn.LocalAddr(), t.conn.RemoteAddr(), currentTime, length, err)
+		log.Debugf("localAddr: %s, remoteAddr:%s, now:%s, length:%d, err:%v",
+			t.conn.LocalAddr(), t.conn.RemoteAddr(), currentTime, lg, err)
 		return int(lg), t.codecIOError(err)
 	}
 

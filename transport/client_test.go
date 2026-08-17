@@ -272,6 +272,7 @@ func TestTCPClient(t *testing.T) {
 	listener, err := listenLocalServer()
 	assert.Nil(t, err)
 	assert.NotNil(t, listener)
+	t.Cleanup(func() { _ = listener.Close() })
 
 	addr := listener.Addr().(*net.TCPAddr)
 	t.Logf("server addr: %v", addr)
