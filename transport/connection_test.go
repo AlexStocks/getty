@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"compress/flate"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -457,8 +458,10 @@ func TestCodecSendStalledPeerBreaksStream(t *testing.T) {
 			})
 
 			client := newGettyTCPConn(clientRaw)
-			client.SetWriteTimeout(200 * time.Millisecond)
+			client.SetWriteTimeout(50 * time.Millisecond)
 			client.SetCompressType(test.compress)
+			// zero write progress for this long means the peer stopped reading
+			client.codecStallTimeout = 200 * time.Millisecond
 
 			sendErr := make(chan error, 1)
 			go func() {
@@ -603,6 +606,153 @@ func TestCodecRecvIdleBeyondStallTimeoutStaysHealthy(t *testing.T) {
 			if client.codecBroken.Load() {
 				t.Fatal("healthy idle connection ended up latched as broken")
 			}
+		})
+	}
+}
+
+// TestCodecRecvStallAcrossRecvBoundaryBreaksStream pins the exactness of the
+// stall detection: the peer flushes one complete packet plus the first half of
+// the next block in a single burst, then dies. The remainder is delivered to
+// the decoder from the poller's own read-ahead buffer after the first packet
+// decoded, so the following silence must still be classified as a mid-block
+// stall - with a hidden bufio between poller and decoder this case was
+// indistinguishable from idleness and hung until session close.
+func TestCodecRecvStallAcrossRecvBoundaryBreaksStream(t *testing.T) {
+	for _, test := range codecStallCases {
+		t.Run(test.name, func(t *testing.T) {
+			client, server := newTCPConnPair(t)
+			client.SetReadTimeout(20 * time.Millisecond)
+			client.SetCompressType(test.compress)
+			client.codecStallTimeout = 200 * time.Millisecond
+
+			// one codec stream: full flushed block for payload1, then payload2's
+			// block truncated in half - exactly what a peer that dies mid-write
+			// leaves after a healthy packet.
+			payload1 := []byte("complete-first-packet")
+			var (
+				buf    bytes.Buffer
+				writer interface {
+					io.Writer
+					Flush() error
+				}
+			)
+			if test.compress == CompressSnappy {
+				writer = snappy.NewBufferedWriter(&buf)
+			} else {
+				flateWriter, err := flate.NewWriter(&buf, int(test.compress))
+				if err != nil {
+					t.Fatal(err)
+				}
+				writer = flateWriter
+			}
+			if _, err := writer.Write(payload1); err != nil {
+				t.Fatal(err)
+			}
+			if err := writer.Flush(); err != nil {
+				t.Fatal(err)
+			}
+			firstLen := buf.Len()
+			if _, err := writer.Write([]byte("second-packet-that-never-finishes")); err != nil {
+				t.Fatal(err)
+			}
+			if err := writer.Flush(); err != nil {
+				t.Fatal(err)
+			}
+			second := buf.Bytes()[firstLen:]
+			if len(second) < 4 {
+				t.Fatalf("second codec block too small to truncate: %d bytes", len(second))
+			}
+			burst := buf.Bytes()[:firstLen+len(second)/2]
+
+			if _, err := server.conn.Write(burst); err != nil {
+				t.Fatalf("peer write failed: %v", err)
+			}
+			// the peer now dies: no more bytes, connection stays open.
+
+			recvErr := make(chan error, 1)
+			go func() {
+				var got []byte
+				buf := make([]byte, 64)
+				for {
+					n, err := client.recv(buf)
+					if err != nil {
+						recvErr <- err
+						return
+					}
+					got = append(got, buf[:n]...)
+					if len(got) > len(payload1) {
+						recvErr <- fmt.Errorf("decoded beyond the first packet: %q", got)
+						return
+					}
+				}
+			}()
+
+			var err error
+			select {
+			case err = <-recvErr:
+			case <-time.After(3 * time.Second):
+				t.Fatal("recv never returned: the cross-recv stall was classified as idleness")
+			}
+			assertCodecStreamBroken(t, err)
+			if !client.codecBroken.Load() {
+				t.Fatal("connection was not latched as broken")
+			}
+		})
+	}
+}
+
+// TestCodecSendSlowPeerBeyondWriteTimeoutSurvives is the write-side twin of the
+// idle/stall distinction: a peer that drains slowly but steadily must not be
+// killed just because one compressed burst takes longer than wTimeout - only
+// zero progress for codecStallTimeout may break the stream.
+func TestCodecSendSlowPeerBeyondWriteTimeoutSurvives(t *testing.T) {
+	for _, test := range codecStallCases {
+		t.Run(test.name, func(t *testing.T) {
+			clientRaw, peerRaw := net.Pipe()
+			t.Cleanup(func() {
+				_ = clientRaw.Close()
+				_ = peerRaw.Close()
+			})
+
+			client := newGettyTCPConn(clientRaw)
+			client.SetWriteTimeout(20 * time.Millisecond)
+			client.SetCompressType(test.compress)
+			client.codecStallTimeout = 500 * time.Millisecond
+
+			// the peer drains a few bytes at a time, far slower than wTimeout
+			// allows for the whole burst, but never stops for a stall window.
+			peerDone := make(chan struct{})
+			go func() {
+				defer close(peerDone)
+				buf := make([]byte, 8)
+				for {
+					if _, err := peerRaw.Read(buf); err != nil {
+						return
+					}
+					time.Sleep(30 * time.Millisecond)
+				}
+			}()
+
+			payload := bytes.Repeat([]byte("slow-but-alive-"), 20) // 300 bytes
+			sendErr := make(chan error, 1)
+			go func() {
+				_, err := client.Send(payload)
+				sendErr <- err
+			}()
+
+			select {
+			case err := <-sendErr:
+				if err != nil {
+					t.Fatalf("Send to a slow but draining peer failed: %v", err)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("Send never completed against a slow but draining peer")
+			}
+			if client.codecBroken.Load() {
+				t.Fatal("slow but draining peer was latched as a broken stream")
+			}
+			_ = clientRaw.Close()
+			<-peerDone
 		})
 	}
 }
