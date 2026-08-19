@@ -233,6 +233,12 @@ type gettyTCPConn struct {
 	// it has to be atomic. Once set, recv/Send fail fast: touching the codec
 	// again would only produce more garbage on the wire.
 	codecBroken uatomic.Bool
+	// closing is set by CloseConn before it flushes the codec writer: the
+	// flush is best-effort, so codecPollingWriter surfaces the first poll
+	// timeout instead of waiting out a whole codecStallTimeout on a peer that
+	// stopped reading (sessionClosing() covers the session-driven close, this
+	// covers direct CloseConn use).
+	closing uatomic.Bool
 	// codecStallTimeout is the per-conn copy of CodecStallTimeout, taken when
 	// the codec is installed. 0 disables mid-block stall detection.
 	codecStallTimeout time.Duration
@@ -583,7 +589,7 @@ func (w *codecPollingWriter) Write(p []byte) (int, error) {
 		if !isTimeoutError(err) {
 			return written, err
 		}
-		if t.codecBroken.Load() || t.sessionClosing() {
+		if t.codecBroken.Load() || t.closing.Load() || t.sessionClosing() {
 			// on shutdown the write is abandoned mid-block; the connection is
 			// being torn down anyway, and latching codecBroken here also stops
 			// CloseConn from flushing the half-written snappy stream.
@@ -802,6 +808,10 @@ func (t *gettyTCPConn) Send(pkg any) (int, error) {
 // close tcp connection
 func (t *gettyTCPConn) CloseConn(waitSec int) {
 	t.closeOnce.Do(func() {
+		// best-effort teardown from here on: codecPollingWriter surfaces the
+		// first poll timeout instead of waiting out a stall window, so a peer
+		// that stopped reading cannot pin CloseConn for codecStallTimeout.
+		t.closing.Store(true)
 		t.lock.Lock()
 		writer := t.writer
 		t.lock.Unlock()

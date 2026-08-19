@@ -912,3 +912,34 @@ func TestUDPSetCompressTypeHasNoWireEffect(t *testing.T) {
 		t.Fatalf("compress = %d, want %d recorded", conn.compress, CompressSnappy)
 	}
 }
+
+// TestCloseConnCodecFlushIsBounded pins the closing flag: CloseConn flushes the
+// codec writer best-effort, so a peer that stopped reading must cost at most
+// one poll timeout, never a whole codecStallTimeout.
+func TestCloseConnCodecFlushIsBounded(t *testing.T) {
+	for _, test := range codecStallCases {
+		t.Run(test.name, func(t *testing.T) {
+			clientRaw, peerRaw := net.Pipe()
+			t.Cleanup(func() {
+				_ = clientRaw.Close()
+				_ = peerRaw.Close()
+			})
+
+			client := newGettyTCPConn(clientRaw)
+			client.SetWriteTimeout(20 * time.Millisecond)
+			client.SetCompressType(test.compress)
+			client.codecStallTimeout = 5 * time.Second
+
+			done := make(chan struct{})
+			go func() {
+				client.CloseConn(0)
+				close(done)
+			}()
+			select {
+			case <-done:
+			case <-time.After(2 * time.Second):
+				t.Fatal("CloseConn blocked on the codec flush instead of giving up after one poll timeout")
+			}
+		})
+	}
+}
