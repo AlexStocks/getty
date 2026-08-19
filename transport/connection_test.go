@@ -943,3 +943,29 @@ func TestCloseConnCodecFlushIsBounded(t *testing.T) {
 		})
 	}
 }
+
+// TestCloseConnTerminatesFlateStreamCleanly pins the write-side symmetry with
+// snappy: CloseConn closes the flate writer too, so the peer's decoder reads
+// the payload and then a clean EOF instead of io.ErrUnexpectedEOF.
+func TestCloseConnTerminatesFlateStreamCleanly(t *testing.T) {
+	client, server := newTCPConnPair(t)
+	client.SetWriteTimeout(time.Second)
+	client.SetCompressType(CompressZip)
+
+	payload := []byte("last-packet-before-close")
+	if _, err := client.Send(payload); err != nil {
+		t.Fatalf("Send failed: %v", err)
+	}
+	client.CloseConn(1)
+
+	if err := server.conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := io.ReadAll(flate.NewReader(server.conn))
+	if err != nil {
+		t.Fatalf("peer decoder did not see a clean end of stream: %v", err)
+	}
+	if !bytes.Equal(got, payload) {
+		t.Fatalf("decoded %q, want %q", got, payload)
+	}
+}

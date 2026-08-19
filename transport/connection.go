@@ -326,6 +326,15 @@ func (t *writeFlusher) WriteBuffers(buffers [][]byte) (int64, error) {
 	return total, perrors.WithStack(t.flusher.Flush())
 }
 
+// Close terminates the flate stream (final block marker), so the peer's
+// decoder sees a clean EOF instead of io.ErrUnexpectedEOF. Mirrors
+// snappyWriteFlusher.Close; called by CloseConn on a healthy codec only.
+func (t *writeFlusher) Close() error {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	return perrors.WithStack(t.flusher.Close())
+}
+
 // for snappy compress. #102: snappy.NewBufferedWriter buffers writes and only
 // emits data on Flush, so small packets would sit in the buffer forever if not
 // flushed after every Write. This wrapper flushes on every Write, mirroring the
@@ -815,14 +824,20 @@ func (t *gettyTCPConn) CloseConn(waitSec int) {
 		t.lock.Lock()
 		writer := t.writer
 		t.lock.Unlock()
-		// #102: snappy writer is now wrapped in *snappyWriteFlusher.
+		// #102: the codec writers are wrapped in flushers with a Close that
+		// terminates the stream, giving the peer's decoder a clean EOF.
 		// A broken codec must not be flushed: the stream is already
 		// desynchronized, and Close would only push more garbage into a socket
 		// that may still be stalled.
 		if !t.codecBroken.Load() {
-			if writer, ok := writer.(*snappyWriteFlusher); ok {
-				if err := writer.Close(); err != nil {
+			switch w := writer.(type) {
+			case *snappyWriteFlusher:
+				if err := w.Close(); err != nil {
 					log.Errorf("snappy.Writer.Close() = error:%+v", err)
+				}
+			case *writeFlusher:
+				if err := w.Close(); err != nil {
+					log.Errorf("flate.Writer.Close() = error:%+v", err)
 				}
 			}
 		}
