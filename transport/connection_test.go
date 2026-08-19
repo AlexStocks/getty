@@ -969,3 +969,76 @@ func TestCloseConnTerminatesFlateStreamCleanly(t *testing.T) {
 		t.Fatalf("decoded %q, want %q", got, payload)
 	}
 }
+
+// TestCodecRecvStallDetectionOutrunsLongPollInterval pins the poll clamp: when
+// the stream is mid-block, the poll deadline is capped at the remaining stall
+// window, so an rTimeout larger than codecStallTimeout (here 10s vs 200ms) must
+// not delay stall detection until the next full poll interval.
+func TestCodecRecvStallDetectionOutrunsLongPollInterval(t *testing.T) {
+	for _, test := range codecStallCases {
+		t.Run(test.name, func(t *testing.T) {
+			client, server := newTCPConnPair(t)
+			client.SetReadTimeout(10 * time.Second)
+			client.SetCompressType(test.compress)
+			client.codecStallTimeout = 200 * time.Millisecond
+
+			if _, err := server.conn.Write(halfCodecBlock(t, test.compress, "stalled-peer-payload")); err != nil {
+				t.Fatalf("peer write failed: %v", err)
+			}
+
+			recvErr := make(chan error, 1)
+			go func() {
+				buf := make([]byte, 64)
+				for callsLeft := 1000; callsLeft > 0; callsLeft-- {
+					if _, err := client.recv(buf); err != nil {
+						recvErr <- err
+						return
+					}
+				}
+				recvErr <- nil
+			}()
+
+			var err error
+			select {
+			case err = <-recvErr:
+			case <-time.After(3 * time.Second):
+				t.Fatal("stall not detected within 3s: the poll interval was not clamped to the stall deadline")
+			}
+			assertCodecStreamBroken(t, err)
+		})
+	}
+}
+
+// TestCodecSendStallDetectionOutrunsLongPollInterval is the write-side twin of
+// the poll clamp test: a peer that never reads must be detected within the
+// stall window even when wTimeout is far larger than codecStallTimeout.
+func TestCodecSendStallDetectionOutrunsLongPollInterval(t *testing.T) {
+	for _, test := range codecStallCases {
+		t.Run(test.name, func(t *testing.T) {
+			clientRaw, peerRaw := net.Pipe()
+			t.Cleanup(func() {
+				_ = clientRaw.Close()
+				_ = peerRaw.Close()
+			})
+
+			client := newGettyTCPConn(clientRaw)
+			client.SetWriteTimeout(10 * time.Second)
+			client.SetCompressType(test.compress)
+			client.codecStallTimeout = 200 * time.Millisecond
+
+			sendErr := make(chan error, 1)
+			go func() {
+				_, err := client.Send([]byte("peer never reads this"))
+				sendErr <- err
+			}()
+
+			var err error
+			select {
+			case err = <-sendErr:
+			case <-time.After(3 * time.Second):
+				t.Fatal("stall not detected within 3s: the poll interval was not clamped to the stall deadline")
+			}
+			assertCodecStreamBroken(t, err)
+		})
+	}
+}

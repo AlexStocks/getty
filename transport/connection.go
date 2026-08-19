@@ -519,6 +519,14 @@ func (r *codecPollingReader) fill() error {
 	t := r.t
 	for {
 		if timeout := t.rTimeout.Load(); timeout > 0 {
+			// mid-block the poll must wake up no later than the stall deadline,
+			// otherwise an rTimeout larger than codecStallTimeout would delay
+			// stall detection by up to a whole poll interval.
+			if stall := t.codecStallTimeout; r.progress && stall > 0 {
+				if remaining := stall - time.Since(r.lastDelivery); remaining < timeout {
+					timeout = max(remaining, time.Millisecond)
+				}
+			}
 			// Set Deadline every time, since golang has fixed the performance issue
 			// See https://github.com/golang/go/issues/15133#issuecomment-271571395 for details
 			currentTime := time.Now()
@@ -578,6 +586,14 @@ func (w *codecPollingWriter) Write(p []byte) (int, error) {
 	lastProgress := time.Now()
 	for written < len(p) {
 		if timeout := t.wTimeout.Load(); timeout > 0 {
+			// the poll must wake up no later than the stall deadline, otherwise
+			// a wTimeout larger than codecStallTimeout would delay stall
+			// detection by up to a whole poll interval.
+			if stall := t.codecStallTimeout; stall > 0 {
+				if remaining := stall - time.Since(lastProgress); remaining < timeout {
+					timeout = max(remaining, time.Millisecond)
+				}
+			}
 			// Set Deadline every time, since golang has fixed the performance issue
 			// See https://github.com/golang/go/issues/15133#issuecomment-271571395 for details
 			currentTime := time.Now()
