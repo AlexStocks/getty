@@ -130,8 +130,8 @@ type gettyConn struct {
 	codecEnabled  bool
 	readBytes     uatomic.Uint32   // read bytes
 	writeBytes    uatomic.Uint32   // write bytes
-	readPkgNum    uatomic.Uint32   // send pkg number
-	writePkgNum   uatomic.Uint32   // recv pkg number
+	readPkgNum    uatomic.Uint32   // recv pkg number
+	writePkgNum   uatomic.Uint32   // send pkg number
 	active        uatomic.Int64    // last active, in milliseconds
 	rTimeout      uatomic.Duration // network current limiting
 	wTimeout      uatomic.Duration
@@ -479,6 +479,16 @@ var _ flate.Reader = (*codecPollingReader)(nil)
 // boundary is called by recv after the codec returned decoded output: the
 // stream is at a block boundary again, so subsequent silence is idleness, not
 // a stall.
+//
+// "At a block boundary" is exact for flushed packets: flate only surfaces the
+// decoded output after it consumed the sync-flush empty stored block, and
+// snappy only after a whole chunk. The one approximation is flate's 32KB
+// window flush, which surfaces output mid-block; that is still covered
+// because the block's remaining bytes sit undelivered in r.buf and re-mark
+// progress on the next Read - EXCEPT when the peer died byte-exactly at such
+// a flush point with nothing left in r.buf. That coincidence degrades to a
+// hang indistinguishable from a peer dying between packets, which no
+// conn-level detection can catch; application heartbeats own that case.
 func (r *codecPollingReader) boundary() {
 	r.progress = false
 }
@@ -811,8 +821,8 @@ func (t *gettyTCPConn) Send(pkg any) (int, error) {
 			t.writeBytes.Add((uint32)(lg))
 			t.writePkgNum.Add((uint32)(len(buffers)))
 		}
-		log.Debugf("localAddr: %s, remoteAddr:%s, now:%s, length:%d, err:%v",
-			t.conn.LocalAddr(), t.conn.RemoteAddr(), currentTime, lg, err)
+		log.Debugf("localAddr: %s, remoteAddr:%s, length:%d, err:%v",
+			t.conn.LocalAddr(), t.conn.RemoteAddr(), lg, err)
 		return int(lg), t.codecIOError(err)
 	}
 
@@ -822,8 +832,8 @@ func (t *gettyTCPConn) Send(pkg any) (int, error) {
 			t.writeBytes.Add((uint32)(len(p)))
 			t.writePkgNum.Add(1)
 		}
-		log.Debugf("localAddr: %s, remoteAddr:%s, now:%s, length:%d, err:%v",
-			t.conn.LocalAddr(), t.conn.RemoteAddr(), currentTime, length, err)
+		log.Debugf("localAddr: %s, remoteAddr:%s, length:%d, err:%v",
+			t.conn.LocalAddr(), t.conn.RemoteAddr(), length, err)
 		return length, t.codecIOError(err)
 	}
 
