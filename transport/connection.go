@@ -86,8 +86,8 @@ var CodecStallTimeout = 5 * time.Minute
 type Connection interface {
 	ID() uint32
 	// SetCompressType sets the compress type. It must be called before any
-	// recv/Send on the connection, typically in NewSessionCallback; a TCP
-	// connection panics if it is called after IO started.
+	// recv/Send on the connection, typically in NewSessionCallback; TCP and
+	// websocket connections panic if it is called after IO started.
 	SetCompressType(CompressType)
 	LocalAddr() string
 	RemoteAddr() string
@@ -968,7 +968,12 @@ type gettyWSConn struct {
 	gettyConn
 	writeLock sync.Mutex
 	readLock  sync.Mutex
-	conn      *websocket.Conn
+	// streamStarted is set by the first read/write and freezes the compression
+	// configuration, mirroring the gettyTCPConn contract: gorilla's
+	// EnableWriteCompression/SetCompressionLevel are plain field writes that
+	// must not race with in-flight writers.
+	streamStarted uatomic.Bool
+	conn          *websocket.Conn
 }
 
 // create websocket connection
@@ -1003,17 +1008,28 @@ func newGettyWSConn(conn *websocket.Conn) *gettyWSConn {
 	return gettyWSConn
 }
 
-// SetCompressType set compress type
+// SetCompressType set compress type. Like the TCP variant it must be called
+// before the first recv/Send, typically in NewSessionCallback, and panics on a
+// started stream: gorilla's compression setters are plain field writes that
+// would race with in-flight writers.
 func (w *gettyWSConn) SetCompressType(c CompressType) {
 	switch c {
 	case CompressNone, CompressZip, CompressBestSpeed, CompressBestCompression, CompressHuffman:
-		w.conn.EnableWriteCompression(true)
-		if err := w.conn.SetCompressionLevel(int(c)); err != nil {
-			log.Warnf("failed to set compression level: %+v", err)
-		}
-
 	default:
 		panic(fmt.Sprintf("illegal comparess type %d", c))
+	}
+	// writeLock excludes in-flight writers; the started check under it makes
+	// the panic race-free (writers mark streamStarted while holding the same
+	// lock, readers mark it under readLock before touching the conn).
+	w.writeLock.Lock()
+	defer w.writeLock.Unlock()
+	if w.streamStarted.Load() {
+		log.Errorf("SetCompressType(%d) called after IO started on connection{local:%s, peer:%s}", c, w.local, w.peer)
+		panic("SetCompressType must be called before any recv/Send on the connection, e.g. in NewSessionCallback")
+	}
+	w.conn.EnableWriteCompression(true)
+	if err := w.conn.SetCompressionLevel(int(c)); err != nil {
+		log.Warnf("failed to set compression level: %+v", err)
 	}
 	w.compress = c
 }
@@ -1135,6 +1151,7 @@ func (w *gettyWSConn) CloseConn(waitSec int) {
 func (w *gettyWSConn) threadSafeWriteMessage(messageType int, data []byte) error {
 	w.writeLock.Lock()
 	defer w.writeLock.Unlock()
+	w.streamStarted.Store(true)
 	if err := w.conn.WriteMessage(messageType, data); err != nil {
 		return err
 	}
@@ -1145,6 +1162,7 @@ func (w *gettyWSConn) threadSafeWriteMessage(messageType int, data []byte) error
 func (w *gettyWSConn) threadSafeReadMessage() (int, []byte, error) {
 	w.readLock.Lock()
 	defer w.readLock.Unlock()
+	w.streamStarted.Store(true)
 	messageType, readBytes, err := w.conn.ReadMessage()
 	if err != nil {
 		return messageType, nil, err

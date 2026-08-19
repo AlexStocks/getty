@@ -503,7 +503,9 @@ func TestNewWSClient(t *testing.T) {
 
 	assert.Equal(t, 1, msgHandler.SessionNumber())
 	ss := msgHandler.array[0]
-	ss.SetCompressType(CompressNone)
+	// the session read loop already started IO, so reconfiguring compression
+	// mid-stream must be rejected, same contract as the TCP connection
+	assert.Panics(t, func() { ss.SetCompressType(CompressNone) })
 	conn := ss.(*session).Connection.(*gettyWSConn)
 	assert.True(t, conn.compress == CompressNone)
 	err := conn.handlePing("hello")
