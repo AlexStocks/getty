@@ -57,22 +57,24 @@ var (
 // instead of as a benign read timeout that can be retried.
 var ErrCodecStreamBroken = errors.New("getty: codec stream is broken, connection must be closed")
 
-// CodecStallTimeout is the read deadline used on a codec(compressed) stream,
-// and thus the upper bound on how long a stalled peer can block a read.
+// CodecStallTimeout bounds how long a codec(compressed) stream may stay silent
+// AFTER it has delivered part of a codec block: that is the only situation
+// where the peer provably died mid-write and the decoder state is
+// unrecoverable. A stream that is merely idle - no bytes at all since the last
+// fully decoded block - is healthy and is never subject to this timeout, no
+// matter how long the silence lasts.
 //
-// It exists because the connection read timeout (see SetReadTimeout, 1s by
-// default) is a poll interval, not an idle timeout: session.handleTCPPackage
-// retries after every read timeout. A codec stream cannot be retried
-// (flate/snappy latch read errors forever), so arming rTimeout on it would tear
-// down every compressed connection that stays idle for one second. Hence codec
-// reads get this much wider deadline instead, and hitting it means the peer
-// really stalled mid-stream: the connection is declared broken.
+// The mechanics live in codecPollingReader: the connection read timeout (see
+// SetReadTimeout, 1s by default) is used as a poll interval underneath the
+// codec, and poll timeouts are absorbed there instead of reaching the
+// flate/snappy reader (which would latch any error forever). Only a
+// mid-block stall of at least CodecStallTimeout is surfaced to the codec,
+// which is what declares the connection broken.
 //
-// Keep it well above the read timeout and above the application heartbeat
-// period, otherwise idle compressed connections get killed. Set it to 0 to arm
-// no read deadline at all on codec streams (a stalled peer then blocks until
-// the session is closed). It is read once, when SetCompressType installs the
-// codec, so set it before creating connections.
+// Set it to 0 to disable stall detection (a peer that dies mid-block then
+// blocks the read until the session is closed). It is copied per connection
+// when SetCompressType installs the codec, so set it before creating
+// connections.
 var CodecStallTimeout = 5 * time.Minute
 
 // Connection wrap some connection params and operations
@@ -227,8 +229,11 @@ type gettyTCPConn struct {
 	// again would only produce more garbage on the wire.
 	codecBroken uatomic.Bool
 	// codecStallTimeout is the per-conn copy of CodecStallTimeout, taken when
-	// the codec is installed. 0 arms no read deadline on the codec stream.
+	// the codec is installed. 0 disables mid-block stall detection.
 	codecStallTimeout time.Duration
+	// pollReader is the deadline-owning reader installed between the codec and
+	// the raw conn by SetCompressType; nil on a raw connection.
+	pollReader *codecPollingReader
 }
 
 // create gettyTCPConn
@@ -371,10 +376,14 @@ func (t *gettyTCPConn) SetCompressType(c CompressType) {
 		log.Errorf("SetCompressType(%d) called after IO started on connection{local:%s, peer:%s}", c, t.local, t.peer)
 		panic("SetCompressType must be called before any recv/Send on the connection, e.g. in NewSessionCallback")
 	}
+	// The codec never reads the raw conn directly: codecPollingReader sits in
+	// between, owns the read deadlines and absorbs idle poll timeouts, so the
+	// error-latching flate/snappy readers only ever see a genuine mid-block
+	// stall (or a real IO error).
+	poller := &codecPollingReader{t: t}
 	switch c {
 	case CompressNone, CompressZip, CompressBestSpeed, CompressBestCompression, CompressHuffman:
-		ioReader := io.Reader(t.conn)
-		t.reader = flate.NewReader(ioReader)
+		t.reader = flate.NewReader(poller)
 
 		ioWriter := io.Writer(t.conn)
 		w, err := flate.NewWriter(ioWriter, int(c))
@@ -384,8 +393,7 @@ func (t *gettyTCPConn) SetCompressType(c CompressType) {
 		t.writer = &writeFlusher{flusher: w}
 
 	case CompressSnappy:
-		ioReader := io.Reader(t.conn)
-		t.reader = snappy.NewReader(ioReader)
+		t.reader = snappy.NewReader(poller)
 		ioWriter := io.Writer(t.conn)
 		// #102: wrap the buffered snappy writer so every Write is flushed,
 		// otherwise small packets never leave the internal buffer.
@@ -394,6 +402,7 @@ func (t *gettyTCPConn) SetCompressType(c CompressType) {
 	default:
 		panic(fmt.Sprintf("illegal comparess type %d", c))
 	}
+	t.pollReader = poller
 	// Both branches replaced reader/writer with a codec (CompressNone included,
 	// see the codecEnabled comment), so the conn is no longer raw: all IO must
 	// go through t.reader/t.writer, and a read/write error can no longer be
@@ -403,37 +412,104 @@ func (t *gettyTCPConn) SetCompressType(c CompressType) {
 	t.compress = c
 }
 
-// readDeadlineTimeout returns the deadline to arm before a read.
+// codecPollingReader is the io.Reader the codec (flate/snappy) reads from
+// instead of the raw conn. It exists because those decoders latch the first
+// error their source ever returns, so a plain read timeout must never reach
+// them - yet without timeouts a dead peer blocks the read goroutine forever.
 //
-// A raw conn uses rTimeout, whose timeouts session.handleTCPPackage simply
-// retries. A codec stream cannot be retried, so it gets CodecStallTimeout
-// instead - see that variable for why rTimeout is unusable here. The larger of
-// the two wins: raising rTimeout widens the codec bound, and lowering
-// CodecStallTimeout tightens it.
-func (t *gettyTCPConn) readDeadlineTimeout() time.Duration {
-	timeout := t.rTimeout.Load()
-	if !t.codecEnabled {
-		return timeout
+// The reader polls the conn with rTimeout deadlines (the same poll interval a
+// raw connection uses) and classifies each timeout:
+//   - no bytes seen since the last fully decoded block: the stream is idle,
+//     which is healthy; the timeout is absorbed and the poll continues.
+//   - partial codec data seen (progress) and silence for at least
+//     codecStallTimeout: the peer died mid-block, the decoder state is
+//     unrecoverable; the timeout is surfaced, latched by the codec and turned
+//     into ErrCodecStreamBroken by codecReadError.
+//
+// Known bound: if a block spans two recv calls and the tail silence starts
+// after the decoder buffered the partial remainder internally, no wrapper-level
+// progress exists and the stall is indistinguishable from idle; such a
+// connection lives until the session is closed instead of being broken early.
+//
+// All fields are only touched by the single read goroutine; session.stop()
+// interacts with it solely by arming a conn deadline (the wakeup is seen here
+// as a timeout and passed through once sessionClosing()/codecBroken is set).
+type codecPollingReader struct {
+	t *gettyTCPConn
+	// progress is true once raw bytes arrived after the last decode boundary
+	// (see boundary), i.e. the decoder may be holding part of a codec block.
+	progress bool
+	// lastByte is when the most recent raw byte arrived.
+	lastByte time.Time
+}
+
+// boundary is called by recv after the codec returned decoded output: the
+// stream is at a block boundary again, so subsequent silence is idleness, not
+// a stall.
+func (r *codecPollingReader) boundary() {
+	r.progress = false
+}
+
+func (r *codecPollingReader) Read(p []byte) (int, error) {
+	t := r.t
+	for {
+		if timeout := t.rTimeout.Load(); timeout > 0 {
+			// Set Deadline every time, since golang has fixed the performance issue
+			// See https://github.com/golang/go/issues/15133#issuecomment-271571395 for details
+			currentTime := time.Now()
+			if err := t.conn.SetReadDeadline(currentTime.Add(timeout)); err != nil {
+				return 0, err
+			}
+			t.rLastDeadline.Store(currentTime)
+		}
+
+		n, err := t.conn.Read(p)
+		if n > 0 {
+			r.progress = true
+			r.lastByte = time.Now()
+		}
+		if err == nil || !isTimeoutError(err) {
+			// real data or a real error: both keep their identity.
+			return n, err
+		}
+		if n > 0 {
+			// data arrived together with the deadline: deliver it and swallow
+			// the timeout, the codec will come back for more.
+			return n, nil
+		}
+		if t.codecBroken.Load() || t.sessionClosing() {
+			// shutdown wakeup (session.stop arms a deadline for exactly this),
+			// codecReadError passes it through as a plain timeout.
+			return 0, err
+		}
+		if stall := t.codecStallTimeout; r.progress && stall > 0 && time.Since(r.lastByte) >= stall {
+			// mid-block stall: surface the timeout, the codec latches it and
+			// codecReadError declares the stream broken.
+			return 0, err
+		}
+		// idle poll timeout: absorb and keep waiting.
 	}
-	if t.codecStallTimeout <= 0 {
-		// stall cap disabled: no deadline, the read blocks until data arrives
-		// or session.stop() arms a deadline to unblock it.
+}
+
+// readDeadlineTimeout returns the deadline recv arms before a read. Only a raw
+// conn needs one (session.handleTCPPackage retries its timeouts as a poll); on
+// a codec stream the deadlines are owned by codecPollingReader underneath the
+// decoder, so recv itself must not arm any.
+func (t *gettyTCPConn) readDeadlineTimeout() time.Duration {
+	if t.codecEnabled {
 		return 0
 	}
-	if timeout < t.codecStallTimeout {
-		return t.codecStallTimeout
-	}
-	return timeout
+	return t.rTimeout.Load()
 }
 
 // beginRecv/beginSend mark the stream as started and snapshot the codec state,
 // so the blocking IO below runs without the lock and cannot race with
 // SetCompressType.
-func (t *gettyTCPConn) beginRecv() (io.Reader, time.Duration) {
+func (t *gettyTCPConn) beginRecv() (io.Reader, *codecPollingReader, time.Duration) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 	t.streamStarted = true
-	return t.reader, t.readDeadlineTimeout()
+	return t.reader, t.pollReader, t.readDeadlineTimeout()
 }
 
 func (t *gettyTCPConn) beginSend() (io.Writer, bool) {
@@ -515,9 +591,10 @@ func (t *gettyTCPConn) recv(p []byte) (int, error) {
 		return 0, perrors.WithStack(ErrCodecStreamBroken)
 	}
 
-	reader, timeout := t.beginRecv()
+	reader, poller, timeout := t.beginRecv()
 
-	// set read timeout deadline
+	// set read timeout deadline (raw conn only; a codec stream's deadlines are
+	// owned by codecPollingReader, see readDeadlineTimeout)
 	if timeout > 0 {
 		// Set Deadline every time, since golang has fixed the performance issue
 		// See https://github.com/golang/go/issues/15133#issuecomment-271571395 for details
@@ -530,6 +607,11 @@ func (t *gettyTCPConn) recv(p []byte) (int, error) {
 	}
 
 	length, err = reader.Read(p)
+	if poller != nil && length > 0 && err == nil {
+		// decoded output was produced: the stream is at a block boundary,
+		// silence from here on is idleness rather than a mid-block stall.
+		poller.boundary()
+	}
 	t.readBytes.Add(uint32(length))
 	return length, t.codecReadError(err)
 }

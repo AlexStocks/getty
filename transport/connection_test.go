@@ -543,6 +543,70 @@ func TestCodecRecvIdleThenResume(t *testing.T) {
 	}
 }
 
+// TestCodecRecvIdleBeyondStallTimeoutStaysHealthy pins the stall/idle
+// distinction: CodecStallTimeout only applies to a stream that stalled in the
+// middle of a codec block. A connection that never received a byte, or that is
+// idle between fully decoded packets, must survive silence far beyond the
+// stall timeout and resume normally - previously any silence longer than the
+// timeout was misclassified as a broken stream and the socket was closed.
+func TestCodecRecvIdleBeyondStallTimeoutStaysHealthy(t *testing.T) {
+	for _, test := range codecStallCases {
+		t.Run(test.name, func(t *testing.T) {
+			client, server := newTCPConnPair(t)
+			client.SetReadTimeout(20 * time.Millisecond)
+			client.SetCompressType(test.compress)
+			client.codecStallTimeout = 100 * time.Millisecond
+			server.SetWriteTimeout(time.Second)
+			server.SetCompressType(test.compress)
+
+			payload := []byte("packet-after-long-idle")
+			expected := bytes.Repeat(payload, 2)
+			gotCh, errCh := startReceiver(client, len(expected), 8)
+
+			// silence with zero bytes ever received, 4x the stall timeout
+			const idle = 400 * time.Millisecond
+			select {
+			case err := <-errCh:
+				t.Fatalf("connection that never received a byte was killed after idling: %v", err)
+			case <-time.After(idle):
+			}
+			if client.codecBroken.Load() {
+				t.Fatal("never-used codec stream was latched as broken by pure idleness")
+			}
+			if _, err := server.Send(payload); err != nil {
+				t.Fatalf("peer Send after idle failed: %v", err)
+			}
+
+			// idle again between two fully decoded packets, then resume
+			select {
+			case err := <-errCh:
+				t.Fatalf("connection idling between packets was killed: %v", err)
+			case <-time.After(idle):
+			}
+			if client.codecBroken.Load() {
+				t.Fatal("codec stream idling between packets was latched as broken")
+			}
+			if _, err := server.Send(payload); err != nil {
+				t.Fatalf("peer Send after second idle failed: %v", err)
+			}
+
+			select {
+			case got := <-gotCh:
+				if !bytes.Equal(got, expected) {
+					t.Fatalf("decoded stream mismatch:\n got: %q\nwant: %q", got, expected)
+				}
+			case err := <-errCh:
+				t.Fatalf("peer failed to decode after idle periods: %v", err)
+			case <-time.After(10 * time.Second):
+				t.Fatal("timed out waiting for the decoded stream")
+			}
+			if client.codecBroken.Load() {
+				t.Fatal("healthy idle connection ended up latched as broken")
+			}
+		})
+	}
+}
+
 // TestRawConnRecvTimeoutStaysRetryable pins the other half of the contract: on a
 // raw connection a read timeout is still a benign, retryable net.Error - it is
 // the poll that lets session.handleTCPPackage notice a closed session.
