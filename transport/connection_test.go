@@ -895,3 +895,20 @@ func TestSetCompressTypeConcurrentWithSend(t *testing.T) {
 		t.Fatal("timed out waiting for the stream")
 	}
 }
+
+// TestUDPSetCompressTypeHasNoWireEffect pins the UDP contract: compression is
+// not supported, the call records the type (and warns) instead of silently
+// pretending or panicking under existing callers.
+func TestUDPSetCompressTypeHasNoWireEffect(t *testing.T) {
+	raw, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn := newGettyUDPConn(raw)
+	t.Cleanup(func() { conn.CloseConn(0) })
+
+	conn.SetCompressType(CompressSnappy)
+	if conn.compress != CompressSnappy {
+		t.Fatalf("compress = %d, want %d recorded", conn.compress, CompressSnappy)
+	}
+}

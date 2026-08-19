@@ -844,9 +844,8 @@ func (c UDPContext) String() string {
 
 type gettyUDPConn struct {
 	gettyConn
-	compressType CompressType
-	conn         *net.UDPConn // for server; immutable after construction, closed via closeOnce
-	closeOnce    sync.Once
+	conn      *net.UDPConn // for server; immutable after construction, closed via closeOnce
+	closeOnce sync.Once
 }
 
 // create gettyUDPConn
@@ -878,10 +877,19 @@ func newGettyUDPConn(conn *net.UDPConn) *gettyUDPConn {
 	}
 }
 
+// SetCompressType records the requested type but UDP send/recv never
+// compress: each datagram is an independent packet with no stream to run a
+// codec over, and this implementation never had one. Accepting the call
+// silently made callers believe compression was on, so any type other than
+// CompressNone is now loudly reported as unsupported (still accepted, not a
+// panic, to keep existing callers running).
 func (u *gettyUDPConn) SetCompressType(c CompressType) {
 	switch c {
 	case CompressNone, CompressZip, CompressBestSpeed, CompressBestCompression, CompressHuffman, CompressSnappy:
-		u.compressType = c
+		if c != CompressNone {
+			log.Warnf("UDP connection{local:%s, peer:%s} does not support compression, SetCompressType(%d) has no effect on the wire", u.local, u.peer, c)
+		}
+		u.compress = c
 
 	default:
 		panic(fmt.Sprintf("illegal comparess type %d", c))
