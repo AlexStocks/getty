@@ -1107,11 +1107,14 @@ func (w *gettyWSConn) Send(pkg any) (int, error) {
 	if err := w.updateWriteDeadline(); err != nil {
 		log.Warnf("failed to update write deadline: %+v", err)
 	}
-	if err = w.threadSafeWriteMessage(websocket.BinaryMessage, p); err == nil {
-		w.writeBytes.Add((uint32)(len(p)))
-		w.writePkgNum.Add(1)
+	// a failed WriteMessage delivers nothing (gorilla discards the frame), so
+	// report 0 written bytes: callers treat the count as the success count.
+	if err = w.threadSafeWriteMessage(websocket.BinaryMessage, p); err != nil {
+		return 0, perrors.WithStack(err)
 	}
-	return len(p), perrors.WithStack(err)
+	w.writeBytes.Add((uint32)(len(p)))
+	w.writePkgNum.Add(1)
+	return len(p), nil
 }
 
 func (w *gettyWSConn) writePing() error {
