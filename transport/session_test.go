@@ -501,3 +501,22 @@ func TestHandlePackageWithNilListenerDoesNotPanicOnError(t *testing.T) {
 
 	ss.handlePackage()
 }
+
+// Regression test for #122: promoted Connection methods must not panic after
+// the session has cleared its embedded Connection via gc().
+func TestSetMethodsAfterGCDoNotPanic(t *testing.T) {
+	c1, c2 := net.Pipe()
+	defer c1.Close()
+	defer c2.Close()
+
+	ss := newTCPSession(c1, newServer(TCP_SERVER)).(*session)
+	ss.gc()
+	if ss.Connection != nil {
+		t.Fatal("gc did not clear the session connection")
+	}
+
+	ss.SetReadTimeout(time.Second)
+	ss.SetWriteTimeout(time.Second)
+	ss.SetCompressType(CompressZip)
+	ss.CloseConn(0)
+}
