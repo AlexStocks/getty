@@ -1267,3 +1267,47 @@ func (s *session) SetSession(ss Session) {
 	}
 	s.lock.RUnlock()
 }
+
+func (s *session) SetReadTimeout(rTimeout time.Duration) {
+	if s == nil {
+		return
+	}
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	if s.Connection != nil {
+		s.Connection.SetReadTimeout(rTimeout)
+	}
+}
+
+func (s *session) SetWriteTimeout(wTimeout time.Duration) {
+	if s == nil {
+		return
+	}
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	if s.Connection != nil {
+		s.Connection.SetWriteTimeout(wTimeout)
+	}
+}
+
+func (s *session) SetCompressType(c CompressType) {
+	if s == nil {
+		return
+	}
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	if s.Connection != nil {
+		s.Connection.SetCompressType(c)
+	}
+}
+
+func (s *session) CloseConn(waitSec int) {
+	if s == nil {
+		return
+	}
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	if s.Connection != nil {
+		s.Connection.CloseConn(waitSec)
+	}
+}
