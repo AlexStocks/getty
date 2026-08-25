@@ -21,8 +21,8 @@ import (
 	"bytes"
 	"crypto/tls"
 	"errors"
+	"io"
 	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -250,13 +250,29 @@ func TestTCPClient(t *testing.T) {
 			return nil, err
 		}
 
-		go func() { _ = http.Serve(listener, nil) }()
+		// Read and discard everything the client sends. The peer must not
+		// interpret the bytes as HTTP: once the codec batch path is enabled,
+		// it receives deflate/snappy frames, and an HTTP server closes the
+		// connection mid-test, making the write accounting assertions flaky.
+		go func() {
+			for {
+				conn, err := listener.Accept()
+				if err != nil {
+					return
+				}
+				go func() {
+					defer func() { _ = conn.Close() }()
+					_, _ = io.Copy(io.Discard, conn)
+				}()
+			}
+		}()
 		return listener, nil
 	}
 
 	listener, err := listenLocalServer()
 	assert.Nil(t, err)
 	assert.NotNil(t, listener)
+	t.Cleanup(func() { _ = listener.Close() })
 
 	addr := listener.Addr().(*net.TCPAddr)
 	t.Logf("server addr: %v", addr)
@@ -285,7 +301,9 @@ func TestTCPClient(t *testing.T) {
 	assert.Nil(t, err)
 	active := ss.GetActive()
 	assert.NotNil(t, active)
-	ss.SetCompressType(CompressNone)
+	// the session read loop already started IO, so reconfiguring the codec
+	// mid-stream must be rejected (see SetCompressType)
+	assert.Panics(t, func() { ss.SetCompressType(CompressNone) })
 	conn := ss.(*session).Connection.(*gettyTCPConn)
 	assert.True(t, conn.compress == CompressNone)
 	beforeWriteBytes := conn.writeBytes
@@ -313,7 +331,7 @@ func TestTCPClient(t *testing.T) {
 	beforeWriteBytes.Add(10)
 	assert.Equal(t, beforeWritePkgNum, conn.writePkgNum)
 	assert.Equal(t, beforeWriteBytes, conn.writeBytes)
-	ss.SetCompressType(CompressSnappy)
+	assert.Panics(t, func() { ss.SetCompressType(CompressSnappy) })
 	var anotherPkgs [][]byte
 	anotherPkgs = append(anotherPkgs, []byte("hello"), []byte("hello"))
 	l, err = ss.WriteBytesArray(anotherPkgs...)
@@ -323,7 +341,7 @@ func TestTCPClient(t *testing.T) {
 	beforeWriteBytes.Add(10)
 	assert.Equal(t, beforeWritePkgNum, conn.writePkgNum)
 	assert.Equal(t, beforeWriteBytes, conn.writeBytes)
-	assert.True(t, conn.compress == CompressSnappy)
+	assert.True(t, conn.compress == CompressNone)
 
 	batchSize := 128 * 1023
 	source := make([]byte, batchSize)
@@ -485,7 +503,9 @@ func TestNewWSClient(t *testing.T) {
 
 	assert.Equal(t, 1, msgHandler.SessionNumber())
 	ss := msgHandler.array[0]
-	ss.SetCompressType(CompressNone)
+	// the session read loop already started IO, so reconfiguring compression
+	// mid-stream must be rejected, same contract as the TCP connection
+	assert.Panics(t, func() { ss.SetCompressType(CompressNone) })
 	conn := ss.(*session).Connection.(*gettyWSConn)
 	assert.True(t, conn.compress == CompressNone)
 	err := conn.handlePing("hello")
