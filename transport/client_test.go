@@ -184,6 +184,87 @@ func TestSessionReconnectIsTrackedByClose(t *testing.T) {
 	}
 }
 
+func TestTCPClientSetsReconnectAttributesBeforeRun(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.Nil(t, err)
+	assert.NotNil(t, listener)
+	defer func() {
+		_ = listener.Close()
+	}()
+
+	acceptedConn := make(chan net.Conn, 1)
+	acceptErr := make(chan error, 1)
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			acceptErr <- err
+			return
+		}
+		acceptedConn <- conn
+	}()
+
+	clt := NewTCPClient(
+		WithServerAddress(listener.Addr().String()),
+		WithConnectionNumber(1),
+	).(*client)
+	defer clt.Close()
+
+	attrState := make(chan string, 1)
+	handler := &attributeProbeMessageHandler{
+		MessageHandler: MessageHandler{},
+		attrState:      attrState,
+	}
+	clt.newSession = func(session Session) error {
+		var pkgHandler PackageHandler
+		session.SetName("reconnect-attribute-client-session")
+		session.SetPkgHandler(&pkgHandler)
+		session.SetEventListener(handler)
+		session.SetReadTimeout(time.Millisecond)
+		session.SetWriteTimeout(time.Millisecond)
+		session.SetWaitTime(time.Millisecond)
+
+		return nil
+	}
+
+	assert.True(t, clt.connect())
+
+	select {
+	case state := <-attrState:
+		assert.Equal(t, "set", state)
+	case <-time.After(time.Second):
+		t.Fatal("session OnOpen was not invoked")
+	}
+
+	select {
+	case conn := <-acceptedConn:
+		_ = conn.Close()
+	case err := <-acceptErr:
+		t.Fatalf("server accept failed: %+v", err)
+	case <-time.After(time.Second):
+		t.Fatal("server did not accept client connection")
+	}
+}
+
+// attributeProbeMessageHandler records whether the reconnect attributes are
+// already set when OnOpen runs. session.run() invokes OnOpen synchronously, so
+// observing them inside OnOpen proves they were set before run().
+type attributeProbeMessageHandler struct {
+	MessageHandler
+	attrState chan string
+}
+
+func (h *attributeProbeMessageHandler) OnOpen(session Session) error {
+	clt, cltFound := session.GetAttribute(sessionClientKey).(*client)
+	ignoreReconnect, flagFound := session.GetAttribute(ignoreReconnectKey).(bool)
+	if cltFound && flagFound && clt != nil && !ignoreReconnect {
+		h.attrState <- "set"
+	} else {
+		h.attrState <- "missing"
+	}
+
+	return nil
+}
+
 func (h *PackageHandler) Read(ss Session, data []byte) (any, int, error) {
 	return nil, 0, nil
 }
