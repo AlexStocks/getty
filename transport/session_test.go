@@ -506,8 +506,8 @@ func TestHandlePackageWithNilListenerDoesNotPanicOnError(t *testing.T) {
 // the session has cleared its embedded Connection via gc().
 func TestSetMethodsAfterGCDoNotPanic(t *testing.T) {
 	c1, c2 := net.Pipe()
-	defer c1.Close()
-	defer c2.Close()
+	defer func() { _ = c1.Close() }()
+	defer func() { _ = c2.Close() }()
 
 	ss := newTCPSession(c1, newServer(TCP_SERVER)).(*session)
 	ss.gc()
