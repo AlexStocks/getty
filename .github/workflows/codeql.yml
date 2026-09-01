@@ -33,7 +33,7 @@ jobs:
           persist-credentials: false
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@a2983b8bed1923f44751c5c43237f479442827b3 # v3
+        uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v3
         with:
           languages: go
           build-mode: autobuild
