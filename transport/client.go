@@ -405,6 +405,15 @@ func (c *client) connect() bool {
 			ss.Close()
 			return false
 		}
+		if ss.IsClosed() {
+			// Closed during run() (e.g. OnOpen called Close): its stop() has
+			// already triggered a reconnect pass, so keep the dead session out
+			// of the pool and report the connect as failed.
+			ss.RemoveAttribute(sessionClientKey)
+			ss.RemoveAttribute(ignoreReconnectKey)
+			c.Unlock()
+			return false
+		}
 		c.ssMap[ss] = struct{}{}
 		c.Unlock()
 		return true

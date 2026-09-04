@@ -265,6 +265,122 @@ func (h *attributeProbeMessageHandler) OnOpen(session Session) error {
 	return nil
 }
 
+// closeInOnOpenListener closes the first closeBudget sessions from OnOpen,
+// i.e. synchronously inside run() before connect() registers the session.
+type closeInOnOpenListener struct {
+	MessageHandler
+	closeBudget atomic.Int32
+}
+
+func (h *closeInOnOpenListener) OnOpen(session Session) error {
+	if h.closeBudget.Add(-1) >= 0 {
+		session.Close()
+	}
+	return nil
+}
+
+// TestTCPClientOnOpenCloseKeepsPoolAtConfiguredSize: sessions closed
+// synchronously in OnOpen must never land in ssMap, and the pool must settle
+// at exactly WithConnectionNumber live sessions.
+func TestTCPClientOnOpenCloseKeepsPoolAtConfiguredSize(t *testing.T) {
+	const (
+		wantPoolSize = 3
+		closeBurst   = 20
+	)
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.Nil(t, err)
+	assert.NotNil(t, listener)
+	t.Cleanup(func() { _ = listener.Close() })
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			go func() {
+				defer func() { _ = conn.Close() }()
+				_, _ = io.Copy(io.Discard, conn)
+			}()
+		}
+	}()
+
+	clt := NewTCPClient(
+		WithServerAddress(listener.Addr().String()),
+		WithConnectionNumber(wantPoolSize),
+		WithReconnectInterval(int(200*time.Millisecond)),
+		WithReconnectAttempts(50),
+	).(*client)
+
+	handler := &closeInOnOpenListener{}
+	handler.closeBudget.Store(closeBurst)
+	cb := func(session Session) error {
+		var pkgHandler PackageHandler
+		session.SetName("onopen-close-client-session")
+		session.SetPkgHandler(&pkgHandler)
+		session.SetEventListener(handler)
+		session.SetReadTimeout(20 * time.Millisecond)
+		session.SetWriteTimeout(20 * time.Millisecond)
+		session.SetWaitTime(20 * time.Millisecond)
+
+		return nil
+	}
+
+	runEventLoopDone := make(chan struct{})
+	go func() {
+		clt.RunEventLoop(cb)
+		close(runEventLoopDone)
+	}()
+	defer func() {
+		clt.Close()
+		select {
+		case <-runEventLoopDone:
+		case <-time.After(2 * time.Second):
+			t.Error("RunEventLoop did not return after Close")
+		}
+	}()
+
+	// Wait until the pool holds exactly wantPoolSize live sessions for 300ms.
+	deadline := time.Now().Add(5 * time.Second)
+	stable := 0
+	for {
+		clt.Lock()
+		total := len(clt.ssMap)
+		active := 0
+		for s := range clt.ssMap {
+			if !s.IsClosed() {
+				active++
+			}
+		}
+		clt.Unlock()
+		if total == wantPoolSize && active == wantPoolSize {
+			stable++
+			if stable >= 15 {
+				break
+			}
+		} else {
+			stable = 0
+			if time.Now().After(deadline) {
+				t.Fatalf("pool did not stabilize at %d live sessions: got %d sessions (%d live)", wantPoolSize, total, active)
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	assert.Equal(t, wantPoolSize, clt.sessionNum())
+	clt.Lock()
+	total := len(clt.ssMap)
+	closed := 0
+	for s := range clt.ssMap {
+		if s.IsClosed() {
+			closed++
+		}
+	}
+	clt.Unlock()
+	assert.Equal(t, wantPoolSize, total)
+	assert.Equal(t, 0, closed)
+}
+
 func (h *PackageHandler) Read(ss Session, data []byte) (any, int, error) {
 	return nil, 0, nil
 }
