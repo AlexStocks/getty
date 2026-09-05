@@ -77,9 +77,14 @@ type client struct {
 	newSession NewSessionCallback
 	ssMap      map[Session]struct{}
 
+	// reconnectDone is the running loop's completion channel (nil while idle);
+	// reconnectPending records triggers that arrived while a loop runs, to be
+	// served by it, keeping reconnect triggers single-flight.
+	reconnectDone    chan struct{}
+	reconnectPending bool
+
 	sync.Once
 	done chan struct{}
-	wg   sync.WaitGroup
 }
 
 func (c *client) init(opts ...ClientOption) {
@@ -372,38 +377,58 @@ func (c *client) sessionNum() int {
 	return num
 }
 
-func (c *client) connect() {
+func (c *client) connect() bool {
 	var (
 		err error
 		ss  Session
 	)
 
-	for {
-		ss = c.dial()
-		if ss == nil {
-			// client has been closed
-			break
-		}
-		err = c.newSession(ss)
-		if err == nil {
-			ss.(*session).run()
-			c.Lock()
-			if c.ssMap == nil {
-				c.Unlock()
-				break
-			}
-			c.ssMap[ss] = struct{}{}
-			c.Unlock()
-			ss.SetAttribute(sessionClientKey, c)
-			ss.SetAttribute(ignoreReconnectKey, false)
-			break
-		}
-		// don't distinguish between tcp connection and websocket connection. Because
-		// gorilla/websocket/conn.go:(Conn)Close also invoke net.Conn.Close()
-		if cerr := ss.Conn().Close(); cerr != nil {
-			log.Warnf("failed to close conn: %+v", cerr)
-		}
+	ss = c.dial()
+	if ss == nil {
+		// client has been closed
+		return false
 	}
+	err = c.newSession(ss)
+	if err == nil {
+		// Set the reconnect attributes before run(): session.stop() decides
+		// whether to reconnect from these attributes, so a connection that
+		// dies right after run() must already carry them, otherwise the
+		// reconnect is silently skipped and the pool stays short by one
+		// (AlexStocks/getty issue #121 defect 3).
+		ss.SetAttribute(sessionClientKey, c)
+		ss.SetAttribute(ignoreReconnectKey, false)
+		ss.(*session).run()
+		c.Lock()
+		if c.ssMap == nil {
+			// the pool is gone (client.stop() already ran): drop the reconnect
+			// attributes like client.stop() does, so closing this session does
+			// not trigger a reconnect, then close it to avoid leaking the
+			// already-started session (AlexStocks/getty issue #121 defect 1).
+			ss.RemoveAttribute(sessionClientKey)
+			ss.RemoveAttribute(ignoreReconnectKey)
+			c.Unlock()
+			ss.Close()
+			return false
+		}
+		if ss.IsClosed() {
+			// Closed during run() (e.g. OnOpen called Close): its stop() has
+			// already triggered a reconnect pass, so keep the dead session out
+			// of the pool and report the connect as failed.
+			ss.RemoveAttribute(sessionClientKey)
+			ss.RemoveAttribute(ignoreReconnectKey)
+			c.Unlock()
+			return false
+		}
+		c.ssMap[ss] = struct{}{}
+		c.Unlock()
+		return true
+	}
+	// don't distinguish between tcp connection and websocket connection. Because
+	// gorilla/websocket/conn.go:(Conn)Close also invoke net.Conn.Close()
+	if cerr := ss.Conn().Close(); cerr != nil {
+		log.Warnf("failed to close conn: %+v", cerr)
+	}
+	return false
 }
 
 // there are two methods to keep connection pool. the first approach is like
@@ -420,9 +445,10 @@ func (c *client) RunEventLoop(newSession NewSessionCallback) {
 	<-c.runReconnect()
 }
 
-// runReconnect starts a reconnect loop only while the client is open. The
-// client lock serializes WaitGroup.Add with stop, which prevents Add racing
-// with Close's Wait.
+// runReconnect triggers a reconnect pass and returns the channel of the loop
+// serving it; while a loop is active, further triggers are coalesced into it
+// (single-flight). After the client is closed the returned channel closes
+// immediately and no loop is started.
 func (c *client) runReconnect() <-chan struct{} {
 	done := make(chan struct{})
 	c.Lock()
@@ -432,14 +458,41 @@ func (c *client) runReconnect() <-chan struct{} {
 		close(done)
 		return done
 	default:
-		c.wg.Add(1)
 	}
+
+	if c.reconnectDone != nil {
+		c.reconnectPending = true
+		done = c.reconnectDone
+		c.Unlock()
+		return done
+	}
+
+	c.reconnectDone = done
+	c.reconnectPending = true
 	c.Unlock()
 
 	go func() {
-		defer c.wg.Done()
 		defer close(done)
-		c.reConnect()
+		for {
+			c.Lock()
+			select {
+			case <-c.done:
+				c.reconnectDone = nil
+				c.reconnectPending = false
+				c.Unlock()
+				return
+			default:
+			}
+			if !c.reconnectPending {
+				c.reconnectDone = nil
+				c.Unlock()
+				return
+			}
+			c.reconnectPending = false
+			c.Unlock()
+
+			c.reConnect()
+		}
 	}()
 	return done
 }
@@ -465,7 +518,10 @@ func (c *client) reConnect() {
 		if connPoolSize <= c.sessionNum() {
 			return
 		}
-		c.connect()
+		if c.connect() {
+			reconnectAttempts = 0
+			continue
+		}
 		reconnectAttempts++
 		if c.IsClosed() || connPoolSize <= c.sessionNum() || reconnectAttempts >= maxReconnectAttempts {
 			return
@@ -509,7 +565,10 @@ func (c *client) IsClosed() bool {
 	}
 }
 
+// Close stops the client without waiting for the reconnect loop, which exits
+// on its own once it observes the closed done channel. Waiting would deadlock
+// whenever Close is invoked from inside a reconnect pass (NewSessionCallback
+// runs there).
 func (c *client) Close() {
 	c.stop()
-	c.wg.Wait()
 }
