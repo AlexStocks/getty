@@ -312,7 +312,11 @@ func TestReconnectTriggerDuringBackoffIsCoalesced(t *testing.T) {
 		entered: make(chan struct{}, 2),
 		exited:  make(chan struct{}, 2),
 	}
-	clt := newFailingReconnectClient(builder, 200*time.Millisecond, 2)
+	// The second attempt fires only after one full backoff interval, so keep
+	// that interval far above the 50ms assertion window below: on a loaded
+	// CI machine scheduling delays must not be able to start attempt 2 inside
+	// the window. Close() below cancels the backoff, so the test stays fast.
+	clt := newFailingReconnectClient(builder, 2*time.Second, 2)
 	firstDone := clt.runReconnect()
 
 	select {
@@ -657,7 +661,6 @@ func TestTCPClientOnOpenCloseKeepsPoolAtConfiguredSize(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 
-	assert.Equal(t, wantPoolSize, clt.sessionNum())
 	clt.Lock()
 	total := len(clt.ssMap)
 	closed := 0
@@ -667,8 +670,11 @@ func TestTCPClientOnOpenCloseKeepsPoolAtConfiguredSize(t *testing.T) {
 		}
 	}
 	clt.Unlock()
+	// Inspect ssMap before calling sessionNum(): it prunes closed sessions
+	// from the map, which would otherwise hide them from the closed count.
 	assert.Equal(t, wantPoolSize, total)
 	assert.Equal(t, 0, closed)
+	assert.Equal(t, wantPoolSize, clt.sessionNum())
 }
 
 func (h *PackageHandler) Read(ss Session, data []byte) (any, int, error) {
