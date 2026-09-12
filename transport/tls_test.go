@@ -127,3 +127,80 @@ func TestClientTLSConfigBuilderRejectsInvalidTrustCollection(t *testing.T) {
 		t.Fatal("config must be nil when BuildTlsConfig fails")
 	}
 }
+
+// writeServerTLSFixtures lays out a server key pair plus a trust collection and
+// returns their paths.
+func writeServerTLSFixtures(t *testing.T) (certPath, keyPath, caPath string) {
+	t.Helper()
+
+	tempDir := t.TempDir()
+	certPath = filepath.Join(tempDir, "server.crt")
+	keyPath = filepath.Join(tempDir, "server.key")
+	caPath = filepath.Join(tempDir, "ca.crt")
+	for path, data := range map[string][]byte{
+		certPath: WssServerCRT,
+		keyPath:  WssServerKEY,
+		caPath:   tlsTestRootCertificate,
+	} {
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return certPath, keyPath, caPath
+}
+
+// Regression test for #127: with a trust collection configured the server asked
+// for a client certificate but never verified it (RequireAnyClientCert), so
+// ServerTrustCertCollectionPath was dead configuration - any self-signed
+// certificate completed the handshake and an operator who thought mTLS was on
+// had none.
+func TestServerTLSConfigBuilderVerifiesClientCertificate(t *testing.T) {
+	certPath, keyPath, caPath := writeServerTLSFixtures(t)
+
+	config, err := (&ServerTlsConfigBuilder{
+		ServerKeyCertChainPath:        certPath,
+		ServerPrivateKeyPath:          keyPath,
+		ServerTrustCertCollectionPath: caPath,
+	}).BuildTlsConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if config.ClientAuth != tls.RequireAndVerifyClientCert {
+		t.Fatalf("ClientAuth = %v, want RequireAndVerifyClientCert: ClientCAs is not consulted otherwise", config.ClientAuth)
+	}
+	if config.InsecureSkipVerify {
+		t.Fatal("InsecureSkipVerify is true on a config that must verify clients")
+	}
+	if config.MinVersion != tls.VersionTLS12 {
+		t.Fatalf("MinVersion = %d, want TLS 1.2 (%d)", config.MinVersion, tls.VersionTLS12)
+	}
+	expectedClientCAs := x509.NewCertPool()
+	if !expectedClientCAs.AppendCertsFromPEM(tlsTestRootCertificate) {
+		t.Fatal("failed to parse the expected trust collection")
+	}
+	if config.ClientCAs == nil || !config.ClientCAs.Equal(expectedClientCAs) {
+		t.Fatal("ClientCAs does not contain the configured trust certificate")
+	}
+}
+
+// Without a trust collection the server can only require that a client presents
+// some certificate, but the protocol floor still applies.
+func TestServerTLSConfigBuilderWithoutTrustCollection(t *testing.T) {
+	certPath, keyPath, _ := writeServerTLSFixtures(t)
+
+	config, err := (&ServerTlsConfigBuilder{
+		ServerKeyCertChainPath: certPath,
+		ServerPrivateKeyPath:   keyPath,
+	}).BuildTlsConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if config.ClientAuth != tls.RequireAnyClientCert {
+		t.Fatalf("ClientAuth = %v, want RequireAnyClientCert when no trust collection is configured", config.ClientAuth)
+	}
+	if config.MinVersion != tls.VersionTLS12 {
+		t.Fatalf("MinVersion = %d, want TLS 1.2 (%d)", config.MinVersion, tls.VersionTLS12)
+	}
+}

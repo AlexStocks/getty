@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -1328,4 +1329,27 @@ func TestWSClientReadLimitFollowsSetMaxMsgLen(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("no echo for a payload above the 4KB default: the client read limit did not follow SetMaxMsgLen")
 	}
+}
+
+// Regression test for #125: newClient only validated number/addr, so
+// sslEnabled without a tlsConfigBuilder reached dialTCP, which runs inside the
+// reconnect goroutine - a nil-pointer panic there is unrecoverable and appears
+// as an unrelated crash. The combination is now rejected synchronously, with a
+// message naming the missing option.
+func TestNewClientSSLRequiresTLSConfigBuilder(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("NewTCPClient(sslEnabled, no tlsConfigBuilder) did not panic")
+		}
+		if !strings.Contains(fmt.Sprint(r), "tlsConfigBuilder") {
+			t.Fatalf("panic value %v does not name the missing option", r)
+		}
+	}()
+
+	NewTCPClient(
+		WithServerAddress("127.0.0.1:1"),
+		WithConnectionNumber(1),
+		WithClientSslEnabled(true),
+	)
 }

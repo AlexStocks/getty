@@ -315,6 +315,11 @@ func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 	}
 	if gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 		log.Warnf("conn.localAddr{%s} == conn.RemoteAddr{%s}", conn.LocalAddr().String(), conn.RemoteAddr().String())
+		// #123: the connection was accepted, so it owns a descriptor. Returning
+		// without closing it leaks that fd until the process exits, because the
+		// caller just keeps accepting. The client side already closes before it
+		// reports errSelfConnect.
+		_ = conn.Close()
 		return nil, perrors.WithStack(errSelfConnect)
 	}
 
@@ -384,8 +389,12 @@ func (s *server) runUDPEventLoop(newSession NewSessionCallback) {
 		conn = s.pktListener.(*net.UDPConn)
 		ss = newUDPSession(conn, s)
 		if err = newSession(ss); err != nil {
+			// #125: this runs in a goroutine the library started, so a panic here
+			// is unrecoverable and takes the whole process down over a caller
+			// error. The TCP accept path logs and keeps serving; do the same.
+			log.Errorf("server{%s}.newSession(ss{%#v}) = err {%s}", s.addr, ss, perrors.WithStack(err))
 			_ = conn.Close()
-			panic(err.Error())
+			return
 		}
 		ss.(*session).run()
 	}()
