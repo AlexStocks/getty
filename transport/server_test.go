@@ -30,6 +30,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -473,4 +474,54 @@ func (c *selfConnectConn) SetReadDeadline(time.Time) error {
 
 func (c *selfConnectConn) SetWriteDeadline(time.Time) error {
 	return nil
+}
+
+// persistentAcceptError mimics a lasting accept failure that is not a timeout,
+// such as EMFILE/ENFILE when the process runs out of file descriptors.
+type persistentAcceptError struct{}
+
+func (persistentAcceptError) Error() string   { return "accept: too many open files" }
+func (persistentAcceptError) Timeout() bool   { return false }
+func (persistentAcceptError) Temporary() bool { return true }
+
+// errorAcceptListener is a net.Listener whose Accept always fails with a
+// non-timeout error, and which counts its calls.
+type errorAcceptListener struct {
+	calls atomic.Int32
+}
+
+func (l *errorAcceptListener) Accept() (net.Conn, error) {
+	l.calls.Add(1)
+	return nil, persistentAcceptError{}
+}
+
+func (l *errorAcceptListener) Close() error { return nil }
+
+func (l *errorAcceptListener) Addr() net.Addr {
+	return &net.TCPAddr{IP: net.IPv4zero, Port: 0}
+}
+
+// TestTCPAcceptBacksOffOnPersistentError is the regression test for #130
+// defect 1. Accept errors other than a timeout used to take the
+// log-and-continue branch, which left delay at 0, so Accept was re-issued at
+// full speed - spinning the CPU and flooding the log exactly while the process
+// was out of resources. Because gxtime.After's timer wheel is coarse, the test
+// counts how many Accept calls a fixed window allows instead of measuring one
+// interval: a loop that backs off can only issue a handful of calls in 300ms
+// (the first delay is 5ms and doubles from there), while a spinning one re-calls
+// Accept as fast as the CPU and the logger allow.
+func TestTCPAcceptBacksOffOnPersistentError(t *testing.T) {
+	srv := newServer(TCP_SERVER, WithLocalAddress("127.0.0.1:0"))
+	listener := &errorAcceptListener{}
+	srv.streamListener = listener
+	srv.runTCPEventLoop(func(Session) error { return nil })
+	defer srv.Close()
+
+	time.Sleep(300 * time.Millisecond)
+	calls := int(listener.calls.Load())
+	srv.Close()
+
+	assert.GreaterOrEqual(t, calls, 2, "the accept loop stopped retrying")
+	assert.LessOrEqual(t, calls, 50,
+		"the accept loop made %d Accept calls in 300ms: a persistent non-timeout error is not backed off", calls)
 }

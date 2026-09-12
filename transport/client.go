@@ -216,7 +216,14 @@ func (c *client) dialUDP() Session {
 	defer gxbytes.PutBytes(bufp)
 	buf = *bufp
 	localAddr = &net.UDPAddr{IP: net.IPv4zero, Port: 0}
-	peerAddr, _ = net.ResolveUDPAddr("udp", c.addr)
+	peerAddr, err = net.ResolveUDPAddr("udp", c.addr)
+	if err != nil {
+		// #130: do not swallow the resolution error. Passing a nil peerAddr to
+		// DialUDP reports a misleading "missing address" instead, leaving the real
+		// cause (a malformed or unresolvable server address) invisible forever.
+		log.Warnf("net.ResolveUDPAddr(udp, addr:%s) = error:%+v", c.addr, perrors.WithStack(err))
+		return nil
+	}
 	conn, err = net.DialUDP("udp", localAddr, peerAddr)
 	if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 		_ = conn.Close()
@@ -417,6 +424,28 @@ func (c *client) connect() bool {
 			ss.RemoveAttribute(sessionClientKey)
 			ss.RemoveAttribute(ignoreReconnectKey)
 			c.Unlock()
+			return false
+		}
+		// #130: re-check the pool capacity inside the very critical section that
+		// admits the session. reConnect()'s own size check and this insert live in
+		// different critical sections, and every session close triggers another
+		// reconnect pass, so two passes could both get here and push the pool above
+		// WithConnectionNumber permanently (sessionNum only prunes closed sessions).
+		// Closed sessions are pruned first so the pool is counted exactly the way
+		// sessionNum() counts it.
+		for sess := range c.ssMap {
+			if sess.IsClosed() {
+				delete(c.ssMap, sess)
+			}
+		}
+		if c.number <= len(c.ssMap) {
+			// Reject the surplus session like the other loss paths do: drop the
+			// reconnect attributes so its close does not trigger yet another pass,
+			// then close it (outside the lock) to avoid leaking a live session.
+			ss.RemoveAttribute(sessionClientKey)
+			ss.RemoveAttribute(ignoreReconnectKey)
+			c.Unlock()
+			ss.Close()
 			return false
 		}
 		c.ssMap[ss] = struct{}{}
