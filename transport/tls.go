@@ -63,6 +63,9 @@ func (s *ServerTlsConfigBuilder) BuildTlsConfig() (*tls.Config, error) {
 		InsecureSkipVerify: true, // do not verify peer certs
 		ClientAuth:         tls.RequireAnyClientCert,
 		Certificates:       []tls.Certificate{certificate},
+		// #127: without this the server accepted TLS 1.0/1.1, while the client
+		// builder has set VersionTLS12 all along.
+		MinVersion: tls.VersionTLS12,
 	}
 
 	if s.ServerTrustCertCollectionPath != "" {
@@ -80,7 +83,12 @@ func (s *ServerTlsConfigBuilder) BuildTlsConfig() (*tls.Config, error) {
 			return nil, fmt.Errorf("failed to parse root certificate file: %s", s.ServerTrustCertCollectionPath)
 		}
 		config.ClientCAs = certPool
-		config.ClientAuth = tls.RequireAnyClientCert
+		// #127: RequireAnyClientCert demands a certificate but verifies nothing,
+		// so ClientCAs was dead configuration: any self-signed certificate
+		// completed the handshake and an operator who configured a trust
+		// collection still had no mTLS. Verify against it, the way the WSS
+		// server path already does.
+		config.ClientAuth = tls.RequireAndVerifyClientCert
 		config.InsecureSkipVerify = false
 	}
 	return config, nil

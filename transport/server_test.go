@@ -474,3 +474,50 @@ func (c *selfConnectConn) SetReadDeadline(time.Time) error {
 func (c *selfConnectConn) SetWriteDeadline(time.Time) error {
 	return nil
 }
+
+// singleAcceptListener hands out one already-built connection, so accept() can
+// be driven without a real listener.
+type singleAcceptListener struct{ conn net.Conn }
+
+func (l *singleAcceptListener) Accept() (net.Conn, error) { return l.conn, nil }
+func (*singleAcceptListener) Close() error                { return nil }
+func (*singleAcceptListener) Addr() net.Addr              { return &net.TCPAddr{} }
+
+// Regression test for #123: accept() logged the self-connect and returned
+// without closing the connection it had just accepted. The accept loop simply
+// continues, so that descriptor leaked for the life of the process.
+func TestAcceptClosesSelfConnect(t *testing.T) {
+	// one addr for both directions is what makes it a self-connect
+	conn := &selfConnectConn{addr: &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 65000}}
+	srv := newServer(TCP_SERVER)
+	srv.streamListener = &singleAcceptListener{conn: conn}
+
+	ss, err := srv.accept(func(Session) error { return nil })
+	if !errors.Is(err, errSelfConnect) {
+		t.Fatalf("accept() error = %v, want %v", err, errSelfConnect)
+	}
+	if ss != nil {
+		t.Fatalf("accept() returned session %v for a self-connect", ss)
+	}
+	if !conn.closed {
+		t.Fatal("accept() left the self-connect connection open: the fd is leaked")
+	}
+}
+
+// Regression test for #125: a udp endpoint's newSession callback returning an
+// error used to panic inside the goroutine RunEventLoop spawned, and a panic
+// there cannot be recovered by any caller - a transient error in a user callback
+// killed the process. It now logs and stops serving, like the tcp accept path.
+func TestUDPNewSessionErrorDoesNotPanic(t *testing.T) {
+	srv := NewUDPEndPoint(WithLocalAddress("127.0.0.1:0"))
+	srv.RunEventLoop(func(Session) error { return errors.New("callback failed") })
+
+	// Close waits for the session goroutine (s.wg), so reaching the end of this
+	// test means it did not panic. Before the fix it panicked here and took the
+	// whole test binary down.
+	srv.Close()
+
+	if !srv.IsClosed() {
+		t.Fatal("udp endpoint does not report itself closed")
+	}
+}
