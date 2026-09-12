@@ -118,6 +118,27 @@ func SetLoggerLevel(level LoggerLevel) error {
 	return nil
 }
 
+// IsDebugEnabled reports whether debug records are currently written.
+//
+// A caller on a hot path uses it to skip building log arguments: variadic
+// ...any arguments are boxed at the call site, so a Debugf that the level
+// discards still costs an allocation per call. gettyTCPConn.Send logs every
+// write, which made that a per-packet cost.
+//
+// It reports the level configured through SetLoggerLevel. A logger installed
+// with SetLogger is opaque here - it does not report its level - so this returns
+// the level of the built-in logger in that case.
+func IsDebugEnabled() bool {
+	return zapLoggerConfig.Level.Enabled(zapcore.DebugLevel)
+}
+
+// GetLoggerLevel returns the level configured through SetLoggerLevel, so a
+// caller can restore it exactly. Like IsDebugEnabled it describes the built-in
+// logger; a logger installed with SetLogger does not report its own level here.
+func GetLoggerLevel() LoggerLevel {
+	return LoggerLevel(zapLoggerConfig.Level.Level())
+}
+
 // SetLoggerCallerDisable disable caller info in production env for performance improve.
 // It is highly recommended that you execute this method in a production environment.
 func SetLoggerCallerDisable() error {

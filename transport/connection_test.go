@@ -25,6 +25,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -33,6 +34,10 @@ import (
 	"github.com/golang/snappy"
 
 	perrors "github.com/pkg/errors"
+)
+
+import (
+	gettylog "github.com/AlexStocks/getty/util"
 )
 
 type blockingSnappyWriter struct {
@@ -1040,5 +1045,63 @@ func TestCodecSendStallDetectionOutrunsLongPollInterval(t *testing.T) {
 			}
 			assertCodecStreamBroken(t, err)
 		})
+	}
+}
+
+// debugCountingLogger counts the debug calls getty passes to it.
+type debugCountingLogger struct{ debugfCalls int32 }
+
+func (*debugCountingLogger) Info(...any)           {}
+func (*debugCountingLogger) Warn(...any)           {}
+func (*debugCountingLogger) Error(...any)          {}
+func (*debugCountingLogger) Debug(...any)          {}
+func (*debugCountingLogger) Infof(string, ...any)  {}
+func (*debugCountingLogger) Warnf(string, ...any)  {}
+func (*debugCountingLogger) Errorf(string, ...any) {}
+
+func (l *debugCountingLogger) Debugf(string, ...any) {
+	atomic.AddInt32(&l.debugfCalls, 1)
+}
+
+// TestConnectionSendSkipsDebugLoggingWhenDisabled pins the per-write cost of the
+// debug log. Send logs every write with `...any` arguments, and those are boxed
+// at the call site, so a Debugf that the level discards still cost one
+// allocation (the []any backing array) per write - measured on the benchmarks in
+// ./benchmark as 112 B/op -> 48 B/op and about 7.5% of the tcp write path.
+//
+// The contract asserted here is the observable one: with debug disabled, getty
+// must not build the log record at all.
+func TestConnectionSendSkipsDebugLoggingWhenDisabled(t *testing.T) {
+	previousLogger := gettylog.GetLogger()
+	previousLevel := gettylog.GetLoggerLevel()
+
+	// level first: SetLoggerLevel installs the built-in sugared logger, so the
+	// recorder has to be installed after it
+	if err := gettylog.SetLoggerLevel(gettylog.LoggerLevelWarn); err != nil {
+		t.Fatal(err)
+	}
+	recorder := &debugCountingLogger{}
+	gettylog.SetLogger(recorder)
+
+	t.Cleanup(func() {
+		// same order on the way out: the level restores the built-in logger, and
+		// the saved logger goes back last, so both are exactly what they were
+		if err := gettylog.SetLoggerLevel(previousLevel); err != nil {
+			t.Error(err)
+		}
+		gettylog.SetLogger(previousLogger)
+	})
+
+	if gettylog.IsDebugEnabled() {
+		t.Fatal("debug is still enabled; this test needs it off")
+	}
+
+	conn := newGettyTCPConn(&timeoutAccessorNetConn{})
+	if _, err := conn.Send([]byte("payload")); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := atomic.LoadInt32(&recorder.debugfCalls); got != 0 {
+		t.Fatalf("Send built %d debug records with debug disabled, want 0: the ...any arguments are boxed before the level is consulted, which cost one allocation per write", got)
 	}
 }

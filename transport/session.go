@@ -1003,7 +1003,9 @@ func (s *session) handleUDPPackage() error {
 	for !s.IsClosed() {
 
 		bufLen, addr, err = conn.recv(buf)
-		log.Debugf("conn.read() = bufLen:%d, addr:%#v, err:%+v", bufLen, addr, perrors.WithStack(err))
+		if log.IsDebugEnabled() {
+			log.Debugf("conn.read() = bufLen:%d, addr:%#v, err:%+v", bufLen, addr, perrors.WithStack(err))
+		}
 		if netError, ok = perrors.Cause(err).(net.Error); ok && netError.Timeout() {
 			continue
 		}
@@ -1025,7 +1027,9 @@ func (s *session) handleUDPPackage() error {
 		}
 
 		pkg, pkgLen, err = s.reader.Read(s, buf[:bufLen])
-		log.Debugf("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%+v", pkg, pkgLen, perrors.WithStack(err))
+		if log.IsDebugEnabled() {
+			log.Debugf("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%+v", pkg, pkgLen, perrors.WithStack(err))
+		}
 		if err == nil && s.maxMsgLen > 0 && bufLen > int(s.maxMsgLen) {
 			err = perrors.Errorf("Message Too Long, bufLen %d, session max message len %d", bufLen, s.maxMsgLen)
 		}
