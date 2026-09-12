@@ -852,8 +852,10 @@ func (t *gettyTCPConn) Send(pkg any) (int, error) {
 			t.writeBytes.Add((uint32)(lg))
 			t.writePkgNum.Add((uint32)(len(buffers)))
 		}
-		log.Debugf("localAddr: %s, remoteAddr:%s, length:%d, err:%v",
-			t.conn.LocalAddr(), t.conn.RemoteAddr(), lg, err)
+		if log.IsDebugEnabled() {
+			log.Debugf("localAddr: %s, remoteAddr:%s, length:%d, err:%v",
+				t.conn.LocalAddr(), t.conn.RemoteAddr(), lg, err)
+		}
 		return int(lg), t.codecIOError(err)
 	}
 
@@ -863,8 +865,10 @@ func (t *gettyTCPConn) Send(pkg any) (int, error) {
 			t.writeBytes.Add((uint32)(len(p)))
 			t.writePkgNum.Add(1)
 		}
-		log.Debugf("localAddr: %s, remoteAddr:%s, length:%d, err:%v",
-			t.conn.LocalAddr(), t.conn.RemoteAddr(), length, err)
+		if log.IsDebugEnabled() {
+			log.Debugf("localAddr: %s, remoteAddr:%s, length:%d, err:%v",
+				t.conn.LocalAddr(), t.conn.RemoteAddr(), length, err)
+		}
 		return length, t.codecIOError(err)
 	}
 
@@ -991,7 +995,9 @@ func (u *gettyUDPConn) recv(p []byte) (int, *net.UDPAddr, error) {
 	}
 
 	length, addr, err := u.conn.ReadFromUDP(p) // connected udp also can get return @addr
-	log.Debugf("ReadFromUDP(p:%d) = {length:%d, peerAddr:%s, error:%v}", len(p), length, addr, err)
+	if log.IsDebugEnabled() {
+		log.Debugf("ReadFromUDP(p:%d) = {length:%d, peerAddr:%s, error:%v}", len(p), length, addr, err)
+	}
 	if err == nil {
 		u.readBytes.Add(uint32(length))
 	}
@@ -1038,7 +1044,9 @@ func (u *gettyUDPConn) Send(udpCtx any) (int, error) {
 		u.writeBytes.Add((uint32)(len(buf)))
 		u.writePkgNum.Add(1)
 	}
-	log.Debugf("WriteMsgUDP(peerAddr:%s) = {length:%d, error:%v}", peerAddr, length, err)
+	if log.IsDebugEnabled() {
+		log.Debugf("WriteMsgUDP(peerAddr:%s) = {length:%d, error:%v}", peerAddr, length, err)
+	}
 
 	return length, perrors.WithStack(err)
 }
