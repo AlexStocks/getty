@@ -106,10 +106,19 @@ func GetLogger() Logger {
 	return log
 }
 
-// SetLoggerLevel set logger level
+// SetLoggerLevel set logger level.
+//
+// It rebuilds and installs the built-in sugared logger, so a logger previously
+// installed with SetLogger is replaced - the level of a custom logger cannot be
+// set through here.
 func SetLoggerLevel(level LoggerLevel) error {
 	var err error
-	zapLoggerConfig.Level = zap.NewAtomicLevelAt(zapcore.Level(level))
+	// Mutate the existing AtomicLevel instead of assigning a new one: the field
+	// is read by IsDebugEnabled/GetLoggerLevel from other goroutines (both sit
+	// on the per-connection paths), and replacing it would race with those reads.
+	// AtomicLevel exists to be updated in place; Build() still has to run to
+	// rebuild the logger the new level applies to.
+	zapLoggerConfig.Level.SetLevel(zapcore.Level(level))
 	zapLogger, err = zapLoggerConfig.Build()
 	if err != nil {
 		return err
