@@ -41,7 +41,7 @@ test: clean
 	GOTOOLCHAIN=go1.25.0+auto go test ./... -count=1 -coverprofile=coverage.txt -covermode=atomic
 
 test-race:
-	GOTOOLCHAIN=go1.25.0+auto go test -race ./transport -count=1
+	GOTOOLCHAIN=go1.25.0+auto go test -race ./transport ./util -count=1
 
 # Benchmarks live in ./benchmark and are deliberately not part of the CI gate:
 # they talk to a real loopback socket, so their absolute numbers move with the
