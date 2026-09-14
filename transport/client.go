@@ -273,6 +273,13 @@ func (c *client) dialWS() Session {
 		return nil
 	}
 	dialer.EnableCompression = true
+	// #125: a zero-value websocket.Dialer derives no deadline of its own, so a
+	// peer that completes the tcp handshake and then stops answering - a hung
+	// load balancer, a half-dead process - left the dial blocked forever: the
+	// reconnect loop could not back off, RunEventLoop never returned and Close()
+	// could not interrupt it. Bound the upgrade handshake like dialTCP bounds
+	// the tcp dial.
+	dialer.HandshakeTimeout = connectTimeout
 	conn, _, err = dialer.Dial(c.addr, nil)
 	if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 		_ = conn.Close()
@@ -328,6 +335,10 @@ func (c *client) dialWSS() Session {
 	}
 
 	dialer.TLSClientConfig = config
+	// #125: same as dialWS - without HandshakeTimeout the upgrade response (and
+	// the tls handshake that precedes it) has no deadline, so this dial can hang
+	// past Close().
+	dialer.HandshakeTimeout = connectTimeout
 	conn, _, err = dialer.Dial(c.addr, nil)
 	if err == nil && gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 		_ = conn.Close()
@@ -401,7 +412,7 @@ func (c *client) connect() bool {
 		// client has been closed
 		return false
 	}
-	err = c.newSession(ss)
+	err = callNewSession(c.newSession, ss)
 	if err == nil {
 		// NewSessionCallback is the documented place to ask for a bigger
 		// maxMsgLen, and gorilla's read limit can only change before the first
