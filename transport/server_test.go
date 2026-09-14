@@ -24,6 +24,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -520,4 +521,122 @@ func TestUDPNewSessionErrorDoesNotPanic(t *testing.T) {
 	if !srv.IsClosed() {
 		t.Fatal("udp endpoint does not report itself closed")
 	}
+}
+
+// TestServerSSLRequiresTLSConfigBuilder mirrors the client-side check added for
+// #125: a server built with sslEnabled and no tlsConfigBuilder reached a nil
+// interface method call inside listenTCP, so a configuration mistake surfaced as
+// a segfault raised from the event loop instead of as a message naming the
+// missing option.
+func TestServerSSLRequiresTLSConfigBuilder(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("NewTCPServer(sslEnabled, no tlsConfigBuilder) did not panic")
+		}
+		if !strings.Contains(fmt.Sprint(r), "tlsConfigBuilder") {
+			t.Fatalf("panic value %v does not name the missing option", r)
+		}
+	}()
+
+	NewTCPServer(
+		WithLocalAddress("127.0.0.1:1"),
+		WithServerSslEnabled(true),
+	)
+}
+
+// callbackProbeReadWriter and callbackProbeListener are the minimum a session
+// needs to run: session.run() refuses to start without a package handler and an
+// event listener.
+type callbackProbeReadWriter struct{}
+
+func (callbackProbeReadWriter) Read(Session, []byte) (any, int, error) { return nil, 0, nil }
+func (callbackProbeReadWriter) Write(Session, any) ([]byte, error)     { return []byte{}, nil }
+
+type callbackProbeListener struct{ panicOnOpen bool }
+
+func (l callbackProbeListener) OnOpen(Session) error {
+	if l.panicOnOpen {
+		panic("OnOpen blew up")
+	}
+	return nil
+}
+func (callbackProbeListener) OnClose(Session)        {}
+func (callbackProbeListener) OnError(Session, error) {}
+func (callbackProbeListener) OnCron(Session)         {}
+func (callbackProbeListener) OnMessage(Session, any) {}
+
+// TestUserCallbackPanicsAreContained: both user callbacks run on a goroutine this
+// library started, where nothing recovers a panic, so before the fix either one
+// took the whole process down - while the same callback on a ws server only
+// dropped its own connection. Each panic now closes the connection it belongs to
+// and the accept loop keeps serving.
+func TestUserCallbackPanicsAreContained(t *testing.T) {
+	srv := newServer(TCP_SERVER, WithLocalAddress("127.0.0.1:0"))
+	calls := 0
+	srv.RunEventLoop(func(ss Session) error {
+		// the accept loop calls this serially, so no synchronisation is needed
+		calls++
+		switch calls {
+		case 1:
+			panic("newSession callback blew up")
+		case 2:
+			ss.SetPkgHandler(callbackProbeReadWriter{})
+			ss.SetEventListener(callbackProbeListener{panicOnOpen: true})
+		default:
+			ss.SetPkgHandler(callbackProbeReadWriter{})
+			ss.SetEventListener(callbackProbeListener{})
+		}
+
+		return nil
+	})
+	defer srv.Close()
+	addr := srv.Listener().Addr().String()
+
+	conn1, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	if err != nil {
+		t.Fatalf("dial %s: %v", addr, err)
+	}
+	defer func() { _ = conn1.Close() }()
+	assertPeerClosed(t, conn1, "a panic in NewSessionCallback")
+
+	conn2, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	if err != nil {
+		t.Fatalf("dial %s after the callback panic: %v", addr, err)
+	}
+	defer func() { _ = conn2.Close() }()
+	assertPeerClosed(t, conn2, "a panic in OnOpen")
+
+	// the accept loop survived both panics, so this connection is served and
+	// stays open
+	conn3, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	if err != nil {
+		t.Fatalf("dial %s after both callback panics: %v", addr, err)
+	}
+	defer func() { _ = conn3.Close() }()
+	_ = conn3.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+	if _, err = conn3.Read(make([]byte, 1)); err == nil || !isTimeout(err) {
+		t.Fatalf("the third connection was not served: the accept loop stopped (read error %v)", err)
+	}
+}
+
+// assertPeerClosed fails when the peer kept the connection open, which is what a
+// read that times out means.
+func assertPeerClosed(t *testing.T, conn net.Conn, who string) {
+	t.Helper()
+
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, err := conn.Read(make([]byte, 1)); err == nil {
+		t.Fatalf("connection read a byte after %s", who)
+	} else if isTimeout(err) {
+		t.Fatalf("the connection is still open after %s", who)
+	}
+}
+
+func isTimeout(err error) bool {
+	if netErr, ok := err.(net.Error); ok {
+		return netErr.Timeout()
+	}
+
+	return false
 }
