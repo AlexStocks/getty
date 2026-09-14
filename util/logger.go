@@ -18,6 +18,10 @@
 package getty
 
 import (
+	"sync/atomic"
+)
+
+import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -58,8 +62,12 @@ const (
 )
 
 var (
-	log       Logger
-	zapLogger *zap.Logger
+	// log is the logger the helpers below write through. It is replaced by
+	// SetLogger/SetLoggerLevel/SetLoggerCallerDisable while other goroutines are
+	// logging - a session that dies during a live SetLogger used to read a half
+	// written interface value - so the swap goes through an atomic pointer
+	// instead of a plain variable.
+	log atomic.Pointer[Logger]
 
 	zapLoggerConfig        = zap.NewDevelopmentConfig()
 	zapLoggerEncoderConfig = zapcore.EncoderConfig{
@@ -78,8 +86,8 @@ var (
 
 func init() {
 	zapLoggerConfig.EncoderConfig = zapLoggerEncoderConfig
-	zapLogger, _ = zapLoggerConfig.Build()
-	log = zapLogger.Sugar()
+	zapLogger, _ := zapLoggerConfig.Build()
+	storeLogger(zapLogger.Sugar())
 
 	// todo: flushes buffer when redirect log to file.
 	// var exitSignal = make(chan os.Signal)
@@ -96,14 +104,26 @@ func init() {
 	// }()
 }
 
+// currentLogger returns the logger the helpers below write through.
+func currentLogger() Logger {
+	return *log.Load()
+}
+
+// storeLogger installs the package level logger. Holding the interface value
+// behind a pointer is what makes the swap safe: the value the helpers read is
+// never written in place, it is replaced by one atomic store.
+func storeLogger(logger Logger) {
+	log.Store(&logger)
+}
+
 // SetLogger customize yourself logger.
 func SetLogger(logger Logger) {
-	log = logger
+	log.Store(&logger)
 }
 
 // GetLogger get getty logger
 func GetLogger() Logger {
-	return log
+	return currentLogger()
 }
 
 // SetLoggerLevel set logger level.
@@ -112,18 +132,18 @@ func GetLogger() Logger {
 // installed with SetLogger is replaced - the level of a custom logger cannot be
 // set through here.
 func SetLoggerLevel(level LoggerLevel) error {
-	var err error
 	// Mutate the existing AtomicLevel instead of assigning a new one: the field
 	// is read by IsDebugEnabled/GetLoggerLevel from other goroutines (both sit
 	// on the per-connection paths), and replacing it would race with those reads.
 	// AtomicLevel exists to be updated in place; Build() still has to run to
 	// rebuild the logger the new level applies to.
 	zapLoggerConfig.Level.SetLevel(zapcore.Level(level))
-	zapLogger, err = zapLoggerConfig.Build()
+	zapLogger, err := zapLoggerConfig.Build()
 	if err != nil {
 		return err
 	}
-	log = zapLogger.Sugar()
+	storeLogger(zapLogger.Sugar())
+
 	return nil
 }
 
@@ -151,53 +171,53 @@ func GetLoggerLevel() LoggerLevel {
 // SetLoggerCallerDisable disable caller info in production env for performance improve.
 // It is highly recommended that you execute this method in a production environment.
 func SetLoggerCallerDisable() error {
-	var err error
 	zapLoggerConfig.Development = false
 	zapLoggerConfig.DisableCaller = true
-	zapLogger, err = zapLoggerConfig.Build()
+	zapLogger, err := zapLoggerConfig.Build()
 	if err != nil {
 		return err
 	}
-	log = zapLogger.Sugar()
+	storeLogger(zapLogger.Sugar())
+
 	return nil
 }
 
 // Debug
 func Debug(args ...any) {
-	log.Debug(args...)
+	currentLogger().Debug(args...)
 }
 
 // Debugf
 func Debugf(template string, args ...any) {
-	log.Debugf(template, args...)
+	currentLogger().Debugf(template, args...)
 }
 
 // Info
 func Info(args ...any) {
-	log.Info(args...)
+	currentLogger().Info(args...)
 }
 
 // Infof
 func Infof(template string, args ...any) {
-	log.Infof(template, args...)
+	currentLogger().Infof(template, args...)
 }
 
 // Warn
 func Warn(args ...any) {
-	log.Warn(args...)
+	currentLogger().Warn(args...)
 }
 
 // Warnf
 func Warnf(template string, args ...any) {
-	log.Warnf(template, args...)
+	currentLogger().Warnf(template, args...)
 }
 
 // Error
 func Error(args ...any) {
-	log.Error(args...)
+	currentLogger().Error(args...)
 }
 
 // Errorf
 func Errorf(template string, args ...any) {
-	log.Errorf(template, args...)
+	currentLogger().Errorf(template, args...)
 }
