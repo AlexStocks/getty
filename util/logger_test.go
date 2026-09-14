@@ -62,3 +62,50 @@ func TestLoggerLevelAccessorsAreRaceFree(t *testing.T) {
 	}()
 	wg.Wait()
 }
+
+// quietLogger swallows records, so the test does not fill its output with what
+// the concurrent writers produce.
+type quietLogger struct{}
+
+func (quietLogger) Debug(args ...any)         {}
+func (quietLogger) Debugf(_ string, _ ...any) {}
+func (quietLogger) Info(args ...any)          {}
+func (quietLogger) Infof(_ string, _ ...any)  {}
+func (quietLogger) Warn(args ...any)          {}
+func (quietLogger) Warnf(_ string, _ ...any)  {}
+func (quietLogger) Error(args ...any)         {}
+func (quietLogger) Errorf(_ string, _ ...any) {}
+
+// TestSetLoggerIsSafeWhileOtherGoroutinesLog: SetLogger assigned the package
+// level interface value that the helpers - Debugf and friends - read directly,
+// so any session logging while a management goroutine called SetLogger raced
+// with that assignment and could even observe a half written interface value.
+// The logger now sits behind an atomic pointer: the swap is one store and the
+// value a reader loads is immutable.
+//
+// The race detector is the point of this test, exactly like the level test
+// above: it is green on the broken code unless something drives a swap and a log
+// call from two goroutines at once.
+func TestSetLoggerIsSafeWhileOtherGoroutinesLog(t *testing.T) {
+	const iterations = 2000
+
+	previous := GetLogger()
+	t.Cleanup(func() { SetLogger(previous) })
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < iterations; i++ {
+			SetLogger(quietLogger{})
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < iterations; i++ {
+			Debugf("probe %d", i)
+			Infof("probe %d", i)
+		}
+	}()
+	wg.Wait()
+}
