@@ -1273,3 +1273,44 @@ func TestNewClientSSLRequiresTLSConfigBuilder(t *testing.T) {
 		WithClientSslEnabled(true),
 	)
 }
+
+// TestWSClientDialTimesOut covers a peer that completes the tcp handshake and
+// then never answers the upgrade - a hung load balancer, a half-dead process. A
+// zero-value websocket.Dialer derives no deadline of its own, so the dial used to
+// block forever: the reconnect loop could not back off, RunEventLoop never
+// returned and Close() could not interrupt it. dialWS must now wait out
+// connectTimeout and report the failure.
+func TestWSClientDialTimesOut(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer func() { _ = ln.Close() }()
+	// accept and hold: the tcp connection succeeds, the http upgrade never does
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_ = conn
+		}
+	}()
+
+	c := newClient(WS_CLIENT, WithServerAddress("ws://"+ln.Addr().String()), WithConnectionNumber(1))
+	done := make(chan Session, 1)
+	start := time.Now()
+	go func() { done <- c.dialWS() }()
+
+	select {
+	case ss := <-done:
+		if ss != nil {
+			t.Fatalf("dialWS returned session %v for a peer that never answered the upgrade", ss)
+		}
+		if elapsed := time.Since(start); elapsed <= connectTimeout {
+			t.Fatalf("dialWS returned after %v, before the %v handshake timeout: it did not reach the peer", elapsed, connectTimeout)
+		}
+	case <-time.After(connectTimeout + 10*time.Second):
+		t.Fatal("dialWS did not return within 10s of connectTimeout: the websocket dial has no deadline")
+	}
+}
