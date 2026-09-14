@@ -106,6 +106,15 @@ func newServer(t EndPointType, opts ...ServerOption) *server {
 
 	s.init(opts...)
 
+	if (t == WS_SERVER || t == WSS_SERVER) && s.path == "" {
+		// Registering an empty pattern panics inside http.ServeMux, and that
+		// registration happens in runWSEventLoop's goroutine, so the process
+		// went down with "http: invalid pattern" without naming the option that
+		// was missing. Fail where the caller can see it, the way the cert/key
+		// check in NewWSSServer does.
+		panic(fmt.Sprintf("server type:%s, no websocket path was supplied; use WithWebsocketServerPath", t))
+	}
+
 	return s
 }
 
@@ -328,8 +337,31 @@ func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 	return ss, nil
 }
 
-func (s *server) runTCPEventLoop(newSession NewSessionCallback) {
+// startEventLoop registers one event loop goroutine. RunEventLoop publishes the
+// listener first (under s.lock) and only then reaches the run*EventLoop call
+// that used to do the wg.Add on its own, so a Close() landing in between closed
+// done and returned from wg.Wait() while the counter was still zero - and the
+// event loop was registered afterwards anyway. Testing done and doing the Add
+// under the same lock makes both atomic with respect to stop(): either the loop
+// is registered before stop() closes done (and Wait() then waits for it), or
+// the closed server refuses the registration and no goroutine is started.
+func (s *server) startEventLoop() bool {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	select {
+	case <-s.done:
+		return false
+	default:
+	}
 	s.wg.Add(1)
+
+	return true
+}
+
+func (s *server) runTCPEventLoop(newSession NewSessionCallback) {
+	if !s.startEventLoop() {
+		return
+	}
 	go func() {
 		defer s.wg.Done()
 		var (
@@ -381,7 +413,9 @@ func (s *server) runTCPEventLoop(newSession NewSessionCallback) {
 }
 
 func (s *server) runUDPEventLoop(newSession NewSessionCallback) {
-	s.wg.Add(1)
+	if !s.startEventLoop() {
+		return
+	}
 	go func() {
 		defer s.wg.Done()
 		var (
@@ -460,7 +494,9 @@ func (s *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 // runWSEventLoop serve websocket client request
 // @newSession: new websocket connection callback
 func (s *server) runWSEventLoop(newSession NewSessionCallback) {
-	s.wg.Add(1)
+	if !s.startEventLoop() {
+		return
+	}
 	go func() {
 		defer s.wg.Done()
 		var (
@@ -480,7 +516,10 @@ func (s *server) runWSEventLoop(newSession NewSessionCallback) {
 		s.server = server
 		s.lock.Unlock()
 		err = server.Serve(s.streamListener)
-		if err != nil {
+		if err != nil && !errors.Is(err, http.ErrServerClosed) && !s.IsClosed() {
+			// the wss branch has always filtered this: Shutdown() makes Serve
+			// return ErrServerClosed, so a normal Close() logged an error level
+			// line on every shutdown of a ws server.
 			log.Errorf("http.server.Serve(addr{%s}) = err:%+v", s.addr, perrors.WithStack(err))
 		}
 	}()
@@ -489,7 +528,9 @@ func (s *server) runWSEventLoop(newSession NewSessionCallback) {
 // serve websocket client request
 // RunWSSEventLoop serve websocket client request
 func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
-	s.wg.Add(1)
+	if !s.startEventLoop() {
+		return
+	}
 	go func() {
 		var (
 			err         error

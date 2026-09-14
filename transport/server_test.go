@@ -24,6 +24,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -381,7 +382,7 @@ func TestWSSServerCloseDoesNotPanic(t *testing.T) {
 }
 
 func TestWSServeWSRequestClosesSelfConnectConn(t *testing.T) {
-	server := newServer(WS_SERVER)
+	server := newServer(WS_SERVER, WithWebsocketServerPath("/ws"))
 	newSessionCalled := false
 	handler := newWSHandler(server, func(Session) error {
 		newSessionCalled = true
@@ -524,4 +525,62 @@ func TestTCPAcceptBacksOffOnPersistentError(t *testing.T) {
 	assert.GreaterOrEqual(t, calls, 2, "the accept loop stopped retrying")
 	assert.LessOrEqual(t, calls, 50,
 		"the accept loop made %d Accept calls in 300ms: a persistent non-timeout error is not backed off", calls)
+}
+
+// TestWebsocketServerRequiresPath: an empty path reaches ServeMux.HandleFunc(""),
+// which panics - and that registration happens in the goroutine RunEventLoop
+// starts, so the process died with "http: invalid pattern" and the caller never
+// learned which option was missing.
+func TestWebsocketServerRequiresPath(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("newServer(WS_SERVER) without WithWebsocketServerPath did not panic")
+		}
+		if !strings.Contains(fmt.Sprint(r), "WithWebsocketServerPath") {
+			t.Fatalf("panic value %v does not name the missing option", r)
+		}
+	}()
+
+	newServer(WS_SERVER, WithLocalAddress("127.0.0.1:1"))
+}
+
+// TestEventLoopRegistrationIsAtomicWithClose pins the ordering RunEventLoop and
+// Close() rely on. RunEventLoop publishes the listener first and used to add to
+// s.wg only afterwards, so a Close() landing in between closed done, returned
+// from wg.Wait() while the counter was still zero, and had the event loop
+// registered behind it - an accept loop outliving the close, and a WaitGroup
+// addition racing a Wait. Registration now tests done and increments the counter
+// under the lock stop() also takes: a loop registered before Close() is waited
+// for, and a closed server refuses to register one.
+func TestEventLoopRegistrationIsAtomicWithClose(t *testing.T) {
+	srv := newServer(TCP_SERVER)
+
+	if !srv.startEventLoop() {
+		t.Fatal("startEventLoop refused to register an event loop on an open server")
+	}
+
+	closed := make(chan struct{})
+	go func() {
+		srv.Close()
+		close(closed)
+	}()
+
+	select {
+	case <-closed:
+		t.Fatal("Close() returned while a registered event loop was still running")
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	srv.wg.Done()
+
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close() did not return after the registered event loop finished")
+	}
+
+	if srv.startEventLoop() {
+		t.Fatal("startEventLoop registered an event loop on a closed server")
+	}
 }
