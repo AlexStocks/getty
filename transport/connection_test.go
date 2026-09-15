@@ -83,8 +83,8 @@ func TestConnectionTimeoutAccessorsDoNotCopyAtomicState(t *testing.T) {
 		defer wg.Done()
 		<-start
 		for i := 0; i < 10000; i++ {
-			conn.rLastDeadline.Store(time.Unix(0, int64(i)))
-			conn.wLastDeadline.Store(time.Unix(0, int64(i)))
+			conn.rLastDeadline.Store(int64(i))
+			conn.wLastDeadline.Store(int64(i))
 		}
 	}()
 	go func() {

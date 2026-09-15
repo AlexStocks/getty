@@ -135,10 +135,10 @@ type gettyConn struct {
 	active        uatomic.Int64    // last active, in milliseconds
 	rTimeout      uatomic.Duration // network current limiting
 	wTimeout      uatomic.Duration
-	rLastDeadline uatomic.Time // last network read time
-	wLastDeadline uatomic.Time // last network write time
-	local         string       // local address
-	peer          string       // peer address
+	rLastDeadline uatomic.Int64 // last network read time, unix nanoseconds
+	wLastDeadline uatomic.Int64 // last network write time, unix nanoseconds
+	local         string        // local address
+	peer          string        // peer address
 	ss            Session
 }
 
@@ -543,7 +543,7 @@ func (r *codecPollingReader) fill() error {
 			if err := t.conn.SetReadDeadline(currentTime.Add(timeout)); err != nil {
 				return err
 			}
-			t.rLastDeadline.Store(currentTime)
+			t.rLastDeadline.Store(currentTime.UnixNano())
 		}
 
 		n, err := t.conn.Read(r.buf)
@@ -610,7 +610,7 @@ func (w *codecPollingWriter) Write(p []byte) (int, error) {
 			if err := t.conn.SetWriteDeadline(currentTime.Add(timeout)); err != nil {
 				return written, err
 			}
-			t.wLastDeadline.Store(currentTime)
+			t.wLastDeadline.Store(currentTime.UnixNano())
 		}
 
 		n, err := t.conn.Write(p[written:])
@@ -752,7 +752,7 @@ func (t *gettyTCPConn) recv(p []byte) (int, error) {
 			// just a timeout error
 			return 0, perrors.WithStack(err)
 		}
-		t.rLastDeadline.Store(currentTime)
+		t.rLastDeadline.Store(currentTime.UnixNano())
 	}
 
 	length, err = reader.Read(p)
@@ -794,7 +794,7 @@ func (t *gettyTCPConn) Send(pkg any) (int, error) {
 		if err = t.conn.SetWriteDeadline(currentTime.Add(t.wTimeout.Load())); err != nil {
 			return 0, perrors.WithStack(err)
 		}
-		t.wLastDeadline.Store(currentTime)
+		t.wLastDeadline.Store(currentTime.UnixNano())
 	}
 
 	if buffers, ok := pkg.([][]byte); ok {
@@ -960,7 +960,7 @@ func (u *gettyUDPConn) recv(p []byte) (int, *net.UDPAddr, error) {
 		if err := u.conn.SetReadDeadline(currentTime.Add(u.rTimeout.Load())); err != nil {
 			return 0, nil, perrors.WithStack(err)
 		}
-		u.rLastDeadline.Store(currentTime)
+		u.rLastDeadline.Store(currentTime.UnixNano())
 	}
 
 	length, addr, err := u.conn.ReadFromUDP(p) // connected udp also can get return @addr
@@ -1006,7 +1006,7 @@ func (u *gettyUDPConn) Send(udpCtx any) (int, error) {
 		if err = u.conn.SetWriteDeadline(currentTime.Add(u.wTimeout.Load())); err != nil {
 			return 0, perrors.WithStack(err)
 		}
-		u.wLastDeadline.Store(currentTime)
+		u.wLastDeadline.Store(currentTime.UnixNano())
 	}
 
 	if length, _, err = u.conn.WriteMsgUDP(buf, nil, peerAddr); err == nil {
@@ -1153,7 +1153,7 @@ func (w *gettyWSConn) updateWriteDeadline() error {
 		if err = w.conn.SetWriteDeadline(currentTime.Add(w.wTimeout.Load())); err != nil {
 			return perrors.WithStack(err)
 		}
-		w.wLastDeadline.Store(currentTime)
+		w.wLastDeadline.Store(currentTime.UnixNano())
 	}
 
 	return nil
