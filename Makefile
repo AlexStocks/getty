@@ -21,12 +21,16 @@ MAKEFLAGS += --warn-undefined-variables
 MAKEFLAGS += --no-builtin-rules
 MAKEFLAGS += --no-print-directory
 
-.PHONY: help test test-race fmt check-fmt clean lint install-golangci-lint install-imports-formatter
+.PHONY: help test test-race bench bench-echo bench-stable bench-server fmt check-fmt clean lint install-golangci-lint install-imports-formatter
 
 help:
 	@echo "Available commands:"
 	@echo "  test       - Run unit tests with coverage"
 	@echo "  test-race  - Run transport race tests"
+	@echo "  bench        - Run the full benchmark suite (loopback TCP/WS/UDP)"
+	@echo "  bench-echo   - Run only the client/server echo benchmarks"
+	@echo "  bench-stable - bench with -count=5, for numbers worth quoting"
+	@echo "  bench-server - Run the standalone getty server for an external load generator"
 	@echo "  fmt        - Format code"
 	@echo "  check-fmt  - Verify formatting without modifying tracked files"
 	@echo "  lint       - Run golangci-lint"
@@ -38,6 +42,29 @@ test: clean
 
 test-race:
 	GOTOOLCHAIN=go1.25.0+auto go test -race ./transport -count=1
+
+# Benchmarks live in ./benchmark and are deliberately not part of the CI gate:
+# they talk to a real loopback socket, so their absolute numbers move with the
+# machine. Compare runs with benchstat, e.g.
+#   make bench > old.txt && git switch my-change && make bench > new.txt
+#   benchstat old.txt new.txt
+bench:
+	GOTOOLCHAIN=go1.25.0+auto go test -run '^$$' -bench . -benchmem -benchtime=1s ./benchmark
+
+bench-echo:
+	GOTOOLCHAIN=go1.25.0+auto go test -run '^$$' -bench 'BenchmarkEcho' -benchmem -benchtime=1s ./benchmark
+
+# One run of a socket benchmark is noisy: a few percent difference means nothing
+# until it survives repetition. Use this when a number is going to be quoted, and
+# compare runs with benchstat.
+bench-stable:
+	GOTOOLCHAIN=go1.25.0+auto go test -run '^$$' -bench . -benchmem -benchtime=1s -count=5 ./benchmark
+
+# The other half of the picture: a standalone process to drive with an external
+# generator (tcpkali, see benchmark/doc.go), so the load client shares neither
+# this server's scheduler nor its heap.
+bench-server:
+	GOTOOLCHAIN=go1.25.0+auto go run ./benchmark/server -addr 127.0.0.1:12345 -mode echo
 
 fmt: install-imports-formatter
 	go fmt ./... && GOROOT=$(shell go env GOROOT) imports-formatter
