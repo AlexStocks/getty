@@ -1286,16 +1286,31 @@ func TestWSClientDialTimesOut(t *testing.T) {
 		t.Fatalf("listen: %v", err)
 	}
 	defer func() { _ = ln.Close() }()
-	// accept and hold: the tcp connection succeeds, the http upgrade never does
+	// accept and hold: the tcp connection succeeds, the http upgrade never does.
+	// The accepted connections are handed over so the test can close them:
+	// closing the listener does not close a connection that was already
+	// accepted, and an unconsumed net.Conn keeps its descriptor until the
+	// finalizer runs.
+	accepted := make(chan net.Conn, 4)
 	go func() {
 		for {
 			conn, err := ln.Accept()
 			if err != nil {
 				return
 			}
-			_ = conn
+			accepted <- conn
 		}
 	}()
+	t.Cleanup(func() {
+		for {
+			select {
+			case conn := <-accepted:
+				_ = conn.Close()
+			default:
+				return
+			}
+		}
+	})
 
 	c := newClient(WS_CLIENT, WithServerAddress("ws://"+ln.Addr().String()), WithConnectionNumber(1))
 	done := make(chan Session, 1)
