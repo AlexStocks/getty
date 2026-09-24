@@ -21,11 +21,13 @@ import (
 	"bytes"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -36,6 +38,10 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/stretchr/testify/assert"
+)
+
+import (
+	logutil "github.com/AlexStocks/getty/util"
 )
 
 type PackageHandler struct{}
@@ -677,6 +683,82 @@ func TestTCPClientOnOpenCloseKeepsPoolAtConfiguredSize(t *testing.T) {
 	assert.Equal(t, wantPoolSize, clt.sessionNum())
 }
 
+// TestTCPClientConnectRejectsSurplusSession is the regression test for #130
+// defect 2: connect() must re-check the pool capacity in the very critical
+// section that admits the session, because reConnect()'s check and that insert
+// are not atomic with respect to each other. A connect() that would exceed
+// WithConnectionNumber must be reported as failed, must not grow ssMap and must
+// close the surplus session instead of leaking it.
+func TestTCPClientConnectRejectsSurplusSession(t *testing.T) {
+	const poolSize = 1
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.Nil(t, err)
+	assert.NotNil(t, listener)
+	accepted := make(chan net.Conn, 4)
+	acceptDone := make(chan struct{})
+	go func() {
+		defer close(acceptDone)
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			accepted <- conn
+		}
+	}()
+	t.Cleanup(func() {
+		_ = listener.Close()
+		<-acceptDone
+	})
+
+	clt := NewTCPClient(
+		WithServerAddress(listener.Addr().String()),
+		WithConnectionNumber(poolSize),
+		WithReconnectInterval(int(20*time.Millisecond)),
+		WithReconnectAttempts(1),
+	).(*client)
+	clt.newSession = func(session Session) error {
+		var (
+			pkgHandler PackageHandler
+			msgHandler MessageHandler
+		)
+		session.SetName("surplus-connect-client-session")
+		session.SetPkgHandler(&pkgHandler)
+		session.SetEventListener(&msgHandler)
+		session.SetReadTimeout(20 * time.Millisecond)
+		session.SetWriteTimeout(20 * time.Millisecond)
+		session.SetWaitTime(20 * time.Millisecond)
+		return nil
+	}
+	t.Cleanup(clt.Close)
+
+	// connect() drives dial -> run -> insert synchronously, so the capacity
+	// check is exercised without racing reconnect loops.
+	assert.True(t, clt.connect())
+	assert.Equal(t, poolSize, clt.sessionNum())
+
+	// The pool is full: this session must be rejected, must not enter ssMap and
+	// must be closed again.
+	assert.False(t, clt.connect(), "a session above WithConnectionNumber must be rejected")
+	assert.Equal(t, poolSize, clt.sessionNum())
+
+	first, surplus := <-accepted, <-accepted
+	defer func() { _ = first.Close(); _ = surplus.Close() }()
+	// The rejected session must have been closed, so the peer sees the
+	// connection go away (EOF) rather than a still-open connection (read
+	// deadline timeout).
+	assert.Nil(t, surplus.SetReadDeadline(time.Now().Add(2*time.Second)))
+	n, err := surplus.Read(make([]byte, 1))
+	assert.Zero(t, n)
+	if assert.Error(t, err) {
+		var netErr net.Error
+		if errors.As(err, &netErr) {
+			assert.False(t, netErr.Timeout(), "the rejected session is still holding its connection open")
+		}
+	}
+}
+
 func (h *PackageHandler) Read(ss Session, data []byte) (any, int, error) {
 	return nil, 0, nil
 }
@@ -972,6 +1054,71 @@ func TestUDPClient(t *testing.T) {
 	msgHandler.array[0].Reset()
 	assert.Nil(t, msgHandler.array[0].Conn())
 	// ss.WritePkg([]byte("hello"), 0)
+}
+
+// logLineRecorder is a util.Logger that records every line the package logs, so
+// a test can assert which failure a path reported even when the failure does not
+// change the returned value. It is safe for concurrent use.
+type logLineRecorder struct {
+	lock  sync.Mutex
+	lines []string
+}
+
+func (l *logLineRecorder) record(text string) {
+	l.lock.Lock()
+	l.lines = append(l.lines, text)
+	l.lock.Unlock()
+}
+
+func (l *logLineRecorder) recordf(format string, args ...any) {
+	l.record(fmt.Sprintf(format, args...))
+}
+
+func (l *logLineRecorder) Info(args ...any)  { l.record(fmt.Sprint(args...)) }
+func (l *logLineRecorder) Warn(args ...any)  { l.record(fmt.Sprint(args...)) }
+func (l *logLineRecorder) Error(args ...any) { l.record(fmt.Sprint(args...)) }
+func (l *logLineRecorder) Debug(args ...any) { l.record(fmt.Sprint(args...)) }
+
+func (l *logLineRecorder) Infof(format string, args ...any)  { l.recordf(format, args...) }
+func (l *logLineRecorder) Warnf(format string, args ...any)  { l.recordf(format, args...) }
+func (l *logLineRecorder) Errorf(format string, args ...any) { l.recordf(format, args...) }
+func (l *logLineRecorder) Debugf(format string, args ...any) { l.recordf(format, args...) }
+
+func (l *logLineRecorder) snapshot() []string {
+	l.lock.Lock()
+	defer l.lock.Unlock()
+	return append([]string(nil), l.lines...)
+}
+
+func (l *logLineRecorder) contains(substr string) bool {
+	for _, line := range l.snapshot() {
+		if strings.Contains(line, substr) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestUDPClientDialReportsUnresolvableAddress is the regression test for #130
+// defect 5. An unresolvable server address must fail the UDP dial with the
+// resolution error; before the fix the error was discarded and the dial failed
+// with a misleading "missing address" from net.DialUDP instead, so the real
+// cause never surfaced in any reconnect cycle. Both the old and the fixed code
+// return a nil session, so the assertions pin down which failure is reported.
+func TestUDPClientDialReportsUnresolvableAddress(t *testing.T) {
+	capture := &logLineRecorder{}
+	prev := logutil.GetLogger()
+	logutil.SetLogger(capture)
+	defer logutil.SetLogger(prev)
+
+	// "127.0.0.1" has no port: net.ResolveUDPAddr rejects it.
+	clt := newClient(UDP_CLIENT, WithServerAddress("127.0.0.1"), WithConnectionNumber(1))
+	assert.Nil(t, clt.dialUDP(), "an unresolvable peer address must fail the dial")
+
+	assert.True(t, capture.contains("ResolveUDPAddr"),
+		"the address resolution failure must be reported, logged lines: %v", capture.snapshot())
+	assert.False(t, capture.contains("missing address"),
+		"the misleading net.DialUDP error must not be the reported cause, logged lines: %v", capture.snapshot())
 }
 
 func TestNewWSClient(t *testing.T) {

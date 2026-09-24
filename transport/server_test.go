@@ -24,12 +24,14 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -380,7 +382,7 @@ func TestWSSServerCloseDoesNotPanic(t *testing.T) {
 }
 
 func TestWSServeWSRequestClosesSelfConnectConn(t *testing.T) {
-	server := newServer(WS_SERVER)
+	server := newServer(WS_SERVER, WithWebsocketServerPath("/ws"))
 	newSessionCalled := false
 	handler := newWSHandler(server, func(Session) error {
 		newSessionCalled = true
@@ -473,4 +475,112 @@ func (c *selfConnectConn) SetReadDeadline(time.Time) error {
 
 func (c *selfConnectConn) SetWriteDeadline(time.Time) error {
 	return nil
+}
+
+// persistentAcceptError mimics a lasting accept failure that is not a timeout,
+// such as EMFILE/ENFILE when the process runs out of file descriptors.
+type persistentAcceptError struct{}
+
+func (persistentAcceptError) Error() string   { return "accept: too many open files" }
+func (persistentAcceptError) Timeout() bool   { return false }
+func (persistentAcceptError) Temporary() bool { return true }
+
+// errorAcceptListener is a net.Listener whose Accept always fails with a
+// non-timeout error, and which counts its calls.
+type errorAcceptListener struct {
+	calls atomic.Int32
+}
+
+func (l *errorAcceptListener) Accept() (net.Conn, error) {
+	l.calls.Add(1)
+	return nil, persistentAcceptError{}
+}
+
+func (l *errorAcceptListener) Close() error { return nil }
+
+func (l *errorAcceptListener) Addr() net.Addr {
+	return &net.TCPAddr{IP: net.IPv4zero, Port: 0}
+}
+
+// TestTCPAcceptBacksOffOnPersistentError is the regression test for #130
+// defect 1. Accept errors other than a timeout used to take the
+// log-and-continue branch, which left delay at 0, so Accept was re-issued at
+// full speed - spinning the CPU and flooding the log exactly while the process
+// was out of resources. Because gxtime.After's timer wheel is coarse, the test
+// counts how many Accept calls a fixed window allows instead of measuring one
+// interval: a loop that backs off can only issue a handful of calls in 300ms
+// (the first delay is 5ms and doubles from there), while a spinning one re-calls
+// Accept as fast as the CPU and the logger allow.
+func TestTCPAcceptBacksOffOnPersistentError(t *testing.T) {
+	srv := newServer(TCP_SERVER, WithLocalAddress("127.0.0.1:0"))
+	listener := &errorAcceptListener{}
+	srv.streamListener = listener
+	srv.runTCPEventLoop(func(Session) error { return nil })
+	defer srv.Close()
+
+	time.Sleep(300 * time.Millisecond)
+	calls := int(listener.calls.Load())
+	srv.Close()
+
+	assert.GreaterOrEqual(t, calls, 2, "the accept loop stopped retrying")
+	assert.LessOrEqual(t, calls, 50,
+		"the accept loop made %d Accept calls in 300ms: a persistent non-timeout error is not backed off", calls)
+}
+
+// TestWebsocketServerRequiresPath: an empty path reaches ServeMux.HandleFunc(""),
+// which panics - and that registration happens in the goroutine RunEventLoop
+// starts, so the process died with "http: invalid pattern" and the caller never
+// learned which option was missing.
+func TestWebsocketServerRequiresPath(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("newServer(WS_SERVER) without WithWebsocketServerPath did not panic")
+		}
+		if !strings.Contains(fmt.Sprint(r), "WithWebsocketServerPath") {
+			t.Fatalf("panic value %v does not name the missing option", r)
+		}
+	}()
+
+	newServer(WS_SERVER, WithLocalAddress("127.0.0.1:1"))
+}
+
+// TestEventLoopRegistrationIsAtomicWithClose pins the ordering RunEventLoop and
+// Close() rely on. RunEventLoop publishes the listener first and used to add to
+// s.wg only afterwards, so a Close() landing in between closed done, returned
+// from wg.Wait() while the counter was still zero, and had the event loop
+// registered behind it - an accept loop outliving the close, and a WaitGroup
+// addition racing a Wait. Registration now tests done and increments the counter
+// under the lock stop() also takes: a loop registered before Close() is waited
+// for, and a closed server refuses to register one.
+func TestEventLoopRegistrationIsAtomicWithClose(t *testing.T) {
+	srv := newServer(TCP_SERVER)
+
+	if !srv.startEventLoop() {
+		t.Fatal("startEventLoop refused to register an event loop on an open server")
+	}
+
+	closed := make(chan struct{})
+	go func() {
+		srv.Close()
+		close(closed)
+	}()
+
+	select {
+	case <-closed:
+		t.Fatal("Close() returned while a registered event loop was still running")
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	srv.wg.Done()
+
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close() did not return after the registered event loop finished")
+	}
+
+	if srv.startEventLoop() {
+		t.Fatal("startEventLoop registered an event loop on a closed server")
+	}
 }
