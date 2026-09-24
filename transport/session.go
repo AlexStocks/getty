@@ -747,6 +747,25 @@ func heartbeat(_ gxtime.TimerID, _ time.Time, arg any) error {
 	return nil
 }
 
+// callOnOpen invokes the event listener's OnOpen and turns a panic from the user
+// callback into an error. run() executes on the goroutine that accepted (or
+// dialed) the session - for a tcp/udp server that is a goroutine this library
+// started, where nothing can recover a panic - so an application bug would
+// otherwise take the whole process down. handlePackage contains a panic from the
+// user's OnMessage the same way.
+func (s *session) callOnOpen() (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			const size = 64 << 10
+			rBuf := make([]byte, size)
+			rBuf = rBuf[:runtime.Stack(rBuf, false)]
+			err = perrors.Errorf("[OnOpen] panic: err=%v\n%s", r, rBuf)
+		}
+	}()
+
+	return s.listener.OnOpen(s)
+}
+
 // func (s *session) RunEventLoop() {
 func (s *session) run() {
 	if s.Connection == nil || s.listener == nil || s.writer == nil {
@@ -758,9 +777,15 @@ func (s *session) run() {
 
 	// call session opened
 	s.UpdateActive()
-	if err := s.listener.OnOpen(s); err != nil {
+	if err := s.callOnOpen(); err != nil {
 		log.Errorf("[OnOpen] session %s, error: %#v", s.Stat(), err)
+		// An OnOpen error closes the session, but the socket close lives in
+		// gc(), which normally runs from the read goroutine's deferred
+		// stop/gc pair - and run() returns before that goroutine starts. The
+		// accepted connection therefore stayed open for the life of the
+		// process. Tear it down the way handlePackage does.
 		s.Close()
+		s.gc()
 		return
 	}
 

@@ -21,11 +21,13 @@ import (
 	"bytes"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -1247,4 +1249,83 @@ func TestNewWSSClient(t *testing.T) {
 	// time.Sleep(1000e9)
 	// server.Close()
 	// assert.True(t, server.IsClosed())
+}
+
+// Regression test for #125: newClient only validated number/addr, so
+// sslEnabled without a tlsConfigBuilder reached dialTCP, which runs inside the
+// reconnect goroutine - a nil-pointer panic there is unrecoverable and appears
+// as an unrelated crash. The combination is now rejected synchronously, with a
+// message naming the missing option.
+func TestNewClientSSLRequiresTLSConfigBuilder(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("NewTCPClient(sslEnabled, no tlsConfigBuilder) did not panic")
+		}
+		if !strings.Contains(fmt.Sprint(r), "tlsConfigBuilder") {
+			t.Fatalf("panic value %v does not name the missing option", r)
+		}
+	}()
+
+	NewTCPClient(
+		WithServerAddress("127.0.0.1:1"),
+		WithConnectionNumber(1),
+		WithClientSslEnabled(true),
+	)
+}
+
+// TestWSClientDialTimesOut covers a peer that completes the tcp handshake and
+// then never answers the upgrade - a hung load balancer, a half-dead process. A
+// zero-value websocket.Dialer derives no deadline of its own, so the dial used to
+// block forever: the reconnect loop could not back off, RunEventLoop never
+// returned and Close() could not interrupt it. dialWS must now wait out
+// connectTimeout and report the failure.
+func TestWSClientDialTimesOut(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer func() { _ = ln.Close() }()
+	// accept and hold: the tcp connection succeeds, the http upgrade never does.
+	// The accepted connections are handed over so the test can close them:
+	// closing the listener does not close a connection that was already
+	// accepted, and an unconsumed net.Conn keeps its descriptor until the
+	// finalizer runs.
+	accepted := make(chan net.Conn, 4)
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			accepted <- conn
+		}
+	}()
+	t.Cleanup(func() {
+		for {
+			select {
+			case conn := <-accepted:
+				_ = conn.Close()
+			default:
+				return
+			}
+		}
+	})
+
+	c := newClient(WS_CLIENT, WithServerAddress("ws://"+ln.Addr().String()), WithConnectionNumber(1))
+	done := make(chan Session, 1)
+	start := time.Now()
+	go func() { done <- c.dialWS() }()
+
+	select {
+	case ss := <-done:
+		if ss != nil {
+			t.Fatalf("dialWS returned session %v for a peer that never answered the upgrade", ss)
+		}
+		if elapsed := time.Since(start); elapsed <= connectTimeout {
+			t.Fatalf("dialWS returned after %v, before the %v handshake timeout: it did not reach the peer", elapsed, connectTimeout)
+		}
+	case <-time.After(connectTimeout + 10*time.Second):
+		t.Fatal("dialWS did not return within 10s of connectTimeout: the websocket dial has no deadline")
+	}
 }
