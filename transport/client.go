@@ -273,9 +273,6 @@ func (c *client) dialWS() Session {
 	}
 	if err == nil {
 		ss = newWSSession(conn, c)
-		if ss.(*session).maxMsgLen > 0 {
-			conn.SetReadLimit(int64(ss.(*session).maxMsgLen))
-		}
 
 		return ss
 	}
@@ -331,9 +328,6 @@ func (c *client) dialWSS() Session {
 	}
 	if err == nil {
 		ss = newWSSession(conn, c)
-		if ss.(*session).maxMsgLen > 0 {
-			conn.SetReadLimit(int64(ss.(*session).maxMsgLen))
-		}
 		ss.SetName(defaultWSSSessionName)
 
 		return ss
@@ -377,6 +371,18 @@ func (c *client) sessionNum() int {
 	return num
 }
 
+// applyWSReadLimit raises gorilla's read limit from the session's maxMsgLen. It
+// is a no-op for non-websocket connections.
+func applyWSReadLimit(ss Session) {
+	ws, ok := ss.(*session).Connection.(*gettyWSConn)
+	if !ok {
+		return
+	}
+	if maxMsgLen := ss.(*session).maxMsgLen; maxMsgLen > 0 {
+		ws.conn.SetReadLimit(int64(maxMsgLen))
+	}
+}
+
 func (c *client) connect() bool {
 	var (
 		err error
@@ -390,6 +396,13 @@ func (c *client) connect() bool {
 	}
 	err = c.newSession(ss)
 	if err == nil {
+		// NewSessionCallback is the documented place to ask for a bigger
+		// maxMsgLen, and gorilla's read limit can only change before the first
+		// read, so it has to be applied here and not while dialing - doing it
+		// there left a websocket client stuck with the 4KB default no matter
+		// what the callback asked for. The server already applies it after its
+		// own newSession call.
+		applyWSReadLimit(ss)
 		// Set the reconnect attributes before run(): session.stop() decides
 		// whether to reconnect from these attributes, so a connection that
 		// dies right after run() must already carry them, otherwise the

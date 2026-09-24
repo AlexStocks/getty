@@ -23,9 +23,12 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -1247,4 +1250,82 @@ func TestNewWSSClient(t *testing.T) {
 	// time.Sleep(1000e9)
 	// server.Close()
 	// assert.True(t, server.IsClosed())
+}
+
+// wsEchoMsgListener reports the length of every pkg the session delivers.
+type wsEchoMsgListener struct{ echoed chan<- int }
+
+func (*wsEchoMsgListener) OnOpen(Session) error   { return nil }
+func (*wsEchoMsgListener) OnClose(Session)        {}
+func (*wsEchoMsgListener) OnError(Session, error) {}
+func (*wsEchoMsgListener) OnCron(Session)         {}
+func (l *wsEchoMsgListener) OnMessage(_ Session, pkg any) {
+	body, _ := pkg.(string)
+	l.echoed <- len(body)
+}
+
+// TestWSClientReadLimitFollowsSetMaxMsgLen pins that a websocket client actually
+// gets the maxMsgLen its NewSessionCallback asks for. gorilla's read limit can
+// only change before the first read, and the client used to set it while
+// dialing - before the callback ran - so it stayed at the 4KB default and any
+// larger message was rejected with "read limit exceeded".
+func TestWSClientReadLimitFollowsSetMaxMsgLen(t *testing.T) {
+	upgrader := websocket.Upgrader{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		for {
+			messageType, data, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			if err := conn.WriteMessage(messageType, data); err != nil {
+				return
+			}
+		}
+	}))
+	defer srv.Close()
+
+	// above the 4KB default maxMsgLen, below what the callback asks for
+	const payloadSize = 8 << 10
+	echoed := make(chan int, 4)
+	sessionCh := make(chan Session, 1)
+
+	client := NewWSClient(
+		WithServerAddress("ws"+strings.TrimPrefix(srv.URL, "http")),
+		WithConnectionNumber(1),
+	)
+	defer client.Close()
+
+	client.RunEventLoop(func(ss Session) error {
+		ss.SetReader(wholeFrameReader{})
+		ss.SetWriter(timeoutTestWriter{})
+		ss.SetEventListener(&wsEchoMsgListener{echoed: echoed})
+		ss.SetMaxMsgLen(64 << 10)
+		sessionCh <- ss
+		return nil
+	})
+
+	var ss Session
+	select {
+	case ss = <-sessionCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("client session did not come up")
+	}
+
+	if _, err := ss.WriteBytes(make([]byte, payloadSize)); err != nil {
+		t.Fatalf("WriteBytes: %v", err)
+	}
+
+	select {
+	case n := <-echoed:
+		if n != payloadSize {
+			t.Fatalf("echoed pkg length = %d, want %d", n, payloadSize)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no echo for a payload above the 4KB default: the client read limit did not follow SetMaxMsgLen")
+	}
 }

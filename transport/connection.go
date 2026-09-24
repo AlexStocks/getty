@@ -765,6 +765,17 @@ func (t *gettyTCPConn) recv(p []byte) (int, error) {
 	return length, t.codecReadError(err)
 }
 
+// buffersScratchPool hands out the slice-of-slice headers Send copies a batch
+// into. The copy exists because net.Buffers.WriteTo consumes (nils out) the
+// elements of the slice it is handed - see the [][]byte branch of Send - and a
+// pool keeps that from costing an allocation on every batched write.
+var buffersScratchPool = sync.Pool{
+	New: func() any {
+		bufs := make([][]byte, 0, 8)
+		return &bufs
+	},
+}
+
 // tcp connection write
 func (t *gettyTCPConn) Send(pkg any) (int, error) {
 	var (
@@ -803,8 +814,28 @@ func (t *gettyTCPConn) Send(pkg any) (int, error) {
 		// to t.conn and the peer receives a corrupt mix of coded and raw data.
 		if !codecEnabled {
 			// only a raw conn here, so writev the whole batch in one syscall.
-			netBuf := net.Buffers(buffers)
+			//
+			// net.Buffers.WriteTo consumes the slice it is given: its consume()
+			// nils out each element inside the *caller's* backing array
+			// (net/net.go), so handing it the caller's own batch means a caller
+			// that reuses it writes nothing from the second call on, and gets
+			// (0, nil) back. Copy the slice headers into scratch space so only
+			// this connection's copy is consumed; the payloads are still written
+			// by reference.
+			scratch := buffersScratchPool.Get().(*[][]byte)
+			*scratch = append((*scratch)[:0], buffers...)
+			netBuf := net.Buffers(*scratch)
 			lg, err = netBuf.WriteTo(t.conn)
+			// consume() nils only the headers it wrote, so a partial write leaves
+			// the rest pointing at the caller's payloads. Clear every slot before
+			// the pool keeps the entry: a pooled scratch slice must not retain
+			// references to caller data until its next use.
+			slots := (*scratch)[:cap(*scratch)]
+			for i := range slots {
+				slots[i] = nil
+			}
+			*scratch = (*scratch)[:0]
+			buffersScratchPool.Put(scratch)
 		} else if bw, ok := writer.(buffersWriter); ok {
 			lg, err = bw.WriteBuffers(buffers)
 		} else {
