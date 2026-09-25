@@ -14,6 +14,38 @@
 ## develop history ##
 ---
 
+- 2026/09/25
+    > Breaking
+    * server: with ServerTrustCertCollectionPath configured, the TLS config now verifies the
+      client certificate against that collection (ClientAuth = RequireAndVerifyClientCert)
+      instead of demanding one without checking it (RequireAnyClientCert), and the protocol
+      floor is TLS 1.2 for every server, with or without a trust collection. Client
+      certificates must be issued by the configured collection and be usable for client
+      authentication - one that carries only the serverAuth extended key usage fails the
+      handshake with "x509: certificate specifies an incompatible key usage" - and TLS
+      1.0/1.1 clients no longer connect. Migration: make sure client certificates chain to
+      the configured trust collection and carry clientAuth (or no extended key usage at all)
+      before upgrading. Servers without a trust collection keep their client-certificate
+      requirements. Roll this out gradually.
+    > Improvement
+    * ws: a byte stream write is one websocket message now, so WriteBytes/WriteBytesArray no
+      longer split a payload into 16 KiB fragments on ws, and WriteBytesArray reports the bytes
+      actually written. A payload above the peer's maxMsgLen is refused with an error before
+      anything goes out: gorilla applies its read limit per message and fails the connection on
+      an oversized one, and the sender is the only side that can catch that cheaply. The ws read
+      limit callback ordering (SetMaxMsgLen) was fixed in the same batch for the receiving side.
+    * tcp/ws/wss server and tcp client: sslEnabled without a tlsConfigBuilder is refused at
+      construction, naming the option, instead of segfaulting from inside the event loop
+    * a panic in NewSessionCallback or in EventListener.OnOpen now closes that connection
+      instead of taking the process down, and an OnOpen error closes the connection it opened
+    * ws/wss client dials honour connectTimeout for the upgrade handshake, so a peer that
+      accepts the tcp connection and then stops answering cannot hang Close() forever
+    * util: IsDebugEnabled() lets hot paths skip building log arguments. It describes the
+      built-in logger, so a logger installed with SetLogger can be dropped there when debug is
+      on - implement the optional DebugEnabled() bool to report your own level. SetLogger and
+      SetLoggerLevel no longer race with concurrent logging, and the deadline timestamps are
+      stored as unix nanoseconds instead of boxing a time.Time on every read and write
+
 - 2025/09/01
     > Improvement
     * upgrade the go version to v1.25 in go.mod
