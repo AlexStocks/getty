@@ -109,3 +109,49 @@ func TestSetLoggerIsSafeWhileOtherGoroutinesLog(t *testing.T) {
 	}()
 	wg.Wait()
 }
+
+// debugReportingLogger reports its own debug level, which is what the optional
+// interface is for.
+type debugReportingLogger struct {
+	quietLogger
+
+	enabled bool
+}
+
+func (l debugReportingLogger) DebugEnabled() bool { return l.enabled }
+
+// TestIsDebugEnabledPrefersALoggerThatReportsItsOwnLevel: the guarded hot paths
+// ask IsDebugEnabled before building their arguments, and the built-in level
+// cannot describe a logger installed with SetLogger. Raising the built-in level and
+// then installing a custom logger used to make those sites skip records the custom
+// logger would have written, silently.
+func TestIsDebugEnabledPrefersALoggerThatReportsItsOwnLevel(t *testing.T) {
+	previousLogger := GetLogger()
+	previousLevel := GetLoggerLevel()
+
+	if err := SetLoggerLevel(LoggerLevelError); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := SetLoggerLevel(previousLevel); err != nil {
+			t.Error(err)
+		}
+		SetLogger(previousLogger)
+	})
+
+	// a logger that says nothing about itself is judged by the built-in level
+	SetLogger(quietLogger{})
+	if IsDebugEnabled() {
+		t.Fatal("a logger without DebugEnabled() must fall back to the built-in level, which is error here")
+	}
+
+	SetLogger(debugReportingLogger{enabled: true})
+	if !IsDebugEnabled() {
+		t.Fatal("a logger reporting debug enabled was ignored")
+	}
+
+	SetLogger(debugReportingLogger{enabled: false})
+	if IsDebugEnabled() {
+		t.Fatal("a logger reporting debug disabled was ignored")
+	}
+}

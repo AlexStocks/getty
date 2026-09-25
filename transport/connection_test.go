@@ -1105,3 +1105,49 @@ func TestConnectionSendSkipsDebugLoggingWhenDisabled(t *testing.T) {
 		t.Fatalf("Send built %d debug records with debug disabled, want 0: the ...any arguments are boxed before the level is consulted, which cost one allocation per write", got)
 	}
 }
+
+// debugReportingLogger reports debug as enabled whatever the built-in level says,
+// the way a custom logger with debug output on does.
+type debugReportingLogger struct {
+	debugCountingLogger
+}
+
+func (*debugReportingLogger) DebugEnabled() bool { return true }
+
+// TestConnectionSendLogsWhenTheInstalledLoggerReportsDebug is the other half of
+// the guard above. SetLoggerLevel installs the built-in logger, so an application
+// that raises the level and then installs its own logger had the debug records of
+// the guarded sites silently skipped; a logger that reports its own level is
+// believed now.
+func TestConnectionSendLogsWhenTheInstalledLoggerReportsDebug(t *testing.T) {
+	previousLogger := gettylog.GetLogger()
+	previousLevel := gettylog.GetLoggerLevel()
+
+	// level first: SetLoggerLevel installs the built-in sugared logger, so the
+	// recorder has to be installed after it
+	if err := gettylog.SetLoggerLevel(gettylog.LoggerLevelWarn); err != nil {
+		t.Fatal(err)
+	}
+	recorder := &debugReportingLogger{}
+	gettylog.SetLogger(recorder)
+
+	t.Cleanup(func() {
+		if err := gettylog.SetLoggerLevel(previousLevel); err != nil {
+			t.Error(err)
+		}
+		gettylog.SetLogger(previousLogger)
+	})
+
+	if !gettylog.IsDebugEnabled() {
+		t.Fatal("a logger reporting debug enabled was not believed")
+	}
+
+	conn := newGettyTCPConn(&timeoutAccessorNetConn{})
+	if _, err := conn.Send([]byte("payload")); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := atomic.LoadInt32(&recorder.debugfCalls); got == 0 {
+		t.Fatal("Send built no debug record although the installed logger reports debug enabled")
+	}
+}
