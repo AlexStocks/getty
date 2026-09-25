@@ -1395,3 +1395,212 @@ func TestNewWSSClient(t *testing.T) {
 	// server.Close()
 	// assert.True(t, server.IsClosed())
 }
+
+// wholeBufferReadWriter hands whatever sits in the read buffer to OnMessage as a
+// single package. The framing is not the subject here, and PackageHandler, which
+// the other tests use, always reports "not enough data" and therefore never
+// delivers a package.
+type wholeBufferReadWriter struct{}
+
+func (wholeBufferReadWriter) Read(_ Session, data []byte) (any, int, error) {
+	if len(data) == 0 {
+		return nil, 0, nil
+	}
+	buf := make([]byte, len(data))
+	copy(buf, data)
+
+	return buf, len(data), nil
+}
+
+func (wholeBufferReadWriter) Write(_ Session, pkg any) ([]byte, error) {
+	b, _ := pkg.([]byte)
+
+	return b, nil
+}
+
+// echoBytesListener records the length of every package it receives and writes it
+// back.
+type echoBytesListener struct {
+	MessageHandler
+
+	received chan int
+}
+
+func (l *echoBytesListener) OnMessage(ss Session, pkg any) {
+	if b, ok := pkg.([]byte); ok {
+		select {
+		case l.received <- len(b):
+		default:
+		}
+
+		_, _ = ss.WriteBytes(b)
+	}
+}
+
+// recordingListener keeps the session it opened and signals when that session
+// closes.
+type recordingListener struct {
+	MessageHandler
+
+	mu      sync.Mutex
+	session Session
+	closed  chan struct{}
+}
+
+func newRecordingListener() *recordingListener {
+	return &recordingListener{closed: make(chan struct{}, 4)}
+}
+
+func (l *recordingListener) OnOpen(ss Session) error {
+	l.mu.Lock()
+	l.session = ss
+	l.mu.Unlock()
+
+	return nil
+}
+
+func (l *recordingListener) OnClose(Session) {
+	select {
+	case l.closed <- struct{}{}:
+	default:
+	}
+}
+
+func (l *recordingListener) waitForSession(t *testing.T) Session {
+	t.Helper()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		l.mu.Lock()
+		ss := l.session
+		l.mu.Unlock()
+		if ss != nil {
+			return ss
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the ws client never opened a session")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// startWSEchoServer runs a getty ws server that records and echoes every package
+// it receives, with maxMsgLen as its read limit, and returns the recorder.
+func startWSEchoServer(t *testing.T, addr, path string, maxMsgLen int) *echoBytesListener {
+	t.Helper()
+
+	listener := &echoBytesListener{received: make(chan int, 4)}
+	server := NewWSServer(WithLocalAddress(addr), WithWebsocketServerPath(path))
+	server.RunEventLoop(func(ss Session) error {
+		ss.SetPkgHandler(wholeBufferReadWriter{})
+		ss.SetEventListener(listener)
+		ss.SetMaxMsgLen(maxMsgLen)
+		ss.SetReadTimeout(5 * time.Second)
+		ss.SetWriteTimeout(5 * time.Second)
+
+		return nil
+	})
+	t.Cleanup(server.Close)
+	time.Sleep(300 * time.Millisecond)
+
+	return listener
+}
+
+// startWSClient connects a getty ws client and returns the session it opened.
+func startWSClient(t *testing.T, addr, path string, maxMsgLen int, listener *recordingListener) Session {
+	t.Helper()
+
+	client := NewWSClient(WithServerAddress("ws://"+addr+path), WithConnectionNumber(1))
+	client.RunEventLoop(func(ss Session) error {
+		ss.SetPkgHandler(wholeBufferReadWriter{})
+		ss.SetEventListener(listener)
+		ss.SetMaxMsgLen(maxMsgLen)
+		ss.SetReadTimeout(5 * time.Second)
+		ss.SetWriteTimeout(5 * time.Second)
+
+		return nil
+	})
+	t.Cleanup(client.Close)
+
+	return listener.waitForSession(t)
+}
+
+// TestWebsocketLargePayloadStaysOneMessage is the getty-to-getty case this PR's ws
+// change needs: a payload above maxPacketLen leaves as a single websocket message.
+// Before the fix WriteBytes fragmented it into 16 KiB pieces, so the peer - whose
+// reader has no cross-message buffering - was handed two packages instead of one,
+// and a 20 KiB payload never arrived whole. The write goes one way on purpose: the
+// client side read limit ordering is what #144 fixes, and the property under test
+// here is on the writing side.
+func TestWebsocketLargePayloadStaysOneMessage(t *testing.T) {
+	const (
+		addr      = "127.0.0.1:65142"
+		path      = "/large"
+		maxMsgLen = 64 * 1024
+		payload   = 20 * 1024
+	)
+
+	server := startWSEchoServer(t, addr, path, maxMsgLen)
+	session := startWSClient(t, addr, path, maxMsgLen, newRecordingListener())
+
+	if _, err := session.WriteBytes(make([]byte, payload)); err != nil {
+		t.Fatalf("WriteBytes(%d) = %v", payload, err)
+	}
+
+	select {
+	case length := <-server.received:
+		if length != payload {
+			t.Fatalf("the peer received a %d byte package, want %d: the payload was split into several messages", length, payload)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the large payload never arrived")
+	}
+
+	// and it was one message, not a first fragment followed by the rest
+	select {
+	case length := <-server.received:
+		t.Fatalf("a second package of %d bytes arrived: the payload was fragmented", length)
+	case <-time.After(300 * time.Millisecond):
+	}
+}
+
+// TestWebsocketPayloadAboveMaxMsgLenClosesTheConnection covers the constraint the
+// write side cannot enforce on its own: on ws one write is one message and gorilla
+// applies its read limit per message, so a payload above the peer's maxMsgLen does
+// not arrive truncated - the peer answers CloseMessageTooBig and the connection
+// dies. Review finding on this PR, whose other ws tests talk to a bare gorilla
+// peer that sets no read limit and therefore never showed it.
+func TestWebsocketPayloadAboveMaxMsgLenClosesTheConnection(t *testing.T) {
+	const (
+		addr      = "127.0.0.1:65141"
+		path      = "/limit"
+		maxMsgLen = 4096
+	)
+
+	server := startWSEchoServer(t, addr, path, maxMsgLen)
+	listener := newRecordingListener()
+	session := startWSClient(t, addr, path, maxMsgLen, listener)
+
+	// a payload at the limit is fine and comes back
+	if _, err := session.WriteBytes(make([]byte, maxMsgLen)); err != nil {
+		t.Fatalf("WriteBytes(%d) = %v, want a payload at the limit to be written", maxMsgLen, err)
+	}
+	select {
+	case length := <-server.received:
+		if length != maxMsgLen {
+			t.Fatalf("the peer received a %d byte package, want %d", length, maxMsgLen)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the payload at the read limit did not arrive")
+	}
+
+	// one byte above it and the peer fails the connection
+	if _, err := session.WriteBytes(make([]byte, maxMsgLen+1)); err != nil {
+		t.Logf("the oversized write reported %v", err)
+	}
+	select {
+	case <-listener.closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a payload above the peer's maxMsgLen did not close the connection")
+	}
+}
