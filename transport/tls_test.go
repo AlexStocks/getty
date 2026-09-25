@@ -19,12 +19,19 @@ package getty
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/pem"
+	"math/big"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 var tlsTestRootCertificate = []byte(`-----BEGIN CERTIFICATE-----
@@ -202,5 +209,162 @@ func TestServerTLSConfigBuilderWithoutTrustCollection(t *testing.T) {
 	}
 	if config.MinVersion != tls.VersionTLS12 {
 		t.Fatalf("MinVersion = %d, want TLS 1.2 (%d)", config.MinVersion, tls.VersionTLS12)
+	}
+}
+
+// The handshake test below issues its own CA, server and client certificates:
+// the fixtures used by the config tests have no private key available, and a
+// client certificate signed by their CA cannot be produced without one.
+type testCertificateAuthority struct {
+	cert *x509.Certificate
+	key  *ecdsa.PrivateKey
+	pem  []byte
+}
+
+func newTestCertificateAuthority(t *testing.T) *testCertificateAuthority {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate ca key: %v", err)
+	}
+	template := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "getty test ca"},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(time.Hour),
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("create ca certificate: %v", err)
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatalf("parse ca certificate: %v", err)
+	}
+
+	return &testCertificateAuthority{
+		cert: cert,
+		key:  key,
+		pem:  pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}),
+	}
+}
+
+// issue signs a leaf certificate for cn. A server certificate gets the loopback
+// address a client needs to verify it.
+func (ca *testCertificateAuthority) issue(t *testing.T, cn string, server bool) tls.Certificate {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate %s key: %v", cn, err)
+	}
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(time.Now().UnixNano()),
+		Subject:      pkix.Name{CommonName: cn},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+	}
+	if server {
+		template.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}
+		template.IPAddresses = []net.IP{net.ParseIP("127.0.0.1")}
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, ca.cert, &key.PublicKey, ca.key)
+	if err != nil {
+		t.Fatalf("sign %s certificate: %v", cn, err)
+	}
+
+	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
+}
+
+// writeTLSPair writes a certificate and its key where ServerTlsConfigBuilder can
+// read them.
+func writeTLSPair(t *testing.T, dir, name string, cert tls.Certificate) (certPath, keyPath string) {
+	t.Helper()
+
+	keyDER, err := x509.MarshalECPrivateKey(cert.PrivateKey.(*ecdsa.PrivateKey))
+	if err != nil {
+		t.Fatalf("marshal %s key: %v", name, err)
+	}
+	certPath = filepath.Join(dir, name+".crt")
+	keyPath = filepath.Join(dir, name+".key")
+	if err := os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Certificate[0]}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	return certPath, keyPath
+}
+
+// TestServerTLSHandshakeVerifiesTheClientCertificate is the handshake level case
+// #127 asks for: the tests above only assert the tls.Config fields, and before the
+// fix a self-signed client certificate completed the handshake against a server
+// with a configured trust collection, because RequireAnyClientCert demands a
+// certificate without verifying it.
+func TestServerTLSHandshakeVerifiesTheClientCertificate(t *testing.T) {
+	ca := newTestCertificateAuthority(t)
+	dir := t.TempDir()
+	caPath := filepath.Join(dir, "ca.crt")
+	if err := os.WriteFile(caPath, ca.pem, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	certPath, keyPath := writeTLSPair(t, dir, "server", ca.issue(t, "getty test server", true))
+
+	srv := newServer(
+		TCP_SERVER,
+		WithLocalAddress("127.0.0.1:0"),
+		WithServerSslEnabled(true),
+		WithServerTlsConfigBuilder(&ServerTlsConfigBuilder{
+			ServerKeyCertChainPath:        certPath,
+			ServerPrivateKeyPath:          keyPath,
+			ServerTrustCertCollectionPath: caPath,
+		}),
+	)
+	handler := &MessageHandler{}
+	srv.RunEventLoop(func(ss Session) error {
+		ss.SetPkgHandler(&PackageHandler{})
+		ss.SetEventListener(handler)
+
+		return nil
+	})
+	defer srv.Close()
+	addr := srv.Listener().Addr().String()
+
+	roots := x509.NewCertPool()
+	roots.AddCert(ca.cert)
+	clientConfig := func(cert tls.Certificate) *tls.Config {
+		return &tls.Config{
+			RootCAs:      roots,
+			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS12,
+			// 1.2 on purpose: with 1.3 the client half of the handshake finishes
+			// before the server rejects the certificate, and the failure only
+			// shows up on the first read.
+			MaxVersion: tls.VersionTLS12,
+		}
+	}
+
+	trusted, err := tls.Dial("tcp", addr, clientConfig(ca.issue(t, "trusted client", false)))
+	if err != nil {
+		t.Fatalf("a client certificate issued by the trust collection was rejected: %v", err)
+	}
+	_ = trusted.Close()
+
+	// The server rejects the certificate during the handshake and answers with an
+	// alert, which ends Dial with an error. Do not settle for "the connection is
+	// unusable afterwards": a read on a live connection just times out, and a
+	// timeout would make this test green against the broken code as well.
+	// A certificate issued by a CA the server does not trust is the realistic
+	// case: it is a well formed chain, it simply is not ours.
+	if untrusted, err := tls.Dial("tcp", addr, clientConfig(newTestCertificateAuthority(t).issue(t, "untrusted client", false))); err == nil {
+		_ = untrusted.Close()
+		t.Fatal("a client certificate from an untrusted CA completed the handshake against a configured trust collection")
 	}
 }
