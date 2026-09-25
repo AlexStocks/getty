@@ -95,36 +95,65 @@ func TestConnectionTimeoutAccessorsDoNotCopyAtomicState(t *testing.T) {
 	wg.Wait()
 }
 
-func TestWriteFlushersReturnConsumedBytesOnFlushError(t *testing.T) {
+// A compressor buffers, so a flusher whose Flush fails has delivered nothing:
+// reporting the accepted count there tells a caller that bytes it never saw sent
+// went out. Every failure reports 0. Review finding on #146 - the single buffer
+// and the batch path both used to return the consumed length.
+func TestWriteFlushersReportNothingWhenTheFlushFails(t *testing.T) {
 	payload := []byte("payload")
 	tests := []struct {
-		name   string
-		writer io.Writer
+		name string
+		make func(t *testing.T) (io.Writer, func() (int64, error))
 	}{
 		{
 			name: "flate",
-			writer: func() io.Writer {
-				writer, err := flate.NewWriter(flushErrorWriter{}, flate.DefaultCompression)
-				if err != nil {
-					t.Fatal(err)
+			make: func(t *testing.T) (io.Writer, func() (int64, error)) {
+				newFlusher := func() *writeFlusher {
+					writer, err := flate.NewWriter(flushErrorWriter{}, flate.DefaultCompression)
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					return &writeFlusher{flusher: writer}
 				}
-				return &writeFlusher{flusher: writer}
-			}(),
+
+				return newFlusher(), func() (int64, error) {
+					return newFlusher().WriteBuffers([][]byte{payload, payload})
+				}
+			},
 		},
 		{
-			name:   "snappy",
-			writer: newSnappyWriteFlusher(snappy.NewBufferedWriter(flushErrorWriter{})),
+			name: "snappy",
+			make: func(t *testing.T) (io.Writer, func() (int64, error)) {
+				newFlusher := func() *snappyWriteFlusher {
+					return newSnappyWriteFlusher(snappy.NewBufferedWriter(flushErrorWriter{}))
+				}
+
+				return newFlusher(), func() (int64, error) {
+					return newFlusher().WriteBuffers([][]byte{payload, payload})
+				}
+			},
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			n, err := test.writer.Write(payload)
+			writer, writeBuffers := test.make(t)
+
+			n, err := writer.Write(payload)
 			if !errors.Is(err, errFlushWriter) {
 				t.Fatalf("Write error = %v, want %v", err, errFlushWriter)
 			}
-			if n != len(payload) {
-				t.Fatalf("Write returned %d bytes after consuming %d", n, len(payload))
+			if n != 0 {
+				t.Fatalf("Write reported %d bytes for a call whose flush failed", n)
+			}
+
+			batch, err := writeBuffers()
+			if !errors.Is(err, errFlushWriter) {
+				t.Fatalf("WriteBuffers error = %v, want %v", err, errFlushWriter)
+			}
+			if batch != 0 {
+				t.Fatalf("WriteBuffers reported %d bytes for a batch whose flush failed", batch)
 			}
 		})
 	}
