@@ -89,6 +89,10 @@ func (s *ServerTlsConfigBuilder) BuildTlsConfig() (*tls.Config, error) {
 		// collection still had no mTLS. Verify against it, the way the WSS
 		// server path already does.
 		config.ClientAuth = tls.RequireAndVerifyClientCert
+		// InsecureSkipVerify is a no-op on a server - crypto/tls only consults it
+		// when it verifies the peer as a client - so clearing it here is symmetry
+		// with the literal above, not the fix. ClientAuth is what decides whether
+		// the certificate is verified.
 		config.InsecureSkipVerify = false
 	}
 	return config, nil
