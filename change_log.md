@@ -14,6 +14,31 @@
 ## develop history ##
 ---
 
+- 2026/09/25
+    > Breaking
+    * server: with ServerTrustCertCollectionPath configured, the TLS config now verifies the
+      client certificate against that collection (ClientAuth = RequireAndVerifyClientCert)
+      instead of demanding one without checking it (RequireAnyClientCert), and the protocol
+      floor is TLS 1.2. Client certificates must be issued by the configured collection, and
+      TLS 1.0/1.1 clients no longer connect. Migration: make sure the client certificate
+      chains to the configured trust collection before upgrading; nothing changes for servers
+      without a trust collection. Roll this out gradually.
+    > Improvement
+    * ws: a byte stream write is one websocket message now, so WriteBytes/WriteBytesArray no
+      longer split a payload into 16 KiB fragments on ws, and WriteBytesArray reports the bytes
+      actually written. A message larger than the peer's maxMsgLen makes gorilla fail the
+      connection (read limit), so keep the payload within it; this is why the ws read limit
+      callback ordering (SetMaxMsgLen) was fixed in the same batch.
+    * tcp/ws/wss server and tcp client: sslEnabled without a tlsConfigBuilder is refused at
+      construction, naming the option, instead of segfaulting from inside the event loop
+    * a panic in NewSessionCallback or in EventListener.OnOpen now closes that connection
+      instead of taking the process down, and an OnOpen error closes the connection it opened
+    * ws/wss client dials honour connectTimeout for the upgrade handshake, so a peer that
+      accepts the tcp connection and then stops answering cannot hang Close() forever
+    * util: IsDebugEnabled() lets hot paths skip building log arguments, SetLogger and
+      SetLoggerLevel no longer race with concurrent logging, and the deadline timestamps are
+      stored as unix nanoseconds instead of boxing a time.Time on every read and write
+
 - 2025/09/01
     > Improvement
     * upgrade the go version to v1.25 in go.mod
