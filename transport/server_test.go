@@ -545,6 +545,27 @@ func TestServerSSLRequiresTLSConfigBuilder(t *testing.T) {
 	)
 }
 
+// TestServerSSLFlagIsOnlyRequiredWhereItIsRead pins the scope of the check
+// above: sslEnabled reaches a listener only through listenTCP, which serves tcp,
+// ws and wss; the udp endpoint never reads the field, so it must not be refused.
+// A ws server does read it, so that combination is still refused, and the message
+// has to point at the option that is actually missing.
+func TestServerSSLFlagIsOnlyRequiredWhereItIsRead(t *testing.T) {
+	NewUDPEndPoint(WithLocalAddress("127.0.0.1:1"), WithServerSslEnabled(true))
+
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("NewWSServer(sslEnabled, no tlsConfigBuilder) did not panic")
+		}
+		if !strings.Contains(fmt.Sprint(r), "WithServerTlsConfigBuilder") {
+			t.Fatalf("panic value %v does not name the missing option", r)
+		}
+	}()
+
+	NewWSServer(WithLocalAddress("127.0.0.1:1"), WithWebsocketServerPath("/ws"), WithServerSslEnabled(true))
+}
+
 // callbackProbeReadWriter and callbackProbeListener are the minimum a session
 // needs to run: session.run() refuses to start without a package handler and an
 // event listener.

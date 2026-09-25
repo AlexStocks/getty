@@ -1274,6 +1274,24 @@ func TestNewClientSSLRequiresTLSConfigBuilder(t *testing.T) {
 	)
 }
 
+// TestSSLFlagIsOnlyRequiredWhereItIsRead pins the scope of the check above:
+// sslEnabled is consumed by dialTCP alone - dialWSS takes its trust collection
+// from WithRootCertificateFile, and dialWS/dialUDP do not use TLS - so asking for
+// it on those clients must not turn a configuration that always worked into a
+// construction panic.
+func TestSSLFlagIsOnlyRequiredWhereItIsRead(t *testing.T) {
+	NewWSClient(WithServerAddress("ws://127.0.0.1:1"), WithConnectionNumber(1), WithClientSslEnabled(true))
+	NewUDPClient(WithServerAddress("127.0.0.1:1"), WithConnectionNumber(1), WithClientSslEnabled(true))
+	// wss needs a trust collection of its own; the path is never read during
+	// construction, so the repository fixture is enough here
+	NewWSSClient(
+		WithServerAddress("wss://127.0.0.1:1"),
+		WithConnectionNumber(1),
+		WithClientSslEnabled(true),
+		WithRootCertificateFile("../examples/profiles/wss/server_cert/server.crt"),
+	)
+}
+
 // TestWSClientDialTimesOut covers a peer that completes the tcp handshake and
 // then never answers the upgrade - a hung load balancer, a half-dead process. A
 // zero-value websocket.Dialer derives no deadline of its own, so the dial used to

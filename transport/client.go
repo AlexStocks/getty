@@ -105,11 +105,13 @@ func newClient(t EndPointType, opts ...ClientOption) *client {
 	if c.number <= 0 || c.addr == "" {
 		panic(fmt.Sprintf("client type:%s, @connNum:%d, @serverAddr:%s", t, c.number, c.addr))
 	}
-	if c.sslEnabled && c.tlsConfigBuilder == nil {
-		// #125: dialTCP runs inside the reconnect goroutine, so letting this
-		// combination through turns a configuration mistake into a nil-pointer
-		// panic that kills the process from somewhere else. Fail here instead,
-		// where the caller can see it and nothing has been started yet.
+	if t == TCP_CLIENT && c.sslEnabled && c.tlsConfigBuilder == nil {
+		// #125: dialTCP is the only dial that reads sslEnabled - dialWSS takes its
+		// trust collection from WithRootCertificateFile and dialWS/dialUDP have no
+		// TLS at all - so the check covers exactly the combination that would
+		// reach the nil builder from inside the reconnect goroutine and kill the
+		// process there. Failing here instead keeps a ws/wss/udp configuration
+		// that always worked working.
 		panic(fmt.Sprintf("client type:%s, sslEnabled is true but no tlsConfigBuilder was supplied; use WithClientTlsConfigBuilder", t))
 	}
 

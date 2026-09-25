@@ -107,12 +107,15 @@ func newServer(t EndPointType, opts ...ServerOption) *server {
 
 	s.init(opts...)
 
-	if s.sslEnabled && s.tlsConfigBuilder == nil {
-		// #125: listenTCP runs inside RunEventLoop/listen(), so this combination
-		// used to reach a nil interface method call and kill the process with a
-		// segfault raised from inside the event loop. newClient rejects the same
-		// combination up front, naming the missing option; do it here too.
-		panic(fmt.Sprintf("server type:%s, sslEnabled is true but no tlsConfigBuilder was supplied; use WithServerTlsConfigBuilder", t))
+	if t != UDP_ENDPOINT && s.sslEnabled && s.tlsConfigBuilder == nil {
+		// #125: every endpoint whose listener goes through listenTCP - tcp, ws
+		// and wss - builds the listener TLS configuration from this builder when
+		// sslEnabled is set, so a missing builder used to kill the process with a
+		// nil interface call from inside RunEventLoop/listen(). The udp endpoint
+		// never reads sslEnabled and is left alone; ws/wss normally take their
+		// certificate from WithWebsocketServerCert/WithWebsocketServerPrivateKey
+		// and do not set sslEnabled at all.
+		panic(fmt.Sprintf("server type:%s, sslEnabled is true but no tlsConfigBuilder was supplied; use WithServerTlsConfigBuilder, or drop sslEnabled for ws/wss and configure their certificate instead", t))
 	}
 
 	return s
