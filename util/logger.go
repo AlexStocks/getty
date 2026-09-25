@@ -147,6 +147,14 @@ func SetLoggerLevel(level LoggerLevel) error {
 	return nil
 }
 
+// debugEnabler is the optional interface a Logger implements to report whether it
+// writes debug records. getty cannot see inside a logger installed with SetLogger,
+// so one that implements this is believed, and one that does not keeps the
+// historical behaviour of being judged by the built-in level.
+type debugEnabler interface {
+	DebugEnabled() bool
+}
+
 // IsDebugEnabled reports whether debug records are currently written.
 //
 // A caller on a hot path uses it to skip building log arguments: variadic
@@ -154,10 +162,16 @@ func SetLoggerLevel(level LoggerLevel) error {
 // discards still costs an allocation per call. gettyTCPConn.Send logs every
 // write, which made that a per-packet cost.
 //
-// It reports the level configured through SetLoggerLevel. A logger installed
-// with SetLogger is opaque here - it does not report its level - so this returns
-// the level of the built-in logger in that case.
+// A logger installed with SetLogger that implements DebugEnabled reports for
+// itself; that is the only way a custom logger can keep the guarded hot paths from
+// dropping records it would write. Without it this falls back to the level
+// configured through SetLoggerLevel, which describes the built-in logger only -
+// note that SetLoggerLevel installs that built-in logger, replacing a custom one.
 func IsDebugEnabled() bool {
+	if logger, ok := currentLogger().(debugEnabler); ok {
+		return logger.DebugEnabled()
+	}
+
 	return zapLoggerConfig.Level.Enabled(zapcore.DebugLevel)
 }
 
