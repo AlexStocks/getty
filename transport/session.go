@@ -154,10 +154,13 @@ type session struct {
 	attrs *gxcontext.ValuesContext
 
 	// goroutines sync
-	grNum      uatomic.Int32
-	grWG       sync.WaitGroup
-	lock       sync.RWMutex
-	packetLock sync.RWMutex
+	grNum uatomic.Int32
+	// wsOversizeWarned keeps the oversized websocket payload warning to one per
+	// session; see warnOversizeWebsocketPayload.
+	wsOversizeWarned uatomic.Bool
+	grWG             sync.WaitGroup
+	lock             sync.RWMutex
+	packetLock       sync.RWMutex
 
 	// callbacks
 	closeCallback      callbacks
@@ -287,6 +290,7 @@ func (s *session) Reset() {
 	s.wait = pendingDuration
 	s.attrs = gxcontext.NewValuesContext(context.Background())
 	s.grNum.Store(0)
+	s.wsOversizeWarned.Store(false)
 	s.closeCallback = callbacks{}
 }
 
@@ -583,6 +587,9 @@ func (s *session) WritePkg(pkg any, timeout time.Duration) (pkgBytesLenth int, s
 		gc.SetWriteTimeout(timeout)
 		defer gc.SetWriteTimeout(origWriteTimeout)
 	}
+	if _, ok := conn.(*gettyWSConn); ok {
+		s.warnOversizeWebsocketPayload(len(pkgBytes))
+	}
 	successCount, err = conn.Send(pkg)
 	if err != nil {
 		log.Warnf("%s, [session.WritePkg] @s.Connection.Write(pkg:%#v) = err:%+v", s.Stat(), pkg, err)
@@ -592,6 +599,31 @@ func (s *session) WritePkg(pkg any, timeout time.Duration) (pkgBytesLenth int, s
 }
 
 // WriteBytes for codecs
+// websocketPayloadTooLarge reports whether one websocket write carries more than
+// the session's own maxMsgLen. On ws a write is one message and the peer enforces
+// its read limit per message: gorilla answers a message above the limit with
+// CloseMessageTooBig and fails the connection, so an oversized payload does not
+// arrive truncated, it takes the connection down. The peer's limit is not visible
+// from here, which leaves the local one as the only threshold to compare against.
+func (s *session) websocketPayloadTooLarge(n int) bool {
+	return s.maxMsgLen > 0 && n > int(s.maxMsgLen)
+}
+
+// warnOversizeWebsocketPayload reports an oversized websocket payload once per
+// session: it is a configuration mismatch that repeats on every write, and a line
+// per write would drown the log of an application that keeps sending them.
+func (s *session) warnOversizeWebsocketPayload(n int) {
+	if !s.websocketPayloadTooLarge(n) {
+		return
+	}
+	if s.wsOversizeWarned.Swap(true) {
+		return
+	}
+
+	log.Warnf("%s: websocket payload of %d bytes is above maxMsgLen(%d); the peer's read limit applies per message and gorilla fails the connection on a message above it",
+		s.sessionToken(), n, s.maxMsgLen)
+}
+
 func (s *session) WriteBytes(pkg []byte) (int, error) {
 	if s.IsClosed() {
 		return 0, ErrSessionClosed
@@ -620,6 +652,7 @@ func (s *session) WriteBytes(pkg []byte) (int, error) {
 	// no cross-message buffering - can never reassemble them. WS itself has no
 	// 16 KiB message limit, so the payload goes out as one message.
 	if _, ok := conn.(*gettyWSConn); ok {
+		s.warnOversizeWebsocketPayload(len(pkg))
 		lg, err := conn.Send(pkg)
 		if err != nil {
 			return lg, perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
@@ -693,6 +726,7 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) (int, error) {
 		defer s.packetLock.Unlock()
 		total := 0
 		for i := range pkgs {
+			s.warnOversizeWebsocketPayload(len(pkgs[i]))
 			lg, err := conn.Send(pkgs[i])
 			total += lg
 			if err != nil {
@@ -1362,6 +1396,11 @@ func (s *session) Send(pkg any) (int, error) {
 	conn := s.Connection
 	s.lock.RUnlock()
 	if conn != nil {
+		if _, ok := conn.(*gettyWSConn); ok {
+			if pkgBytes, ok := pkg.([]byte); ok {
+				s.warnOversizeWebsocketPayload(len(pkgBytes))
+			}
+		}
 		return conn.Send(pkg)
 	}
 	return 0, nil

@@ -1346,3 +1346,27 @@ func TestWSBatchWriteHoldsExclusiveLock(t *testing.T) {
 		t.Fatalf("WriteBytesArray: %v", err)
 	}
 }
+
+// TestWebsocketPayloadAboveMaxMsgLenIsDetected pins the threshold the ws write
+// path warns about. A session limit of 0 means "no local limit", and the check
+// compares against the payload that goes out as one message.
+func TestWebsocketPayloadAboveMaxMsgLenIsDetected(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		maxMsgLen int32
+		payload   int
+		want      bool
+	}{
+		{name: "session without a limit", maxMsgLen: 0, payload: 1 << 20, want: false},
+		{name: "at the limit", maxMsgLen: 4096, payload: 4096, want: false},
+		{name: "one byte above the limit", maxMsgLen: 4096, payload: 4097, want: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ss := &session{maxMsgLen: test.maxMsgLen}
+			if got := ss.websocketPayloadTooLarge(test.payload); got != test.want {
+				t.Fatalf("websocketPayloadTooLarge(%d) with maxMsgLen %d = %v, want %v",
+					test.payload, test.maxMsgLen, got, test.want)
+			}
+		})
+	}
+}
