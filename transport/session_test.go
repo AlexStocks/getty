@@ -931,6 +931,10 @@ func TestWSWriteBytesKeepsLargePackageInSingleMessage(t *testing.T) {
 	for i := range pkg {
 		pkg[i] = byte(i)
 	}
+	// the payload is deliberately above maxPacketLen; keep it within the session's
+	// own limit, so this test stays about the message boundary rather than about the
+	// size check WriteBytes now applies
+	ss.SetMaxMsgLen(len(pkg))
 
 	n, err := ss.WriteBytes(pkg)
 	if err != nil {
@@ -1068,15 +1072,15 @@ func TestWSHandlePackageSkipsNilPkg(t *testing.T) {
 	}
 }
 
-// partialWriteNetConn accepts only a prefix of the first buffer and then fails,
+// prefixThenFailNetConn accepts only a prefix of the first buffer and then fails,
 // the state net.Buffers.WriteTo leaves behind on a short write.
-type partialWriteNetConn struct {
+type prefixThenFailNetConn struct {
 	mu     sync.Mutex
 	writes int
 	prefix int
 }
 
-func (c *partialWriteNetConn) Write(p []byte) (int, error) {
+func (c *prefixThenFailNetConn) Write(p []byte) (int, error) {
 	c.mu.Lock()
 	c.writes++
 	first := c.writes == 1
@@ -1088,20 +1092,20 @@ func (c *partialWriteNetConn) Write(p []byte) (int, error) {
 	return 0, errTestPartialWrite
 }
 
-func (*partialWriteNetConn) Read([]byte) (int, error)         { return 0, io.EOF }
-func (*partialWriteNetConn) Close() error                     { return nil }
-func (*partialWriteNetConn) LocalAddr() net.Addr              { return &net.TCPAddr{} }
-func (*partialWriteNetConn) RemoteAddr() net.Addr             { return &net.TCPAddr{} }
-func (*partialWriteNetConn) SetDeadline(time.Time) error      { return nil }
-func (*partialWriteNetConn) SetReadDeadline(time.Time) error  { return nil }
-func (*partialWriteNetConn) SetWriteDeadline(time.Time) error { return nil }
+func (*prefixThenFailNetConn) Read([]byte) (int, error)         { return 0, io.EOF }
+func (*prefixThenFailNetConn) Close() error                     { return nil }
+func (*prefixThenFailNetConn) LocalAddr() net.Addr              { return &net.TCPAddr{} }
+func (*prefixThenFailNetConn) RemoteAddr() net.Addr             { return &net.TCPAddr{} }
+func (*prefixThenFailNetConn) SetDeadline(time.Time) error      { return nil }
+func (*prefixThenFailNetConn) SetReadDeadline(time.Time) error  { return nil }
+func (*prefixThenFailNetConn) SetWriteDeadline(time.Time) error { return nil }
 
 // Regression test for #130 item 4: a batch that fails part-way was reported as 0
 // bytes written even though writev had already put a prefix on the wire. A
 // caller treating 0 as "nothing sent" resends that prefix and desynchronizes
 // the peer's decoder.
 func TestWriteBytesArrayReportsPartialTCPWrite(t *testing.T) {
-	netConn := &partialWriteNetConn{prefix: 2}
+	netConn := &prefixThenFailNetConn{prefix: 2}
 	ss := newTCPSession(netConn, nil).(*session)
 
 	n, err := ss.WriteBytesArray([]byte("aaaa"), []byte("bbbb"))
@@ -1143,7 +1147,7 @@ func (c *mergePathConn) Send(pkg any) (int, error) {
 // bytes it wrote before failing - here the first maxPacketLen fragment of the
 // merged buffer - and WriteBytesArray used to discard that count.
 func TestWriteBytesArrayReportsPartialMergedWrite(t *testing.T) {
-	conn := &mergePathConn{gettyTCPConn: newGettyTCPConn(&partialWriteNetConn{prefix: 1})}
+	conn := &mergePathConn{gettyTCPConn: newGettyTCPConn(&prefixThenFailNetConn{prefix: 1})}
 	ss := newSession(nil, conn)
 
 	n, err := ss.WriteBytesArray(make([]byte, 10000), make([]byte, 10000))
@@ -1344,5 +1348,29 @@ func TestWSBatchWriteHoldsExclusiveLock(t *testing.T) {
 	gated.releaseFirst()
 	if err := <-batchDone; err != nil {
 		t.Fatalf("WriteBytesArray: %v", err)
+	}
+}
+
+// TestWebsocketPayloadAboveMaxMsgLenIsDetected pins the threshold the ws write
+// path warns about. A session limit of 0 means "no local limit", and the check
+// compares against the payload that goes out as one message.
+func TestWebsocketPayloadAboveMaxMsgLenIsDetected(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		maxMsgLen int32
+		payload   int
+		want      bool
+	}{
+		{name: "session without a limit", maxMsgLen: 0, payload: 1 << 20, want: false},
+		{name: "at the limit", maxMsgLen: 4096, payload: 4096, want: false},
+		{name: "one byte above the limit", maxMsgLen: 4096, payload: 4097, want: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ss := &session{maxMsgLen: test.maxMsgLen}
+			if got := ss.websocketPayloadTooLarge(test.payload); got != test.want {
+				t.Fatalf("websocketPayloadTooLarge(%d) with maxMsgLen %d = %v, want %v",
+					test.payload, test.maxMsgLen, got, test.want)
+			}
+		})
 	}
 }
