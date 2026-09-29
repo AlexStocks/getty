@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -39,6 +40,10 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/stretchr/testify/assert"
+)
+
+import (
+	logutil "github.com/AlexStocks/getty/util"
 )
 
 type PackageHandler struct{}
@@ -680,6 +685,82 @@ func TestTCPClientOnOpenCloseKeepsPoolAtConfiguredSize(t *testing.T) {
 	assert.Equal(t, wantPoolSize, clt.sessionNum())
 }
 
+// TestTCPClientConnectRejectsSurplusSession is the regression test for #130
+// defect 2: connect() must re-check the pool capacity in the very critical
+// section that admits the session, because reConnect()'s check and that insert
+// are not atomic with respect to each other. A connect() that would exceed
+// WithConnectionNumber must be reported as failed, must not grow ssMap and must
+// close the surplus session instead of leaking it.
+func TestTCPClientConnectRejectsSurplusSession(t *testing.T) {
+	const poolSize = 1
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.Nil(t, err)
+	assert.NotNil(t, listener)
+	accepted := make(chan net.Conn, 4)
+	acceptDone := make(chan struct{})
+	go func() {
+		defer close(acceptDone)
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			accepted <- conn
+		}
+	}()
+	t.Cleanup(func() {
+		_ = listener.Close()
+		<-acceptDone
+	})
+
+	clt := NewTCPClient(
+		WithServerAddress(listener.Addr().String()),
+		WithConnectionNumber(poolSize),
+		WithReconnectInterval(int(20*time.Millisecond)),
+		WithReconnectAttempts(1),
+	).(*client)
+	clt.newSession = func(session Session) error {
+		var (
+			pkgHandler PackageHandler
+			msgHandler MessageHandler
+		)
+		session.SetName("surplus-connect-client-session")
+		session.SetPkgHandler(&pkgHandler)
+		session.SetEventListener(&msgHandler)
+		session.SetReadTimeout(20 * time.Millisecond)
+		session.SetWriteTimeout(20 * time.Millisecond)
+		session.SetWaitTime(20 * time.Millisecond)
+		return nil
+	}
+	t.Cleanup(clt.Close)
+
+	// connect() drives dial -> run -> insert synchronously, so the capacity
+	// check is exercised without racing reconnect loops.
+	assert.True(t, clt.connect())
+	assert.Equal(t, poolSize, clt.sessionNum())
+
+	// The pool is full: this session must be rejected, must not enter ssMap and
+	// must be closed again.
+	assert.False(t, clt.connect(), "a session above WithConnectionNumber must be rejected")
+	assert.Equal(t, poolSize, clt.sessionNum())
+
+	first, surplus := <-accepted, <-accepted
+	defer func() { _ = first.Close(); _ = surplus.Close() }()
+	// The rejected session must have been closed, so the peer sees the
+	// connection go away (EOF) rather than a still-open connection (read
+	// deadline timeout).
+	assert.Nil(t, surplus.SetReadDeadline(time.Now().Add(2*time.Second)))
+	n, err := surplus.Read(make([]byte, 1))
+	assert.Zero(t, n)
+	if assert.Error(t, err) {
+		var netErr net.Error
+		if errors.As(err, &netErr) {
+			assert.False(t, netErr.Timeout(), "the rejected session is still holding its connection open")
+		}
+	}
+}
+
 func (h *PackageHandler) Read(ss Session, data []byte) (any, int, error) {
 	return nil, 0, nil
 }
@@ -975,6 +1056,71 @@ func TestUDPClient(t *testing.T) {
 	msgHandler.array[0].Reset()
 	assert.Nil(t, msgHandler.array[0].Conn())
 	// ss.WritePkg([]byte("hello"), 0)
+}
+
+// logLineRecorder is a util.Logger that records every line the package logs, so
+// a test can assert which failure a path reported even when the failure does not
+// change the returned value. It is safe for concurrent use.
+type logLineRecorder struct {
+	lock  sync.Mutex
+	lines []string
+}
+
+func (l *logLineRecorder) record(text string) {
+	l.lock.Lock()
+	l.lines = append(l.lines, text)
+	l.lock.Unlock()
+}
+
+func (l *logLineRecorder) recordf(format string, args ...any) {
+	l.record(fmt.Sprintf(format, args...))
+}
+
+func (l *logLineRecorder) Info(args ...any)  { l.record(fmt.Sprint(args...)) }
+func (l *logLineRecorder) Warn(args ...any)  { l.record(fmt.Sprint(args...)) }
+func (l *logLineRecorder) Error(args ...any) { l.record(fmt.Sprint(args...)) }
+func (l *logLineRecorder) Debug(args ...any) { l.record(fmt.Sprint(args...)) }
+
+func (l *logLineRecorder) Infof(format string, args ...any)  { l.recordf(format, args...) }
+func (l *logLineRecorder) Warnf(format string, args ...any)  { l.recordf(format, args...) }
+func (l *logLineRecorder) Errorf(format string, args ...any) { l.recordf(format, args...) }
+func (l *logLineRecorder) Debugf(format string, args ...any) { l.recordf(format, args...) }
+
+func (l *logLineRecorder) snapshot() []string {
+	l.lock.Lock()
+	defer l.lock.Unlock()
+	return append([]string(nil), l.lines...)
+}
+
+func (l *logLineRecorder) contains(substr string) bool {
+	for _, line := range l.snapshot() {
+		if strings.Contains(line, substr) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestUDPClientDialReportsUnresolvableAddress is the regression test for #130
+// defect 5. An unresolvable server address must fail the UDP dial with the
+// resolution error; before the fix the error was discarded and the dial failed
+// with a misleading "missing address" from net.DialUDP instead, so the real
+// cause never surfaced in any reconnect cycle. Both the old and the fixed code
+// return a nil session, so the assertions pin down which failure is reported.
+func TestUDPClientDialReportsUnresolvableAddress(t *testing.T) {
+	capture := &logLineRecorder{}
+	prev := logutil.GetLogger()
+	logutil.SetLogger(capture)
+	defer logutil.SetLogger(prev)
+
+	// "127.0.0.1" has no port: net.ResolveUDPAddr rejects it.
+	clt := newClient(UDP_CLIENT, WithServerAddress("127.0.0.1"), WithConnectionNumber(1))
+	assert.Nil(t, clt.dialUDP(), "an unresolvable peer address must fail the dial")
+
+	assert.True(t, capture.contains("ResolveUDPAddr"),
+		"the address resolution failure must be reported, logged lines: %v", capture.snapshot())
+	assert.False(t, capture.contains("missing address"),
+		"the misleading net.DialUDP error must not be the reported cause, logged lines: %v", capture.snapshot())
 }
 
 func TestNewWSClient(t *testing.T) {
@@ -1327,5 +1473,245 @@ func TestWSClientReadLimitFollowsSetMaxMsgLen(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("no echo for a payload above the 4KB default: the client read limit did not follow SetMaxMsgLen")
+	}
+}
+
+// wholeBufferReadWriter hands whatever sits in the read buffer to OnMessage as a
+// single package. The framing is not the subject here, and PackageHandler, which
+// the other tests use, always reports "not enough data" and therefore never
+// delivers a package.
+type wholeBufferReadWriter struct{}
+
+func (wholeBufferReadWriter) Read(_ Session, data []byte) (any, int, error) {
+	if len(data) == 0 {
+		return nil, 0, nil
+	}
+	buf := make([]byte, len(data))
+	copy(buf, data)
+
+	return buf, len(data), nil
+}
+
+func (wholeBufferReadWriter) Write(_ Session, pkg any) ([]byte, error) {
+	b, _ := pkg.([]byte)
+
+	return b, nil
+}
+
+// echoBytesListener records the length of every package it receives and writes it
+// back.
+type echoBytesListener struct {
+	MessageHandler
+
+	received chan int
+}
+
+func (l *echoBytesListener) OnMessage(ss Session, pkg any) {
+	if b, ok := pkg.([]byte); ok {
+		select {
+		case l.received <- len(b):
+		default:
+		}
+
+		_, _ = ss.WriteBytes(b)
+	}
+}
+
+// recordingListener keeps the session it opened and signals when that session
+// closes.
+type recordingListener struct {
+	MessageHandler
+
+	mu      sync.Mutex
+	session Session
+	closed  chan struct{}
+}
+
+func newRecordingListener() *recordingListener {
+	return &recordingListener{closed: make(chan struct{}, 4)}
+}
+
+func (l *recordingListener) OnOpen(ss Session) error {
+	l.mu.Lock()
+	l.session = ss
+	l.mu.Unlock()
+
+	return nil
+}
+
+func (l *recordingListener) OnClose(Session) {
+	select {
+	case l.closed <- struct{}{}:
+	default:
+	}
+}
+
+func (l *recordingListener) waitForSession(t *testing.T) Session {
+	t.Helper()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		l.mu.Lock()
+		ss := l.session
+		l.mu.Unlock()
+		if ss != nil {
+			return ss
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the ws client never opened a session")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// startWSEchoServer runs a getty ws server that records and echoes every package
+// it receives, with maxMsgLen as its read limit, and returns the address to dial.
+// It listens on an ephemeral port: a hard-coded one makes the test fail when
+// anything else on the machine holds it, and the failure then surfaces as a dial
+// that never opens a session.
+func startWSEchoServer(t *testing.T, path string, maxMsgLen int) (string, *echoBytesListener) {
+	t.Helper()
+
+	listener := &echoBytesListener{received: make(chan int, 4)}
+	server := newServer(WS_SERVER, WithLocalAddress("127.0.0.1:0"), WithWebsocketServerPath(path))
+	server.RunEventLoop(func(ss Session) error {
+		ss.SetPkgHandler(wholeBufferReadWriter{})
+		ss.SetEventListener(listener)
+		ss.SetMaxMsgLen(maxMsgLen)
+		ss.SetReadTimeout(5 * time.Second)
+		ss.SetWriteTimeout(5 * time.Second)
+
+		return nil
+	})
+	t.Cleanup(server.Close)
+	time.Sleep(300 * time.Millisecond)
+
+	return server.Listener().Addr().String(), listener
+}
+
+// startWSClient connects a getty ws client and returns the session it opened.
+func startWSClient(t *testing.T, addr, path string, maxMsgLen int, listener *recordingListener) Session {
+	t.Helper()
+
+	client := NewWSClient(WithServerAddress("ws://"+addr+path), WithConnectionNumber(1))
+	client.RunEventLoop(func(ss Session) error {
+		ss.SetPkgHandler(wholeBufferReadWriter{})
+		ss.SetEventListener(listener)
+		ss.SetMaxMsgLen(maxMsgLen)
+		ss.SetReadTimeout(5 * time.Second)
+		ss.SetWriteTimeout(5 * time.Second)
+
+		return nil
+	})
+	t.Cleanup(client.Close)
+
+	return listener.waitForSession(t)
+}
+
+// TestWebsocketLargePayloadStaysOneMessage is the getty-to-getty case this PR's ws
+// change needs: a payload above maxPacketLen leaves as a single websocket message.
+// Before the fix WriteBytes fragmented it into 16 KiB pieces, so the peer - whose
+// reader has no cross-message buffering - was handed two packages instead of one,
+// and a 20 KiB payload never arrived whole. The write goes one way on purpose: the
+// client side read limit ordering is what #144 fixes, and the property under test
+// here is on the writing side.
+func TestWebsocketLargePayloadStaysOneMessage(t *testing.T) {
+	const (
+		path      = "/large"
+		maxMsgLen = 64 * 1024
+		payload   = 20 * 1024
+	)
+
+	addr, server := startWSEchoServer(t, path, maxMsgLen)
+	session := startWSClient(t, addr, path, maxMsgLen, newRecordingListener())
+
+	if _, err := session.WriteBytes(make([]byte, payload)); err != nil {
+		t.Fatalf("WriteBytes(%d) = %v", payload, err)
+	}
+
+	select {
+	case length := <-server.received:
+		if length != payload {
+			t.Fatalf("the peer received a %d byte package, want %d: the payload was split into several messages", length, payload)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the large payload never arrived")
+	}
+
+	// and it was one message, not a first fragment followed by the rest
+	select {
+	case length := <-server.received:
+		t.Fatalf("a second package of %d bytes arrived: the payload was fragmented", length)
+	case <-time.After(300 * time.Millisecond):
+	}
+}
+
+// TestWebsocketPayloadAboveMaxMsgLenIsRejectedLocally pins the sender's half of the
+// ws size contract. gorilla applies the read limit per message, so a payload above
+// the peer's maxMsgLen does not arrive truncated, it makes the peer fail the
+// connection; the sender knows its own limit, so it refuses the write and returns
+// an error instead of turning a size mistake into a dropped connection. Review
+// finding on this PR, whose earlier revision only logged a warning and sent anyway.
+func TestWebsocketPayloadAboveMaxMsgLenIsRejectedLocally(t *testing.T) {
+	const (
+		path      = "/limit"
+		maxMsgLen = 4096
+	)
+
+	addr, server := startWSEchoServer(t, path, maxMsgLen)
+	listener := newRecordingListener()
+	session := startWSClient(t, addr, path, maxMsgLen, listener)
+
+	// at the limit: written and echoed
+	if _, err := session.WriteBytes(make([]byte, maxMsgLen)); err != nil {
+		t.Fatalf("WriteBytes(%d) = %v, want a payload at the limit to be written", maxMsgLen, err)
+	}
+	select {
+	case length := <-server.received:
+		if length != maxMsgLen {
+			t.Fatalf("the peer received a %d byte package, want %d", length, maxMsgLen)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the payload at the read limit did not arrive")
+	}
+
+	// one byte above it: refused before anything goes out
+	if _, err := session.WriteBytes(make([]byte, maxMsgLen+1)); err == nil {
+		t.Fatal("WriteBytes wrote a payload above maxMsgLen, which makes the peer fail the connection")
+	}
+	select {
+	case length := <-server.received:
+		t.Fatalf("an oversized payload still reached the peer as a %d byte package", length)
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	// and the connection is intact, so the caller can keep using it
+	if _, err := session.WriteBytes(make([]byte, 16)); err != nil {
+		t.Fatalf("a payload below the limit after a rejected one = %v", err)
+	}
+	select {
+	case length := <-server.received:
+		if length != 16 {
+			t.Fatalf("the peer received a %d byte package after the rejection, want 16", length)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the connection did not survive a rejected payload")
+	}
+
+	// a batch stops at the offending package and reports the delivered prefix
+	n, err := session.WriteBytesArray([]byte("ok"), make([]byte, maxMsgLen+1), []byte("never"))
+	if err == nil {
+		t.Fatal("WriteBytesArray accepted a batch with an oversized package")
+	}
+	if n != 2 {
+		t.Fatalf("WriteBytesArray reported %d bytes before the oversized package, want 2", n)
+	}
+	select {
+	case length := <-server.received:
+		if length != 2 {
+			t.Fatalf("the peer received a %d byte package from the batch prefix, want 2", length)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the batch prefix never arrived")
 	}
 }
