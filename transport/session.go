@@ -583,6 +583,11 @@ func (s *session) WritePkg(pkg any, timeout time.Duration) (pkgBytesLenth int, s
 		gc.SetWriteTimeout(timeout)
 		defer gc.SetWriteTimeout(origWriteTimeout)
 	}
+	if _, ok := conn.(*gettyWSConn); ok {
+		if err := s.checkWebsocketPayload(len(pkgBytes)); err != nil {
+			return len(pkgBytes), 0, perrors.WithStack(err)
+		}
+	}
 	successCount, err = conn.Send(pkg)
 	if err != nil {
 		log.Warnf("%s, [session.WritePkg] @s.Connection.Write(pkg:%#v) = err:%+v", s.Stat(), pkg, err)
@@ -592,6 +597,29 @@ func (s *session) WritePkg(pkg any, timeout time.Duration) (pkgBytesLenth int, s
 }
 
 // WriteBytes for codecs
+// websocketPayloadTooLarge reports whether one websocket write carries more than
+// the session's own maxMsgLen. On ws a write is one message and the peer enforces
+// its read limit per message: gorilla answers a message above the limit with
+// CloseMessageTooBig and fails the connection, so an oversized payload does not
+// arrive truncated, it takes the connection down. The peer's limit is not visible
+// from here, which leaves the local one as the only threshold to compare against.
+func (s *session) websocketPayloadTooLarge(n int) bool {
+	return s.maxMsgLen > 0 && n > int(s.maxMsgLen)
+}
+
+// checkWebsocketPayload refuses a websocket payload above the session's maxMsgLen
+// before it is written. The sender is the only side that can stop this cheaply:
+// writing it anyway upgrades a size mistake into a connection the peer drops, and
+// the error then surfaces far away from the call that caused it.
+func (s *session) checkWebsocketPayload(n int) error {
+	if !s.websocketPayloadTooLarge(n) {
+		return nil
+	}
+
+	return perrors.Errorf("websocket payload of %d bytes is above maxMsgLen(%d), and the peer's read limit applies per message, so it would fail the connection",
+		n, s.maxMsgLen)
+}
+
 func (s *session) WriteBytes(pkg []byte) (int, error) {
 	if s.IsClosed() {
 		return 0, ErrSessionClosed
@@ -620,6 +648,9 @@ func (s *session) WriteBytes(pkg []byte) (int, error) {
 	// no cross-message buffering - can never reassemble them. WS itself has no
 	// 16 KiB message limit, so the payload goes out as one message.
 	if _, ok := conn.(*gettyWSConn); ok {
+		if err := s.checkWebsocketPayload(len(pkg)); err != nil {
+			return 0, perrors.WithStack(err)
+		}
 		lg, err := conn.Send(pkg)
 		if err != nil {
 			return lg, perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
@@ -693,6 +724,11 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) (int, error) {
 		defer s.packetLock.Unlock()
 		total := 0
 		for i := range pkgs {
+			if err := s.checkWebsocketPayload(len(pkgs[i])); err != nil {
+				// report the packages the batch delivered before the offending
+				// one; for the first package the count stays 0
+				return total, perrors.WithStack(err)
+			}
 			lg, err := conn.Send(pkgs[i])
 			total += lg
 			if err != nil {
@@ -1362,6 +1398,13 @@ func (s *session) Send(pkg any) (int, error) {
 	conn := s.Connection
 	s.lock.RUnlock()
 	if conn != nil {
+		if _, ok := conn.(*gettyWSConn); ok {
+			if pkgBytes, ok := pkg.([]byte); ok {
+				if err := s.checkWebsocketPayload(len(pkgBytes)); err != nil {
+					return 0, perrors.WithStack(err)
+				}
+			}
+		}
 		return conn.Send(pkg)
 	}
 	return 0, nil
