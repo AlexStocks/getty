@@ -27,7 +27,7 @@ jobs:
           persist-credentials: false
 
       - name: Check License Header
-        uses: apache/skywalking-eyes/header@09ea4645029958233cbb229514f0cd4273e11ac8 # verified main, post-v0.8.0
+        uses: apache/skywalking-eyes/header@01a13f3869435d1b7813fd03430bc306e68c6340 # verified main, post-v0.8.0
         with:
           config: .licenserc.yaml
           mode: check
