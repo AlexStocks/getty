@@ -1681,13 +1681,37 @@ func startWSEchoServer(t *testing.T, path string, maxMsgLen int) (string, *echoB
 		return nil
 	})
 	t.Cleanup(server.Close)
-	time.Sleep(300 * time.Millisecond)
 
-	return server.Listener().Addr().String(), listener
+	addr := server.Listener().Addr().String()
+	waitForTCPListener(t, addr)
+	return addr, listener
+}
+
+// waitForTCPListener blocks until addr accepts a TCP connection. RunEventLoop
+// publishes the listener synchronously but starts the HTTP serve goroutine
+// asynchronously, so sleeping for a fixed interval is both slower than needed
+// on an idle machine and flaky on a loaded one.
+func waitForTCPListener(t *testing.T, addr string) {
+	t.Helper()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		conn, err := net.DialTimeout("tcp", addr, 100*time.Millisecond)
+		if err == nil {
+			_ = conn.Close()
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("ws listener at %s did not become ready: %v", addr, err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 // startWSClient connects a getty ws client and returns the session it opened.
-func startWSClient(t *testing.T, addr, path string, maxMsgLen int, listener *recordingListener) Session {
+// maxMsgLen is the client's receive limit; maxWriteMsgLen is the optional
+// outbound websocket per-message limit (0 means unlimited).
+func startWSClient(t *testing.T, addr, path string, maxMsgLen, maxWriteMsgLen int, listener *recordingListener) Session {
 	t.Helper()
 
 	client := NewWSClient(WithServerAddress("ws://"+addr+path), WithConnectionNumber(1))
@@ -1695,6 +1719,9 @@ func startWSClient(t *testing.T, addr, path string, maxMsgLen int, listener *rec
 		ss.SetPkgHandler(wholeBufferReadWriter{})
 		ss.SetEventListener(listener)
 		ss.SetMaxMsgLen(maxMsgLen)
+		if maxWriteMsgLen > 0 {
+			ss.SetMaxWriteMsgLen(maxWriteMsgLen)
+		}
 		ss.SetReadTimeout(5 * time.Second)
 		ss.SetWriteTimeout(5 * time.Second)
 
@@ -1720,7 +1747,7 @@ func TestWebsocketLargePayloadStaysOneMessage(t *testing.T) {
 	)
 
 	addr, server := startWSEchoServer(t, path, maxMsgLen)
-	session := startWSClient(t, addr, path, maxMsgLen, newRecordingListener())
+	session := startWSClient(t, addr, path, maxMsgLen, 0, newRecordingListener())
 
 	if _, err := session.WriteBytes(make([]byte, payload)); err != nil {
 		t.Fatalf("WriteBytes(%d) = %v", payload, err)
@@ -1743,38 +1770,68 @@ func TestWebsocketLargePayloadStaysOneMessage(t *testing.T) {
 	}
 }
 
-// TestWebsocketPayloadAboveMaxMsgLenIsRejectedLocally pins the sender's half of the
-// ws size contract. gorilla applies the read limit per message, so a payload above
-// the peer's maxMsgLen does not arrive truncated, it makes the peer fail the
-// connection; the sender knows its own limit, so it refuses the write and returns
-// an error instead of turning a size mistake into a dropped connection. Review
-// finding on this PR, whose earlier revision only logged a warning and sent anyway.
-func TestWebsocketPayloadAboveMaxMsgLenIsRejectedLocally(t *testing.T) {
+// TestWebsocketWriteLimitIsIndependentOfReceiveLimit is the regression case for
+// reusing maxMsgLen as an outbound limit: a session may keep a 4 KiB receive
+// limit while sending a larger message to a peer that accepts it. Only an
+// explicit SetMaxWriteMsgLen may reject the write.
+func TestWebsocketWriteLimitIsIndependentOfReceiveLimit(t *testing.T) {
 	const (
-		path      = "/limit"
-		maxMsgLen = 4096
+		path        = "/write-independent"
+		serverLimit = 64 * 1024
+		clientLimit = 4 * 1024
+		payload     = 8 * 1024
+	)
+
+	addr, server := startWSEchoServer(t, path, serverLimit)
+	session := startWSClient(t, addr, path, clientLimit, 0, newRecordingListener())
+
+	if _, err := session.WriteBytes(make([]byte, payload)); err != nil {
+		t.Fatalf("WriteBytes(%d) with a %d byte receive limit and no write limit = %v",
+			payload, clientLimit, err)
+	}
+	select {
+	case length := <-server.received:
+		if length != payload {
+			t.Fatalf("the peer received a %d byte package, want %d", length, payload)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the payload crossed the receive limit check but never reached the peer")
+	}
+}
+
+// TestWebsocketPayloadAboveWriteLimitIsRejectedLocally pins the sender's half of
+// the ws size contract. gorilla applies the read limit per message, so a payload
+// above the peer's read limit does not arrive truncated, it makes the peer fail
+// the connection; the sender can reject the write before that happens when it
+// knows the peer's limit. The write limit is configured independently of the
+// local receive limit.
+func TestWebsocketPayloadAboveWriteLimitIsRejectedLocally(t *testing.T) {
+	const (
+		path        = "/limit"
+		maxMsgLen   = 4096
+		maxWriteLen = 4096
 	)
 
 	addr, server := startWSEchoServer(t, path, maxMsgLen)
 	listener := newRecordingListener()
-	session := startWSClient(t, addr, path, maxMsgLen, listener)
+	session := startWSClient(t, addr, path, maxMsgLen, maxWriteLen, listener)
 
 	// at the limit: written and echoed
-	if _, err := session.WriteBytes(make([]byte, maxMsgLen)); err != nil {
-		t.Fatalf("WriteBytes(%d) = %v, want a payload at the limit to be written", maxMsgLen, err)
+	if _, err := session.WriteBytes(make([]byte, maxWriteLen)); err != nil {
+		t.Fatalf("WriteBytes(%d) = %v, want a payload at the write limit to be written", maxWriteLen, err)
 	}
 	select {
 	case length := <-server.received:
-		if length != maxMsgLen {
-			t.Fatalf("the peer received a %d byte package, want %d", length, maxMsgLen)
+		if length != maxWriteLen {
+			t.Fatalf("the peer received a %d byte package, want %d", length, maxWriteLen)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("the payload at the read limit did not arrive")
+		t.Fatal("the payload at the write limit did not arrive")
 	}
 
 	// one byte above it: refused before anything goes out
-	if _, err := session.WriteBytes(make([]byte, maxMsgLen+1)); err == nil {
-		t.Fatal("WriteBytes wrote a payload above maxMsgLen, which makes the peer fail the connection")
+	if _, err := session.WriteBytes(make([]byte, maxWriteLen+1)); err == nil {
+		t.Fatal("WriteBytes wrote a payload above maxWriteMsgLen and made the peer fail the connection")
 	}
 	select {
 	case length := <-server.received:
@@ -1796,7 +1853,7 @@ func TestWebsocketPayloadAboveMaxMsgLenIsRejectedLocally(t *testing.T) {
 	}
 
 	// a batch stops at the offending package and reports the delivered prefix
-	n, err := session.WriteBytesArray([]byte("ok"), make([]byte, maxMsgLen+1), []byte("never"))
+	n, err := session.WriteBytesArray([]byte("ok"), make([]byte, maxWriteLen+1), []byte("never"))
 	if err == nil {
 		t.Fatal("WriteBytesArray accepted a batch with an oversized package")
 	}

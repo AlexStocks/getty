@@ -97,6 +97,38 @@ func TestSetMaxMsgLenNormalizesLimits(t *testing.T) {
 	}
 }
 
+// TestSetMaxWriteMsgLenNormalizesLimits pins the same input normalization for the
+// independent outbound websocket limit.
+func TestSetMaxWriteMsgLenNormalizesLimits(t *testing.T) {
+	tests := []struct {
+		name   string
+		length int
+		want   int32
+	}{
+		{name: "negative becomes unlimited", length: -1, want: 0},
+		{name: "zero remains unlimited", length: 0, want: 0},
+		{name: "positive value is stored", length: 4096, want: 4096},
+	}
+	if strconv.IntSize == 64 {
+		oversized := int64(math.MaxInt32) + 1
+		tests = append(tests, struct {
+			name   string
+			length int
+			want   int32
+		}{name: "oversized value is clamped", length: int(oversized), want: math.MaxInt32})
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ss := &session{}
+			ss.SetMaxWriteMsgLen(tt.length)
+			if ss.maxWriteMsgLen != tt.want {
+				t.Fatalf("SetMaxWriteMsgLen(%d) stored %d, want %d", tt.length, ss.maxWriteMsgLen, tt.want)
+			}
+		})
+	}
+}
+
 type recordingErrorReader struct {
 	dataLengths chan<- int
 }
@@ -1351,25 +1383,28 @@ func TestWSBatchWriteHoldsExclusiveLock(t *testing.T) {
 	}
 }
 
-// TestWebsocketPayloadAboveMaxMsgLenIsDetected pins the threshold the ws write
-// path warns about. A session limit of 0 means "no local limit", and the check
-// compares against the payload that goes out as one message.
-func TestWebsocketPayloadAboveMaxMsgLenIsDetected(t *testing.T) {
+// TestWebsocketPayloadAboveWriteLimitIsDetected pins the independent ws write
+// threshold. The receive limit must not enable the outbound check: a session
+// keeping its default 4 KiB read limit still writes larger messages unless the
+// application explicitly configured SetMaxWriteMsgLen.
+func TestWebsocketPayloadAboveWriteLimitIsDetected(t *testing.T) {
 	for _, test := range []struct {
-		name      string
-		maxMsgLen int32
-		payload   int
-		want      bool
+		name           string
+		maxMsgLen      int32
+		maxWriteMsgLen int32
+		payload        int
+		want           bool
 	}{
-		{name: "session without a limit", maxMsgLen: 0, payload: 1 << 20, want: false},
-		{name: "at the limit", maxMsgLen: 4096, payload: 4096, want: false},
-		{name: "one byte above the limit", maxMsgLen: 4096, payload: 4097, want: true},
+		{name: "read limit does not gate writes", maxMsgLen: 4096, maxWriteMsgLen: 0, payload: 8192, want: false},
+		{name: "no explicit write limit", maxMsgLen: 0, maxWriteMsgLen: 0, payload: 1 << 20, want: false},
+		{name: "at the write limit", maxMsgLen: 4096, maxWriteMsgLen: 8192, payload: 8192, want: false},
+		{name: "one byte above the write limit", maxMsgLen: 4096, maxWriteMsgLen: 8192, payload: 8193, want: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			ss := &session{maxMsgLen: test.maxMsgLen}
+			ss := &session{maxMsgLen: test.maxMsgLen, maxWriteMsgLen: test.maxWriteMsgLen}
 			if got := ss.websocketPayloadTooLarge(test.payload); got != test.want {
-				t.Fatalf("websocketPayloadTooLarge(%d) with maxMsgLen %d = %v, want %v",
-					test.payload, test.maxMsgLen, got, test.want)
+				t.Fatalf("websocketPayloadTooLarge(%d) with maxMsgLen %d and maxWriteMsgLen %d = %v, want %v",
+					test.payload, test.maxMsgLen, test.maxWriteMsgLen, got, test.want)
 			}
 		})
 	}

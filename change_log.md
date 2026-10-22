@@ -14,6 +14,41 @@
 ## develop history ##
 ---
 
+- 2026/10/22
+    > Breaking
+    * ws/wss writes keep message boundaries: WriteBytes sends one whole payload as one
+      websocket message instead of splitting it at 16 KiB, and WriteBytesArray sends one
+      message per package instead of merging the batch into one. getty's websocket reader
+      has no cross-message reassembly, so callers that relied on the old fragmenting
+      behaviour must send a complete application-level package per write.
+    * NewWSServer/NewWSSServer without WithWebsocketServerPath now panics during
+      construction, naming the missing option, instead of crashing later inside the
+      event-loop goroutine with an invalid ServeMux pattern.
+    * Session gains SetMaxWriteMsgLen(int). Callers of getty sessions are unaffected,
+      but code that implements the Session interface itself must add the method.
+    > Improvement
+    * session: add SetMaxWriteMsgLen(int), an explicit outbound limit for one websocket
+      message (0 = unlimited). It is independent of SetMaxMsgLen, which is the receive
+      limit and still defaults to 4 KiB; SetMaxMsgLen does not enable a write-side
+      check. Set the write limit when the peer's read limit is known so an oversized
+      payload is refused locally rather than failing the peer's connection.
+    * tcp server: every persistent Accept error (not only timeouts) now takes the
+      doubling 5ms-to-1s back-off and is logged; shutdown interrupts the back-off.
+    * client: connect() re-checks connection-pool capacity after pruning closed
+      sessions, so concurrent reconnects cannot leave the pool above
+      WithConnectionNumber.
+    > Bug Fix
+    * WriteBytesArray reports the bytes delivered before a failed write instead of
+      reporting zero and causing a retry to resend an already-delivered prefix.
+    * flate/snappy write wrappers report zero bytes when Write or Flush fails, so a
+      codec-enabled write no longer claims that buffered bytes reached the socket.
+    * ws/wss: WritePkg, WriteBytes, WriteBytesArray and Send enforce the optional
+      outbound limit before calling conn.Send, and a rejected batch reports its
+      successfully delivered prefix.
+    * dialUDP reports address-resolution failures instead of dialing a nil address.
+    * a udp session without a reader reports the same configuration error as the tcp
+      path instead of panicking on the first datagram.
+
 - 2026/09/25
     > Breaking
     * server: with ServerTrustCertCollectionPath configured, the TLS config now verifies the
@@ -30,10 +65,9 @@
     > Improvement
     * ws: a byte stream write is one websocket message now, so WriteBytes/WriteBytesArray no
       longer split a payload into 16 KiB fragments on ws, and WriteBytesArray reports the bytes
-      actually written. A payload above the peer's maxMsgLen is refused with an error before
-      anything goes out: gorilla applies its read limit per message and fails the connection on
-      an oversized one, and the sender is the only side that can catch that cheaply. The ws read
-      limit callback ordering (SetMaxMsgLen) was fixed in the same batch for the receiving side.
+      actually written. The optional sender-side payload limit is configured separately with
+      SetMaxWriteMsgLen; see the 2026/10/22 entry. The ws read limit callback ordering
+      (SetMaxMsgLen) was fixed in the same batch for the receiving side.
     * tcp/ws/wss server and tcp client: sslEnabled without a tlsConfigBuilder is refused at
       construction, naming the option, instead of segfaulting from inside the event loop
     * a panic in NewSessionCallback or in EventListener.OnOpen now closes that connection

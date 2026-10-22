@@ -98,6 +98,7 @@ type Session interface {
 	// EndPoint get endpoint type
 	EndPoint() EndPoint
 	SetMaxMsgLen(int)
+	SetMaxWriteMsgLen(int)
 	SetName(string)
 	SetEventListener(EventListener)
 	SetPkgHandler(ReadWriter)
@@ -138,7 +139,8 @@ type session struct {
 	writer Writer
 
 	// handle logic
-	maxMsgLen int32
+	maxMsgLen      int32 // receive limit enforced by the read path
+	maxWriteMsgLen int32 // ws-only limit for one outbound message; 0 means unlimited
 
 	// heartbeat
 	period         time.Duration
@@ -389,18 +391,39 @@ func (s *session) closedLocked() bool {
 	}
 }
 
-// SetMaxMsgLen set maximum package length of every package in (EventListener)OnMessage(@pkgs)
+// SetMaxMsgLen sets the maximum package length accepted by the receive side and
+// passed to (EventListener)OnMessage. It does not limit outgoing websocket
+// messages; use SetMaxWriteMsgLen for that.
 func (s *session) SetMaxMsgLen(length int) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
+	s.maxMsgLen = normalizeMsgLen(length)
+}
+
+// SetMaxWriteMsgLen sets the maximum payload length of one outgoing websocket
+// message. WebSocket writes are one message per call and gorilla enforces the
+// read limit per message, so a caller that knows the peer's limit can reject an
+// oversized write locally instead of having the peer fail the connection.
+//
+// The default is 0 (unlimited), which preserves the behaviour of sessions that
+// only configured SetMaxMsgLen. This limit has no effect on tcp or udp
+// connections.
+func (s *session) SetMaxWriteMsgLen(length int) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	s.maxWriteMsgLen = normalizeMsgLen(length)
+}
+
+func normalizeMsgLen(length int) int32 {
 	switch {
 	case length <= 0:
-		s.maxMsgLen = 0
+		return 0
 	case int64(length) > int64(math.MaxInt32):
-		s.maxMsgLen = math.MaxInt32
+		return math.MaxInt32
 	default:
-		s.maxMsgLen = int32(length)
+		return int32(length)
 	}
 }
 
@@ -596,30 +619,41 @@ func (s *session) WritePkg(pkg any, timeout time.Duration) (pkgBytesLenth int, s
 	return len(pkgBytes), successCount, nil
 }
 
-// WriteBytes for codecs
 // websocketPayloadTooLarge reports whether one websocket write carries more than
-// the session's own maxMsgLen. On ws a write is one message and the peer enforces
+// the explicit outbound limit. On ws a write is one message and the peer enforces
 // its read limit per message: gorilla answers a message above the limit with
 // CloseMessageTooBig and fails the connection, so an oversized payload does not
-// arrive truncated, it takes the connection down. The peer's limit is not visible
-// from here, which leaves the local one as the only threshold to compare against.
+// arrive truncated, it takes the connection down.
+//
+// The write limit is deliberately separate from maxMsgLen. maxMsgLen is the
+// session's own receive limit and defaults to 4 KiB; reusing it here would make
+// a peer that accepts 16 KiB start rejecting 4 KiB+ writes unless the application
+// changed an unrelated read setting.
 func (s *session) websocketPayloadTooLarge(n int) bool {
-	return s.maxMsgLen > 0 && n > int(s.maxMsgLen)
+	s.lock.RLock()
+	limit := s.maxWriteMsgLen
+	s.lock.RUnlock()
+
+	return limit > 0 && n > int(limit)
 }
 
-// checkWebsocketPayload refuses a websocket payload above the session's maxMsgLen
-// before it is written. The sender is the only side that can stop this cheaply:
-// writing it anyway upgrades a size mistake into a connection the peer drops, and
-// the error then surfaces far away from the call that caused it.
+// checkWebsocketPayload refuses a websocket payload above the configured
+// outbound limit before it is written. The sender is the only side that can stop
+// this cheaply: writing it anyway upgrades a size mistake into a connection the
+// peer drops, and the error then surfaces far away from the call that caused it.
 func (s *session) checkWebsocketPayload(n int) error {
-	if !s.websocketPayloadTooLarge(n) {
+	s.lock.RLock()
+	limit := s.maxWriteMsgLen
+	s.lock.RUnlock()
+	if limit <= 0 || n <= int(limit) {
 		return nil
 	}
 
-	return perrors.Errorf("websocket payload of %d bytes is above maxMsgLen(%d), and the peer's read limit applies per message, so it would fail the connection",
-		n, s.maxMsgLen)
+	return perrors.Errorf("websocket payload of %d bytes is above maxWriteMsgLen(%d), and the peer's read limit applies per message, so it would fail the connection",
+		n, limit)
 }
 
+// WriteBytes for codecs
 func (s *session) WriteBytes(pkg []byte) (int, error) {
 	if s.IsClosed() {
 		return 0, ErrSessionClosed
