@@ -26,6 +26,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -105,6 +106,17 @@ func newServer(t EndPointType, opts ...ServerOption) *server {
 	}
 
 	s.init(opts...)
+
+	if t != UDP_ENDPOINT && s.sslEnabled && s.tlsConfigBuilder == nil {
+		// #125: every endpoint whose listener goes through listenTCP - tcp, ws
+		// and wss - builds the listener TLS configuration from this builder when
+		// sslEnabled is set, so a missing builder used to kill the process with a
+		// nil interface call from inside RunEventLoop/listen(). The udp endpoint
+		// never reads sslEnabled and is left alone; ws/wss normally take their
+		// certificate from WithWebsocketServerCert/WithWebsocketServerPrivateKey
+		// and do not set sslEnabled at all.
+		panic(fmt.Sprintf("server type:%s, sslEnabled is true but no tlsConfigBuilder was supplied; use WithServerTlsConfigBuilder, or drop sslEnabled for ws/wss and configure their certificate instead", t))
+	}
 
 	return s
 }
@@ -308,6 +320,26 @@ func (s *server) listen() error {
 	return nil
 }
 
+// callNewSession invokes the user's NewSessionCallback and turns a panic from it
+// into an error. It is called from goroutines this library started - the tcp
+// accept loop, the udp endpoint loop, the ws handler and the client's reconnect
+// loop - where nothing else recovers a panic, so a bug in application code would
+// otherwise kill the whole process instead of closing the one connection it was
+// called for. handlePackage already contains a panic from the user's OnMessage
+// the same way.
+func callNewSession(cb NewSessionCallback, ss Session) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			const size = 64 << 10
+			rBuf := make([]byte, size)
+			rBuf = rBuf[:runtime.Stack(rBuf, false)]
+			err = perrors.Errorf("[newSession] panic: err=%v\n%s", r, rBuf)
+		}
+	}()
+
+	return cb(ss)
+}
+
 func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 	conn, err := s.streamListener.Accept()
 	if err != nil {
@@ -315,11 +347,16 @@ func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 	}
 	if gxnet.IsSameAddr(conn.RemoteAddr(), conn.LocalAddr()) {
 		log.Warnf("conn.localAddr{%s} == conn.RemoteAddr{%s}", conn.LocalAddr().String(), conn.RemoteAddr().String())
+		// #123: the connection was accepted, so it owns a descriptor. Returning
+		// without closing it leaks that fd until the process exits, because the
+		// caller just keeps accepting. The client side already closes before it
+		// reports errSelfConnect.
+		_ = conn.Close()
 		return nil, perrors.WithStack(errSelfConnect)
 	}
 
 	ss := newTCPSession(conn, s)
-	err = newSession(ss)
+	err = callNewSession(newSession, ss)
 	if err != nil {
 		_ = conn.Close()
 		return nil, perrors.WithStack(err)
@@ -383,9 +420,13 @@ func (s *server) runUDPEventLoop(newSession NewSessionCallback) {
 
 		conn = s.pktListener.(*net.UDPConn)
 		ss = newUDPSession(conn, s)
-		if err = newSession(ss); err != nil {
+		if err = callNewSession(newSession, ss); err != nil {
+			// #125: this runs in a goroutine the library started, so a panic here
+			// is unrecoverable and takes the whole process down over a caller
+			// error. The TCP accept path logs and keeps serving; do the same.
+			log.Errorf("server{%s}.newSession(ss{%#v}) = err {%s}", s.addr, ss, perrors.WithStack(err))
 			_ = conn.Close()
-			panic(err.Error())
+			return
 		}
 		ss.(*session).run()
 	}()
@@ -436,7 +477,7 @@ func (s *wsHandler) serveWSRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	// conn.SetReadLimit(int64(handler.maxMsgLen))
 	ss := newWSSession(conn, s.server)
-	err = s.newSession(ss)
+	err = callNewSession(s.newSession, ss)
 	if err != nil {
 		_ = conn.Close()
 		log.Warnf("server{%s}.newSession(ss{%#v}) = err {%s}", s.server.addr, ss, err)
