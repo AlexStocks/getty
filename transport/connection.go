@@ -296,12 +296,18 @@ func (t *writeFlusher) Write(p []byte) (int, error) {
 	)
 	t.lock.Lock()
 	defer t.lock.Unlock()
+	// The reported count has to mean "reached the socket". A compressor buffers,
+	// so when Flush - which is what puts the bytes on the wire - fails, nothing
+	// this call can vouch for has been delivered; returning the accepted count
+	// would tell the caller that bytes it never saw sent went out, and a caller
+	// that retries on error is then the only thing standing between the peer and
+	// a gap in the stream. Every failure reports 0.
 	n, err = t.flusher.Write(p)
 	if err != nil {
-		return n, perrors.WithStack(err)
+		return 0, perrors.WithStack(err)
 	}
 	if err := t.flusher.Flush(); err != nil {
-		return n, perrors.WithStack(err)
+		return 0, perrors.WithStack(err)
 	}
 
 	return n, nil
@@ -315,15 +321,25 @@ func (t *writeFlusher) WriteBuffers(buffers [][]byte) (int64, error) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
+	// The reported count has to mean "reached the socket". A compressor buffers,
+	// so when Flush - which is what puts the bytes on the wire - fails, nothing
+	// this call can vouch for has been delivered; returning the accepted count
+	// would tell the caller that bytes it never saw sent went out, and a caller
+	// that retries on error is then the only thing standing between the peer and
+	// a gap in the stream. Every failure reports 0.
 	var total int64
 	for _, b := range buffers {
 		n, err := t.flusher.Write(b)
-		total += int64(n)
 		if err != nil {
-			return total, perrors.WithStack(err)
+			return 0, perrors.WithStack(err)
 		}
+		total += int64(n)
 	}
-	return total, perrors.WithStack(t.flusher.Flush())
+	if err := t.flusher.Flush(); err != nil {
+		return 0, perrors.WithStack(err)
+	}
+
+	return total, nil
 }
 
 // Close terminates the flate stream (final block marker), so the peer's
@@ -351,13 +367,20 @@ func newSnappyWriteFlusher(w *snappy.Writer) *snappyWriteFlusher {
 func (s *snappyWriteFlusher) Write(p []byte) (int, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
+	// The reported count has to mean "reached the socket". A compressor buffers,
+	// so when Flush - which is what puts the bytes on the wire - fails, nothing
+	// this call can vouch for has been delivered; returning the accepted count
+	// would tell the caller that bytes it never saw sent went out, and a caller
+	// that retries on error is then the only thing standing between the peer and
+	// a gap in the stream. Every failure reports 0.
 	n, err := s.writer.Write(p)
 	if err != nil {
-		return n, perrors.WithStack(err)
+		return 0, perrors.WithStack(err)
 	}
 	if err := s.writer.Flush(); err != nil {
-		return n, perrors.WithStack(err)
+		return 0, perrors.WithStack(err)
 	}
+
 	return n, nil
 }
 
@@ -367,15 +390,25 @@ func (s *snappyWriteFlusher) WriteBuffers(buffers [][]byte) (int64, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
+	// The reported count has to mean "reached the socket". A compressor buffers,
+	// so when Flush - which is what puts the bytes on the wire - fails, nothing
+	// this call can vouch for has been delivered; returning the accepted count
+	// would tell the caller that bytes it never saw sent went out, and a caller
+	// that retries on error is then the only thing standing between the peer and
+	// a gap in the stream. Every failure reports 0.
 	var total int64
 	for _, b := range buffers {
 		n, err := s.writer.Write(b)
-		total += int64(n)
 		if err != nil {
-			return total, perrors.WithStack(err)
+			return 0, perrors.WithStack(err)
 		}
+		total += int64(n)
 	}
-	return total, perrors.WithStack(s.writer.Flush())
+	if err := s.writer.Flush(); err != nil {
+		return 0, perrors.WithStack(err)
+	}
+
+	return total, nil
 }
 
 func (s *snappyWriteFlusher) Close() error {

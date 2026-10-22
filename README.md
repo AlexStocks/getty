@@ -244,6 +244,7 @@ type Session interface {
     IsClosed() bool
     EndPoint() EndPoint
     SetMaxMsgLen(int)
+    SetMaxWriteMsgLen(int)
     SetName(string)
     SetEventListener(EventListener)
     SetPkgHandler(ReadWriter)
@@ -277,7 +278,8 @@ type Session interface {
 
 ##### Configuration Settings
 - **`SetName(string)`**: Set session name
-- **`SetMaxMsgLen(int)`**: Set maximum message length
+- **`SetMaxMsgLen(int)`**: Set maximum received message length (default 4 KiB); does not limit outgoing websocket messages
+- **`SetMaxWriteMsgLen(int)`**: Set maximum payload length for one outgoing websocket message (0 = unlimited); independent of the receive limit
 - **`SetCronPeriod(int)`**: Set heartbeat detection period (milliseconds)
 - **`SetWaitTime(time.Duration)`**: Set wait timeout
 - **`SetReadTimeout(time.Duration)`**: Set read timeout

@@ -244,6 +244,7 @@ type Session interface {
     IsClosed() bool
     EndPoint() EndPoint
     SetMaxMsgLen(int)
+    SetMaxWriteMsgLen(int)
     SetName(string)
     SetEventListener(EventListener)
     SetPkgHandler(ReadWriter)
@@ -277,7 +278,8 @@ type Session interface {
 
 ##### 配置设置
 - **`SetName(string)`**: 设置会话名称
-- **`SetMaxMsgLen(int)`**: 设置最大消息长度
+- **`SetMaxMsgLen(int)`**: 设置最大接收消息长度（默认 4 KiB），不限制发送的 WebSocket 消息
+- **`SetMaxWriteMsgLen(int)`**: 设置单条发送 WebSocket 消息的最大载荷长度（0 表示不限制），与接收上限独立配置
 - **`SetCronPeriod(int)`**: 设置心跳检测周期（毫秒）
 - **`SetWaitTime(time.Duration)`**: 设置等待超时时间
 - **`SetReadTimeout(time.Duration)`**: 设置读取超时时间

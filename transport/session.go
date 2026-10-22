@@ -98,6 +98,7 @@ type Session interface {
 	// EndPoint get endpoint type
 	EndPoint() EndPoint
 	SetMaxMsgLen(int)
+	SetMaxWriteMsgLen(int)
 	SetName(string)
 	SetEventListener(EventListener)
 	SetPkgHandler(ReadWriter)
@@ -138,7 +139,8 @@ type session struct {
 	writer Writer
 
 	// handle logic
-	maxMsgLen int32
+	maxMsgLen      int32 // receive limit enforced by the read path
+	maxWriteMsgLen int32 // ws-only limit for one outbound message; 0 means unlimited
 
 	// heartbeat
 	period         time.Duration
@@ -389,18 +391,39 @@ func (s *session) closedLocked() bool {
 	}
 }
 
-// SetMaxMsgLen set maximum package length of every package in (EventListener)OnMessage(@pkgs)
+// SetMaxMsgLen sets the maximum package length accepted by the receive side and
+// passed to (EventListener)OnMessage. It does not limit outgoing websocket
+// messages; use SetMaxWriteMsgLen for that.
 func (s *session) SetMaxMsgLen(length int) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
+	s.maxMsgLen = normalizeMsgLen(length)
+}
+
+// SetMaxWriteMsgLen sets the maximum payload length of one outgoing websocket
+// message. WebSocket writes are one message per call and gorilla enforces the
+// read limit per message, so a caller that knows the peer's limit can reject an
+// oversized write locally instead of having the peer fail the connection.
+//
+// The default is 0 (unlimited), which preserves the behaviour of sessions that
+// only configured SetMaxMsgLen. This limit has no effect on tcp or udp
+// connections.
+func (s *session) SetMaxWriteMsgLen(length int) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	s.maxWriteMsgLen = normalizeMsgLen(length)
+}
+
+func normalizeMsgLen(length int) int32 {
 	switch {
 	case length <= 0:
-		s.maxMsgLen = 0
+		return 0
 	case int64(length) > int64(math.MaxInt32):
-		s.maxMsgLen = math.MaxInt32
+		return math.MaxInt32
 	default:
-		s.maxMsgLen = int32(length)
+		return int32(length)
 	}
 }
 
@@ -583,12 +606,51 @@ func (s *session) WritePkg(pkg any, timeout time.Duration) (pkgBytesLenth int, s
 		gc.SetWriteTimeout(timeout)
 		defer gc.SetWriteTimeout(origWriteTimeout)
 	}
+	if _, ok := conn.(*gettyWSConn); ok {
+		if err := s.checkWebsocketPayload(len(pkgBytes)); err != nil {
+			return len(pkgBytes), 0, perrors.WithStack(err)
+		}
+	}
 	successCount, err = conn.Send(pkg)
 	if err != nil {
 		log.Warnf("%s, [session.WritePkg] @s.Connection.Write(pkg:%#v) = err:%+v", s.Stat(), pkg, err)
 		return len(pkgBytes), successCount, perrors.WithStack(err)
 	}
 	return len(pkgBytes), successCount, nil
+}
+
+// websocketPayloadTooLarge reports whether one websocket write carries more than
+// the explicit outbound limit. On ws a write is one message and the peer enforces
+// its read limit per message: gorilla answers a message above the limit with
+// CloseMessageTooBig and fails the connection, so an oversized payload does not
+// arrive truncated, it takes the connection down.
+//
+// The write limit is deliberately separate from maxMsgLen. maxMsgLen is the
+// session's own receive limit and defaults to 4 KiB; reusing it here would make
+// a peer that accepts 16 KiB start rejecting 4 KiB+ writes unless the application
+// changed an unrelated read setting.
+func (s *session) websocketPayloadTooLarge(n int) bool {
+	s.lock.RLock()
+	limit := s.maxWriteMsgLen
+	s.lock.RUnlock()
+
+	return limit > 0 && n > int(limit)
+}
+
+// checkWebsocketPayload refuses a websocket payload above the configured
+// outbound limit before it is written. The sender is the only side that can stop
+// this cheaply: writing it anyway upgrades a size mistake into a connection the
+// peer drops, and the error then surfaces far away from the call that caused it.
+func (s *session) checkWebsocketPayload(n int) error {
+	s.lock.RLock()
+	limit := s.maxWriteMsgLen
+	s.lock.RUnlock()
+	if limit <= 0 || n <= int(limit) {
+		return nil
+	}
+
+	return perrors.Errorf("websocket payload of %d bytes is above maxWriteMsgLen(%d), and the peer's read limit applies per message, so it would fail the connection",
+		n, limit)
 }
 
 // WriteBytes for codecs
@@ -612,6 +674,22 @@ func (s *session) WriteBytes(pkg []byte) (int, error) {
 	s.lock.RUnlock()
 	if conn == nil {
 		return 0, ErrSessionClosed
+	}
+
+	// #128: one gettyWSConn.Send is one whole WS message, so a package bigger
+	// than maxPacketLen has to leave in a single Send. Fragmenting it would
+	// produce several independent messages, and the peer's reader - which has
+	// no cross-message buffering - can never reassemble them. WS itself has no
+	// 16 KiB message limit, so the payload goes out as one message.
+	if _, ok := conn.(*gettyWSConn); ok {
+		if err := s.checkWebsocketPayload(len(pkg)); err != nil {
+			return 0, perrors.WithStack(err)
+		}
+		lg, err := conn.Send(pkg)
+		if err != nil {
+			return lg, perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
+		}
+		return totalSize, nil
 	}
 
 	for leftPackageSize > maxPacketLen {
@@ -657,9 +735,41 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) (int, error) {
 		defer s.packetLock.RUnlock()
 		lg, err := conn.Send(pkgs)
 		if err != nil {
-			return 0, perrors.Wrapf(err, "s.Connection.Write(pkgs num:%d)", len(pkgs))
+			// net.Buffers.WriteTo (writev) can write a prefix and then fail:
+			// report those bytes instead of pretending nothing went out, which
+			// would make a caller resend an already-delivered prefix.
+			return lg, perrors.Wrapf(err, "s.Connection.Write(pkgs num:%d)", len(pkgs))
 		}
 		return lg, nil
+	}
+
+	// #128: on WS every Send is one message, so merging the batch would let the
+	// peer's reader decode only the first package and silently drop the rest.
+	// Send each package on its own and report the bytes accepted so far when
+	// one of the sends fails.
+	if _, ok := conn.(*gettyWSConn); ok {
+		// #128: the batch must hold the write lock, not the read lock. A ws
+		// connection serialises one WriteMessage at a time, not the whole loop,
+		// so with a read lock a concurrent Send/WriteBytes could land between
+		// two of this batch's messages (A1, B1, A2) and the peer would see a
+		// batch it cannot recognise. The tcp path gets this for free because its
+		// whole batch is one conn.Send.
+		s.packetLock.Lock()
+		defer s.packetLock.Unlock()
+		total := 0
+		for i := range pkgs {
+			if err := s.checkWebsocketPayload(len(pkgs[i])); err != nil {
+				// report the packages the batch delivered before the offending
+				// one; for the first package the count stays 0
+				return total, perrors.WithStack(err)
+			}
+			lg, err := conn.Send(pkgs[i])
+			total += lg
+			if err != nil {
+				return total, perrors.Wrapf(err, "s.Connection.Write(pkgs num:%d)", len(pkgs))
+			}
+		}
+		return total, nil
 	}
 
 	// get len
@@ -689,7 +799,9 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) (int, error) {
 
 	wlg, err = s.WriteBytes(arr)
 	if err != nil {
-		return 0, perrors.WithStack(err)
+		// WriteBytes returns the bytes it already wrote, e.g. the fragments
+		// that went out before the failing one: keep that count.
+		return wlg, perrors.WithStack(err)
 	}
 
 	num := len(pkgs) - 1
@@ -898,6 +1010,15 @@ func (s *session) handlePackage() {
 	} else if _, ok := s.Connection.(*gettyWSConn); ok {
 		err = s.handleWSPackage()
 	} else if _, ok := s.Connection.(*gettyUDPConn); ok {
+		// #130 item 6: without a reader the datagram loop panics on the first
+		// datagram with an obscure nil dereference. Fail with the same
+		// configuration error as the TCP branch, naming the real problem.
+		if s.reader == nil {
+			errStr := fmt.Sprintf("session{name:%s, conn:%#v, reader:%#v}", s.name, s.Connection, s.reader)
+			log.Error(errStr)
+			panic(errStr)
+		}
+
 		err = s.handleUDPPackage()
 	} else {
 		panic(fmt.Sprintf("unknown type session{%#v}", s))
@@ -1107,6 +1228,14 @@ func (s *session) handleWSPackage() error {
 			if err != nil {
 				log.Warnf("%s, [session.handleWSPackage] = len:%d, error:%+v",
 					s.sessionToken(), length, perrors.WithStack(err))
+				continue
+			}
+
+			// #128: a reader that returns (nil, 0, nil) has no complete package
+			// in this message yet. Unlike TCP there is no buffered remainder to
+			// grow, but the next message may still complete the package, so keep
+			// reading instead of handing a nil package to the listener.
+			if unmarshalPkg == nil {
 				continue
 			}
 
@@ -1332,6 +1461,13 @@ func (s *session) Send(pkg any) (int, error) {
 	conn := s.Connection
 	s.lock.RUnlock()
 	if conn != nil {
+		if _, ok := conn.(*gettyWSConn); ok {
+			if pkgBytes, ok := pkg.([]byte); ok {
+				if err := s.checkWebsocketPayload(len(pkgBytes)); err != nil {
+					return 0, perrors.WithStack(err)
+				}
+			}
+		}
 		return conn.Send(pkg)
 	}
 	return 0, nil
