@@ -46,11 +46,14 @@ type listenerTLSConfigBuilder struct {
 	calls  int
 }
 
+// BuildTlsConfig records each invocation and returns the configured test result.
 func (b *listenerTLSConfigBuilder) BuildTlsConfig() (*tls.Config, error) {
 	b.calls++
 	return b.config, b.err
 }
 
+// TestTCPListenerRejectsInvalidTLSConfig verifies that invalid TLS configurations
+// fail without publishing a listener for empty, bare-IP, and explicit addresses.
 func TestTCPListenerRejectsInvalidTLSConfig(t *testing.T) {
 	buildErr := errors.New("test certificate failure")
 	for _, address := range []string{"", "127.0.0.1", "127.0.0.1:0"} {
@@ -87,6 +90,8 @@ func TestTCPListenerRejectsInvalidTLSConfig(t *testing.T) {
 	}
 }
 
+// TestTCPListenerTransport verifies plain TCP and certificate-verified TLS
+// communication for empty, bare-IP, and explicit addresses.
 func TestTCPListenerTransport(t *testing.T) {
 	ca := newTestCertificateAuthority(t)
 	certificate := ca.issue(t, "getty test server", true)
@@ -225,6 +230,8 @@ func testTCPServer(t *testing.T, address string) {
 	assert.True(t, server.IsClosed())
 }
 
+// testTCPTlsServer connects Getty client and server sessions over mutual TLS
+// using certificates issued by a temporary test certificate authority.
 func testTCPTlsServer(t *testing.T, address string) {
 	t.Helper()
 
@@ -445,6 +452,8 @@ func TestServerClosePreventsLateListenerPublication(t *testing.T) {
 	})
 }
 
+// TestServer exercises TCP and UDP listeners with automatically assigned ports
+// and a TLS-enabled TCP server bound to a bare IP address.
 func TestServer(t *testing.T) {
 	var addr string
 
