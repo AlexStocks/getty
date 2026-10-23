@@ -505,6 +505,7 @@ func TestConcurrentWritePkgTimeoutRestoration(t *testing.T) {
 	}
 }
 
+// TestResetWaitsForPackageLoop keeps reset pending until the read loop exits.
 func TestResetWaitsForPackageLoop(t *testing.T) {
 	netConn := &resetBarrierNetConn{
 		entered: make(chan struct{}),
@@ -524,11 +525,7 @@ func TestResetWaitsForPackageLoop(t *testing.T) {
 		t.Fatal("package loop did not enter Read")
 	}
 
-	resetDone := make(chan struct{})
-	go func() {
-		ss.Reset()
-		close(resetDone)
-	}()
+	resetDone := ss.ResetAsync()
 
 	select {
 	case <-resetDone:
@@ -551,7 +548,9 @@ func TestResetWaitsForPackageLoop(t *testing.T) {
 	}
 }
 
-func TestResetWaitsForActiveHeartbeat(t *testing.T) {
+// TestResetAsyncWaitsForActiveHeartbeat fences asynchronous completion until an
+// already running heartbeat returns.
+func TestResetAsyncWaitsForActiveHeartbeat(t *testing.T) {
 	listener := &blockingCronEventListener{
 		entered: make(chan struct{}),
 		release: make(chan struct{}),
@@ -571,11 +570,7 @@ func TestResetWaitsForActiveHeartbeat(t *testing.T) {
 		t.Fatal("heartbeat did not enter OnCron")
 	}
 
-	resetDone := make(chan struct{})
-	go func() {
-		ss.Reset()
-		close(resetDone)
-	}()
+	resetDone := ss.ResetAsync()
 	select {
 	case <-resetDone:
 		t.Fatal("Reset returned while the heartbeat callback was still running")

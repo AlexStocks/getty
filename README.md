@@ -274,7 +274,28 @@ type Session interface {
 - **`Conn()`**: Get the underlying network connection object
 - **`IsClosed()`**: Check if the session is closed
 - **`Close()`**: Close the session connection
-- **`Reset()`**: Reset session state
+- **`Reset()`**: Close and reset the session after managed work and connection cleanup finish. If any managed callback of this session is active at entry, Reset schedules cleanup and returns immediately, including calls from external goroutines. Otherwise it waits. The signature is unchanged, but completion semantics change while callbacks are active.
+- **`TryReset()`** (optional `TryResetter`): Return `ErrResetDuringCallback` without requesting reset if any callback of this session is active at entry; otherwise wait and return the reset result.
+- **`ResetAsync()`** (optional `AsyncResetter`): Request cleanup without blocking. Each call returns a separate buffered channel that receives one error (`nil` on success) and then closes. Pending requests share one cleanup operation, but later resets cannot overwrite their results.
+
+`Session` keeps its original `Reset()` signature. The optional interfaces do not require existing custom Session implementations to add methods. Stop starting new operations before waiting for completion or reusing the session. Never wait for reset inside a callback of the session being reset; request it and return instead:
+
+```go
+func (l *listener) OnClose(s getty.Session) {
+    async, ok := s.(getty.AsyncResetter)
+    if !ok {
+        return
+    }
+    done := async.ResetAsync()
+    go func() {
+        if err := <-done; err != nil {
+            return // Reset failed; do not recycle the session.
+        }
+        // Session cleanup and reset completed successfully.
+    }()
+    // Return so the reset worker can finish waiting for this callback.
+}
+```
 
 ##### Configuration Settings
 - **`SetName(string)`**: Set session name
