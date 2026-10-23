@@ -1196,7 +1196,8 @@ func (s *session) handleUDPPackage() error {
 	return perrors.WithStack(err)
 }
 
-// get package from websocket stream
+// handleWSPackage receives size-limited WebSocket messages and dispatches them
+// directly or through the application's decoder.
 func (s *session) handleWSPackage() error {
 	var (
 		ok           bool
@@ -1210,7 +1211,7 @@ func (s *session) handleWSPackage() error {
 
 	conn = s.Connection.(*gettyWSConn)
 	for !s.IsClosed() {
-		pkg, err = conn.recv()
+		pkg, err = conn.recv(s.maxMsgLen)
 		if netError, ok = perrors.Cause(err).(net.Error); ok && netError.Timeout() {
 			continue
 		}

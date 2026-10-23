@@ -1188,11 +1188,12 @@ func (w *gettyWSConn) handlePong(string) error {
 	return nil
 }
 
-// websocket connection read
-func (w *gettyWSConn) recv() ([]byte, error) {
-	// Pls do not set read deadline when using ReadMessage. AlexStocks 20180310
+// recv reads one WebSocket message with a limit on its decompressed size.
+// A nonpositive maxMsgLen leaves the message size unlimited.
+func (w *gettyWSConn) recv(maxMsgLen int32) ([]byte, error) {
+	// Pls do not set read deadline when using NextReader. AlexStocks 20180310
 	// gorilla/websocket/conn.go:NextReader will always fail when got a timeout error.
-	_, b, e := w.threadSafeReadMessage() // the first return value is message type.
+	_, b, e := w.threadSafeReadMessage(maxMsgLen) // the first return value is message type.
 	if e == nil {
 		w.readBytes.Add((uint32)(len(b)))
 	} else {
@@ -1292,14 +1293,27 @@ func (w *gettyWSConn) threadSafeWriteMessage(messageType int, data []byte) error
 	return nil
 }
 
-// uses a mutex(readLock) to ensure that only one thread can read a message at a time, preventing race conditions.
-func (w *gettyWSConn) threadSafeReadMessage() (int, []byte, error) {
+// threadSafeReadMessage serializes message reads and bounds decompressed output.
+// Gorilla's own read limit only bounds the compressed payload on the wire.
+func (w *gettyWSConn) threadSafeReadMessage(maxMsgLen int32) (int, []byte, error) {
 	w.readLock.Lock()
 	defer w.readLock.Unlock()
 	w.streamStarted.Store(true)
-	messageType, readBytes, err := w.conn.ReadMessage()
+	messageType, reader, err := w.conn.NextReader()
 	if err != nil {
 		return messageType, nil, err
+	}
+	if maxMsgLen > 0 {
+		// One extra byte distinguishes a message at the limit from an oversized
+		// one without reading or allocating the rest of the decompressed data.
+		reader = io.LimitReader(reader, int64(maxMsgLen)+1)
+	}
+	readBytes, err := io.ReadAll(reader)
+	if err != nil {
+		return messageType, nil, err
+	}
+	if maxMsgLen > 0 && int64(len(readBytes)) > int64(maxMsgLen) {
+		return messageType, nil, websocket.ErrReadLimit
 	}
 	return messageType, readBytes, nil
 }
