@@ -1211,7 +1211,14 @@ func (s *session) handleWSPackage() error {
 
 	conn = s.Connection.(*gettyWSConn)
 	for !s.IsClosed() {
-		pkg, err = conn.recv(s.maxMsgLen)
+		// SetMaxMsgLen writes s.maxMsgLen under s.lock; snapshot it the same
+		// way so a concurrent update cannot race with the receive loop. Both
+		// the receive limit and the decoder check below use this snapshot.
+		s.lock.RLock()
+		maxMsgLen := s.maxMsgLen
+		s.lock.RUnlock()
+
+		pkg, err = conn.recv(maxMsgLen)
 		if netError, ok = perrors.Cause(err).(net.Error); ok && netError.Timeout() {
 			continue
 		}
@@ -1223,8 +1230,8 @@ func (s *session) handleWSPackage() error {
 		s.UpdateActive()
 		if s.reader != nil {
 			unmarshalPkg, length, err = s.reader.Read(s, pkg)
-			if err == nil && s.maxMsgLen > 0 && length > int(s.maxMsgLen) {
-				err = perrors.Errorf("Message Too Long, length %d, session max message len %d", length, s.maxMsgLen)
+			if err == nil && maxMsgLen > 0 && length > int(maxMsgLen) {
+				err = perrors.Errorf("Message Too Long, length %d, session max message len %d", length, maxMsgLen)
 			}
 			if err != nil {
 				log.Warnf("%s, [session.handleWSPackage] = len:%d, error:%+v",

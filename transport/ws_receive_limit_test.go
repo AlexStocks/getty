@@ -208,3 +208,51 @@ func TestWSDecompressedReceiveLimitBeforeMessageEnd(t *testing.T) {
 		t.Fatal("incomplete oversized message reached OnMessage")
 	}
 }
+
+// TestWSReceiveLimitConcurrentUpdate drives SetMaxMsgLen while handleWSPackage
+// reads messages. Run it with -race (make test-race): the receive loop must
+// snapshot the limit under the same lock the setter uses instead of reading the
+// field directly.
+func TestWSReceiveLimitConcurrentUpdate(t *testing.T) {
+	server, client := newCompressedWSTestConnPair(t)
+	ss := newWSSession(client, nil).(*session)
+	ss.SetMaxMsgLen(1024)
+	applyWSReadLimit(ss)
+	ss.SetEventListener(&recordingEventListener{})
+
+	const messageCount = 200
+	if err := server.SetWriteDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	writeDone := make(chan struct{})
+	go func() {
+		defer close(writeDone)
+		for range messageCount {
+			if err := server.WriteMessage(websocket.BinaryMessage, []byte("x")); err != nil {
+				return
+			}
+		}
+		_ = server.Close()
+	}()
+
+	stop := make(chan struct{})
+	setterDone := make(chan struct{})
+	go func() {
+		defer close(setterDone)
+		for i := 0; ; i++ {
+			select {
+			case <-stop:
+				return
+			default:
+				ss.SetMaxMsgLen(1024 + i%2)
+			}
+		}
+	}()
+
+	if err := ss.handleWSPackage(); err == nil {
+		t.Fatal("handleWSPackage returned nil after the peer closed the connection")
+	}
+	close(stop)
+	<-setterDone
+	<-writeDone
+}
