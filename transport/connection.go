@@ -1165,6 +1165,7 @@ func (w *gettyWSConn) SetCompressType(c CompressType) {
 	w.compress = c
 }
 
+// handlePing answers a peer ping with a pong through the shared write path.
 func (w *gettyWSConn) handlePing(message string) error {
 	err := w.writePong([]byte(message))
 	if err == websocket.ErrCloseSent {
@@ -1183,16 +1184,18 @@ func (w *gettyWSConn) handlePing(message string) error {
 	return perrors.WithStack(err)
 }
 
+// handlePong refreshes the session's last-active timestamp.
 func (w *gettyWSConn) handlePong(string) error {
 	w.UpdateActive()
 	return nil
 }
 
-// websocket connection read
-func (w *gettyWSConn) recv() ([]byte, error) {
-	// Pls do not set read deadline when using ReadMessage. AlexStocks 20180310
+// recv reads one WebSocket message with a limit on its decompressed size.
+// A nonpositive maxMsgLen leaves the message size unlimited.
+func (w *gettyWSConn) recv(maxMsgLen int32) ([]byte, error) {
+	// Pls do not set read deadline when using NextReader. AlexStocks 20180310
 	// gorilla/websocket/conn.go:NextReader will always fail when got a timeout error.
-	_, b, e := w.threadSafeReadMessage() // the first return value is message type.
+	_, b, e := w.threadSafeReadMessage(maxMsgLen) // the first return value is message type.
 	if e == nil {
 		w.readBytes.Add((uint32)(len(b)))
 	} else {
@@ -1204,26 +1207,26 @@ func (w *gettyWSConn) recv() ([]byte, error) {
 	return b, perrors.WithStack(e)
 }
 
+// updateWriteDeadline refreshes the Gorilla write deadline under writeLock.
+// The caller must hold writeLock until the associated message write completes.
 func (w *gettyWSConn) updateWriteDeadline() error {
-	var (
-		err         error
-		currentTime time.Time
-	)
-
-	if w.wTimeout.Load() > 0 {
-		// Set Deadline every time, since golang has fixed the performance issue
-		// See https://github.com/golang/go/issues/15133#issuecomment-271571395 for details
-		currentTime = time.Now()
-		if err = w.conn.SetWriteDeadline(currentTime.Add(w.wTimeout.Load())); err != nil {
-			return perrors.WithStack(err)
-		}
-		w.wLastDeadline.Store(currentTime.UnixNano())
+	timeout := w.wTimeout.Load()
+	if timeout <= 0 {
+		return nil
 	}
+
+	// Set Deadline every time, since golang has fixed the performance issue
+	// See https://github.com/golang/go/issues/15133#issuecomment-271571395 for details
+	currentTime := time.Now()
+	if err := w.conn.SetWriteDeadline(currentTime.Add(timeout)); err != nil {
+		return perrors.WithStack(err)
+	}
+	w.wLastDeadline.Store(currentTime.UnixNano())
 
 	return nil
 }
 
-// websocket connection write
+// Send writes a binary WebSocket message, serializing its deadline and write.
 func (w *gettyWSConn) Send(pkg any) (int, error) {
 	var (
 		err error
@@ -1235,9 +1238,6 @@ func (w *gettyWSConn) Send(pkg any) (int, error) {
 		return 0, perrors.Errorf("illegal @pkg{%#v} type", pkg)
 	}
 
-	if err := w.updateWriteDeadline(); err != nil {
-		log.Warnf("failed to update write deadline: %+v", err)
-	}
 	// a failed WriteMessage delivers nothing (gorilla discards the frame), so
 	// report 0 written bytes: callers treat the count as the success count.
 	if err = w.threadSafeWriteMessage(websocket.BinaryMessage, p); err != nil {
@@ -1248,25 +1248,18 @@ func (w *gettyWSConn) Send(pkg any) (int, error) {
 	return len(p), nil
 }
 
+// writePing sends a ping using the shared deadline and message write lock.
 func (w *gettyWSConn) writePing() error {
-	if err := w.updateWriteDeadline(); err != nil {
-		log.Warnf("failed to update write deadline: %+v", err)
-	}
 	return perrors.WithStack(w.threadSafeWriteMessage(websocket.PingMessage, []byte{}))
 }
 
+// writePong sends a pong using the shared deadline and message write lock.
 func (w *gettyWSConn) writePong(message []byte) error {
-	if err := w.updateWriteDeadline(); err != nil {
-		log.Warnf("failed to update write deadline: %+v", err)
-	}
 	return perrors.WithStack(w.threadSafeWriteMessage(websocket.PongMessage, message))
 }
 
-// close websocket connection
+// CloseConn serializes the close frame with other writers, then closes the transport.
 func (w *gettyWSConn) CloseConn(waitSec int) {
-	if err := w.updateWriteDeadline(); err != nil {
-		log.Warnf("failed to update write deadline: %+v", err)
-	}
 	if err := w.threadSafeWriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "bye-bye!!!")); err != nil {
 		log.Warnf("failed to send close message: %+v", err)
 	}
@@ -1281,25 +1274,42 @@ func (w *gettyWSConn) CloseConn(waitSec int) {
 	}
 }
 
-// uses a mutex(writeLock) to ensure that only one thread can send a message at a time, preventing race conditions.
+// threadSafeWriteMessage holds writeLock across the deadline update and message
+// write because Gorilla requires both operations to have a single writer.
 func (w *gettyWSConn) threadSafeWriteMessage(messageType int, data []byte) error {
 	w.writeLock.Lock()
 	defer w.writeLock.Unlock()
 	w.streamStarted.Store(true)
+	if err := w.updateWriteDeadline(); err != nil {
+		log.Warnf("failed to update write deadline: %+v", err)
+	}
 	if err := w.conn.WriteMessage(messageType, data); err != nil {
 		return err
 	}
 	return nil
 }
 
-// uses a mutex(readLock) to ensure that only one thread can read a message at a time, preventing race conditions.
-func (w *gettyWSConn) threadSafeReadMessage() (int, []byte, error) {
+// threadSafeReadMessage serializes message reads and bounds decompressed output.
+// Gorilla's own read limit only bounds the compressed payload on the wire.
+func (w *gettyWSConn) threadSafeReadMessage(maxMsgLen int32) (int, []byte, error) {
 	w.readLock.Lock()
 	defer w.readLock.Unlock()
 	w.streamStarted.Store(true)
-	messageType, readBytes, err := w.conn.ReadMessage()
+	messageType, reader, err := w.conn.NextReader()
 	if err != nil {
 		return messageType, nil, err
+	}
+	if maxMsgLen > 0 {
+		// One extra byte distinguishes a message at the limit from an oversized
+		// one without reading or allocating the rest of the decompressed data.
+		reader = io.LimitReader(reader, int64(maxMsgLen)+1)
+	}
+	readBytes, err := io.ReadAll(reader)
+	if err != nil {
+		return messageType, nil, err
+	}
+	if maxMsgLen > 0 && int64(len(readBytes)) > int64(maxMsgLen) {
+		return messageType, nil, websocket.ErrReadLimit
 	}
 	return messageType, readBytes, nil
 }

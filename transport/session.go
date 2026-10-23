@@ -763,7 +763,9 @@ func (s *session) checkWebsocketPayload(n int) error {
 		n, limit)
 }
 
-// WriteBytes for codecs
+// WriteBytes writes an encoded package and reports the input bytes confirmed by
+// Connection.Send, including a partial write returned with an error. Compressed
+// connections retain their codec's count semantics on write or flush failure.
 func (s *session) WriteBytes(pkg []byte) (int, error) {
 	if s.IsClosed() {
 		return 0, ErrSessionClosed
@@ -803,9 +805,9 @@ func (s *session) WriteBytes(pkg []byte) (int, error) {
 	}
 
 	for leftPackageSize > maxPacketLen {
-		_, err := conn.Send(pkg[writeSize:(writeSize + maxPacketLen)])
+		n, err := conn.Send(pkg[writeSize:(writeSize + maxPacketLen)])
 		if err != nil {
-			return writeSize, perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
+			return writeSize + n, perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
 		}
 		leftPackageSize -= maxPacketLen
 		writeSize += maxPacketLen
@@ -815,9 +817,9 @@ func (s *session) WriteBytes(pkg []byte) (int, error) {
 		return writeSize, nil
 	}
 
-	_, err := conn.Send(pkg[writeSize:])
+	n, err := conn.Send(pkg[writeSize:])
 	if err != nil {
-		return writeSize, perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
+		return writeSize + n, perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
 	}
 
 	return totalSize, nil
@@ -1148,7 +1150,8 @@ func (s *session) handlePackage() {
 	}
 }
 
-// get package from tcp stream(packet)
+// handleTCPPackage decodes TCP messages and limits both declared package sizes
+// and the unconsumed buffer when the decoder needs more data.
 func (s *session) handleTCPPackage() error {
 	var (
 		ok       bool
@@ -1220,9 +1223,19 @@ func (s *session) handleTCPPackage() error {
 			}
 			for pktBuf.Len() > 0 {
 				pkg, pkgLen, err = s.readPackage(pktBuf.Bytes())
+				// SetMaxMsgLen uses the same lock; use one snapshot for both checks.
+				s.lock.RLock()
+				maxMsgLen := s.maxMsgLen
+				s.lock.RUnlock()
 				// for case 3/case 4
-				if err == nil && s.maxMsgLen > 0 && pkgLen > int(s.maxMsgLen) {
-					err = perrors.Errorf("pkgLen %d > session max message len %d", pkgLen, s.maxMsgLen)
+				if err == nil && maxMsgLen > 0 {
+					if pkgLen > int(maxMsgLen) {
+						err = perrors.Errorf("pkgLen %d > session max message len %d", pkgLen, maxMsgLen)
+					} else if pkg == nil && pktBuf.Len() > int(maxMsgLen) {
+						// Only limit the remainder when decoding stalls. A read batch
+						// can contain multiple legal messages whose total exceeds the limit.
+						err = perrors.Errorf("incomplete package length %d > session max message len %d", pktBuf.Len(), maxMsgLen)
+					}
 				}
 				// handle case 1
 				if err != nil {
@@ -1319,7 +1332,8 @@ func (s *session) handleUDPPackage() error {
 	return perrors.WithStack(err)
 }
 
-// get package from websocket stream
+// handleWSPackage receives size-limited WebSocket messages and dispatches them
+// directly or through the application's decoder.
 func (s *session) handleWSPackage() error {
 	var (
 		ok           bool
@@ -1333,7 +1347,14 @@ func (s *session) handleWSPackage() error {
 
 	conn = s.Connection.(*gettyWSConn)
 	for !s.IsClosed() {
-		pkg, err = conn.recv()
+		// SetMaxMsgLen writes s.maxMsgLen under s.lock; snapshot it the same
+		// way so a concurrent update cannot race with the receive loop. Both
+		// the receive limit and the decoder check below use this snapshot.
+		s.lock.RLock()
+		maxMsgLen := s.maxMsgLen
+		s.lock.RUnlock()
+
+		pkg, err = conn.recv(maxMsgLen)
 		if netError, ok = perrors.Cause(err).(net.Error); ok && netError.Timeout() {
 			continue
 		}
@@ -1345,8 +1366,8 @@ func (s *session) handleWSPackage() error {
 		s.UpdateActive()
 		if s.reader != nil {
 			unmarshalPkg, length, err = s.readPackage(pkg)
-			if err == nil && s.maxMsgLen > 0 && length > int(s.maxMsgLen) {
-				err = perrors.Errorf("Message Too Long, length %d, session max message len %d", length, s.maxMsgLen)
+			if err == nil && maxMsgLen > 0 && length > int(maxMsgLen) {
+				err = perrors.Errorf("Message Too Long, length %d, session max message len %d", length, maxMsgLen)
 			}
 			if err != nil {
 				log.Warnf("%s, [session.handleWSPackage] = len:%d, error:%+v",
