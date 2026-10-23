@@ -1025,7 +1025,8 @@ func (s *session) handlePackage() {
 	}
 }
 
-// get package from tcp stream(packet)
+// handleTCPPackage decodes TCP messages and limits both declared package sizes
+// and the unconsumed buffer when the decoder needs more data.
 func (s *session) handleTCPPackage() error {
 	var (
 		ok       bool
@@ -1097,9 +1098,19 @@ func (s *session) handleTCPPackage() error {
 			}
 			for pktBuf.Len() > 0 {
 				pkg, pkgLen, err = s.reader.Read(s, pktBuf.Bytes())
+				// SetMaxMsgLen uses the same lock; use one snapshot for both checks.
+				s.lock.RLock()
+				maxMsgLen := s.maxMsgLen
+				s.lock.RUnlock()
 				// for case 3/case 4
-				if err == nil && s.maxMsgLen > 0 && pkgLen > int(s.maxMsgLen) {
-					err = perrors.Errorf("pkgLen %d > session max message len %d", pkgLen, s.maxMsgLen)
+				if err == nil && maxMsgLen > 0 {
+					if pkgLen > int(maxMsgLen) {
+						err = perrors.Errorf("pkgLen %d > session max message len %d", pkgLen, maxMsgLen)
+					} else if pkg == nil && pktBuf.Len() > int(maxMsgLen) {
+						// Only limit the remainder when decoding stalls. A read batch
+						// can contain multiple legal messages whose total exceeds the limit.
+						err = perrors.Errorf("incomplete package length %d > session max message len %d", pktBuf.Len(), maxMsgLen)
+					}
 				}
 				// handle case 1
 				if err != nil {
