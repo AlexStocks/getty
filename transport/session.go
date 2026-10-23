@@ -653,7 +653,9 @@ func (s *session) checkWebsocketPayload(n int) error {
 		n, limit)
 }
 
-// WriteBytes for codecs
+// WriteBytes writes an encoded package and reports the input bytes confirmed by
+// Connection.Send, including a partial write returned with an error. Compressed
+// connections retain their codec's count semantics on write or flush failure.
 func (s *session) WriteBytes(pkg []byte) (int, error) {
 	if s.IsClosed() {
 		return 0, ErrSessionClosed
@@ -693,9 +695,9 @@ func (s *session) WriteBytes(pkg []byte) (int, error) {
 	}
 
 	for leftPackageSize > maxPacketLen {
-		_, err := conn.Send(pkg[writeSize:(writeSize + maxPacketLen)])
+		n, err := conn.Send(pkg[writeSize:(writeSize + maxPacketLen)])
 		if err != nil {
-			return writeSize, perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
+			return writeSize + n, perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
 		}
 		leftPackageSize -= maxPacketLen
 		writeSize += maxPacketLen
@@ -705,9 +707,9 @@ func (s *session) WriteBytes(pkg []byte) (int, error) {
 		return writeSize, nil
 	}
 
-	_, err := conn.Send(pkg[writeSize:])
+	n, err := conn.Send(pkg[writeSize:])
 	if err != nil {
-		return writeSize, perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
+		return writeSize + n, perrors.Wrapf(err, "s.Connection.Write(pkg len:%d)", len(pkg))
 	}
 
 	return totalSize, nil
