@@ -33,6 +33,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// newWSClientConn returns a getty WebSocket connection backed by a test server.
 func newWSClientConn(t *testing.T) *gettyWSConn {
 	t.Helper()
 
@@ -112,6 +113,7 @@ func TestWSConcurrentWriteDeadlines(t *testing.T) {
 				}
 			}()
 
+			// send writes one payload through the public Session.Send entry point.
 			send := func() error {
 				n, err := ss.Send(payload)
 				if err == nil && n != len(payload) {

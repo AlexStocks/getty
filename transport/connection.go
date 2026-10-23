@@ -1165,6 +1165,7 @@ func (w *gettyWSConn) SetCompressType(c CompressType) {
 	w.compress = c
 }
 
+// handlePing answers a peer ping with a pong through the shared write path.
 func (w *gettyWSConn) handlePing(message string) error {
 	err := w.writePong([]byte(message))
 	if err == websocket.ErrCloseSent {
@@ -1183,6 +1184,7 @@ func (w *gettyWSConn) handlePing(message string) error {
 	return perrors.WithStack(err)
 }
 
+// handlePong refreshes the session's last-active timestamp.
 func (w *gettyWSConn) handlePong(string) error {
 	w.UpdateActive()
 	return nil
