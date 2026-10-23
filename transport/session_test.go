@@ -1175,9 +1175,8 @@ func (c *mergePathConn) Send(pkg any) (int, error) {
 	return 2, errTestPartialWrite
 }
 
-// Regression test for #130 item 4 (merge fallback): WriteBytes reports the
-// bytes it wrote before failing - here the first maxPacketLen fragment of the
-// merged buffer - and WriteBytesArray used to discard that count.
+// TestWriteBytesArrayReportsPartialMergedWrite checks that the merge fallback
+// includes both the completed fragment and the prefix of the failing fragment.
 func TestWriteBytesArrayReportsPartialMergedWrite(t *testing.T) {
 	conn := &mergePathConn{gettyTCPConn: newGettyTCPConn(&prefixThenFailNetConn{prefix: 1})}
 	ss := newSession(nil, conn)
@@ -1186,9 +1185,81 @@ func TestWriteBytesArrayReportsPartialMergedWrite(t *testing.T) {
 	if err == nil {
 		t.Fatal("WriteBytesArray returned no error although the merged write failed")
 	}
-	if n != maxPacketLen {
-		t.Fatalf("WriteBytesArray reported %d bytes, want the %d bytes written before the failing fragment",
-			n, maxPacketLen)
+	if n != maxPacketLen+2 {
+		t.Fatalf("WriteBytesArray reported %d bytes, want %d including the failing fragment's prefix",
+			n, maxPacketLen+2)
+	}
+}
+
+// TestWriteBytesReportsPartialTCPWrite compares the returned count with bytes
+// actually received, including failures in the first, middle, and final fragments.
+func TestWriteBytesReportsPartialTCPWrite(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		size int
+		read int
+	}{
+		{name: "small", size: 6, read: 3},
+		{name: "first fragment", size: maxPacketLen + 6, read: 3},
+		{name: "middle fragment", size: 2*maxPacketLen + 6, read: maxPacketLen + 3},
+		{name: "final fragment", size: maxPacketLen + 6, read: maxPacketLen + 3},
+		{name: "fragment boundary", size: maxPacketLen + 6, read: maxPacketLen},
+		{name: "no progress", size: 6},
+		{name: "complete", size: maxPacketLen + 6, read: maxPacketLen + 6},
+		{name: "empty"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			local, remote := net.Pipe()
+			t.Cleanup(func() { _ = local.Close(); _ = remote.Close() })
+			ss := newTCPSession(local, nil)
+			ss.SetWriteTimeout(100 * time.Millisecond)
+			payload := bytes.Repeat([]byte("x"), test.size)
+			received := make(chan []byte, 1)
+			go func() {
+				buf := make([]byte, test.read)
+				n, err := io.ReadFull(remote, buf)
+				if err != nil {
+					t.Errorf("peer read: %v", err)
+				}
+				received <- buf[:n]
+			}()
+			n, err := ss.WriteBytes(payload)
+			// Release the peer if a regression returned before sending its prefix.
+			_ = local.Close()
+			got := <-received
+			if n != test.read || !bytes.Equal(got, payload[:test.read]) {
+				t.Fatalf("WriteBytes count=%d, peer received=%d, want=%d", n, len(got), test.read)
+			}
+			if test.read < test.size {
+				var netErr net.Error
+				if !errors.As(err, &netErr) || !netErr.Timeout() {
+					t.Fatalf("WriteBytes error=%v, want timeout", err)
+				}
+			} else if err != nil {
+				t.Fatalf("successful write returned %v", err)
+			}
+		})
+	}
+}
+
+// TestWriteBytesCodecFailureCount preserves the codec contract: a failed flush
+// reports no confirmed input bytes, even if compressed bytes reached the socket.
+func TestWriteBytesCodecFailureCount(t *testing.T) {
+	for _, compress := range []CompressType{CompressZip, CompressSnappy} {
+		for _, size := range []int{6, maxPacketLen + 6} {
+			t.Run(fmt.Sprintf("codec=%d/size=%d", compress, size), func(t *testing.T) {
+				ss := newTCPSession(&prefixThenFailNetConn{prefix: 1}, nil)
+				ss.SetCompressType(compress)
+				n, err := ss.WriteBytes(bytes.Repeat([]byte("a"), size))
+				if n != 0 || !errors.Is(err, errTestPartialWrite) {
+					t.Fatalf("WriteBytes=(%d, %v), want (0, errTestPartialWrite)", n, err)
+				}
+				n, err = ss.WriteBytes([]byte("retry"))
+				if n != 0 || !errors.Is(err, errTestPartialWrite) {
+					t.Fatalf("write after codec failure=(%d, %v), want (0, errTestPartialWrite)", n, err)
+				}
+			})
+		}
 	}
 }
 
