@@ -135,7 +135,7 @@ func TestTCPListenerTransport(t *testing.T) {
 						received <- err
 						return
 					}
-					defer conn.Close()
+					defer func() { _ = conn.Close() }()
 					if _, isTLS := conn.(*tls.Conn); isTLS != secure {
 						received <- fmt.Errorf("accepted connection type = %T, TLS enabled = %t", conn, secure)
 						return
@@ -166,7 +166,7 @@ func TestTCPListenerTransport(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer conn.Close()
+				defer func() { _ = conn.Close() }()
 				if err := conn.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
 					t.Fatal(err)
 				}
