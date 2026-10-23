@@ -1204,26 +1204,26 @@ func (w *gettyWSConn) recv() ([]byte, error) {
 	return b, perrors.WithStack(e)
 }
 
+// updateWriteDeadline refreshes the Gorilla write deadline under writeLock.
+// The caller must hold writeLock until the associated message write completes.
 func (w *gettyWSConn) updateWriteDeadline() error {
-	var (
-		err         error
-		currentTime time.Time
-	)
-
-	if w.wTimeout.Load() > 0 {
-		// Set Deadline every time, since golang has fixed the performance issue
-		// See https://github.com/golang/go/issues/15133#issuecomment-271571395 for details
-		currentTime = time.Now()
-		if err = w.conn.SetWriteDeadline(currentTime.Add(w.wTimeout.Load())); err != nil {
-			return perrors.WithStack(err)
-		}
-		w.wLastDeadline.Store(currentTime.UnixNano())
+	timeout := w.wTimeout.Load()
+	if timeout <= 0 {
+		return nil
 	}
+
+	// Set Deadline every time, since golang has fixed the performance issue
+	// See https://github.com/golang/go/issues/15133#issuecomment-271571395 for details
+	currentTime := time.Now()
+	if err := w.conn.SetWriteDeadline(currentTime.Add(timeout)); err != nil {
+		return perrors.WithStack(err)
+	}
+	w.wLastDeadline.Store(currentTime.UnixNano())
 
 	return nil
 }
 
-// websocket connection write
+// Send writes a binary WebSocket message, serializing its deadline and write.
 func (w *gettyWSConn) Send(pkg any) (int, error) {
 	var (
 		err error
@@ -1235,9 +1235,6 @@ func (w *gettyWSConn) Send(pkg any) (int, error) {
 		return 0, perrors.Errorf("illegal @pkg{%#v} type", pkg)
 	}
 
-	if err := w.updateWriteDeadline(); err != nil {
-		log.Warnf("failed to update write deadline: %+v", err)
-	}
 	// a failed WriteMessage delivers nothing (gorilla discards the frame), so
 	// report 0 written bytes: callers treat the count as the success count.
 	if err = w.threadSafeWriteMessage(websocket.BinaryMessage, p); err != nil {
@@ -1248,25 +1245,18 @@ func (w *gettyWSConn) Send(pkg any) (int, error) {
 	return len(p), nil
 }
 
+// writePing sends a ping using the shared deadline and message write lock.
 func (w *gettyWSConn) writePing() error {
-	if err := w.updateWriteDeadline(); err != nil {
-		log.Warnf("failed to update write deadline: %+v", err)
-	}
 	return perrors.WithStack(w.threadSafeWriteMessage(websocket.PingMessage, []byte{}))
 }
 
+// writePong sends a pong using the shared deadline and message write lock.
 func (w *gettyWSConn) writePong(message []byte) error {
-	if err := w.updateWriteDeadline(); err != nil {
-		log.Warnf("failed to update write deadline: %+v", err)
-	}
 	return perrors.WithStack(w.threadSafeWriteMessage(websocket.PongMessage, message))
 }
 
-// close websocket connection
+// CloseConn serializes the close frame with other writers, then closes the transport.
 func (w *gettyWSConn) CloseConn(waitSec int) {
-	if err := w.updateWriteDeadline(); err != nil {
-		log.Warnf("failed to update write deadline: %+v", err)
-	}
 	if err := w.threadSafeWriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "bye-bye!!!")); err != nil {
 		log.Warnf("failed to send close message: %+v", err)
 	}
@@ -1281,11 +1271,15 @@ func (w *gettyWSConn) CloseConn(waitSec int) {
 	}
 }
 
-// uses a mutex(writeLock) to ensure that only one thread can send a message at a time, preventing race conditions.
+// threadSafeWriteMessage holds writeLock across the deadline update and message
+// write because Gorilla requires both operations to have a single writer.
 func (w *gettyWSConn) threadSafeWriteMessage(messageType int, data []byte) error {
 	w.writeLock.Lock()
 	defer w.writeLock.Unlock()
 	w.streamStarted.Store(true)
+	if err := w.updateWriteDeadline(); err != nil {
+		log.Warnf("failed to update write deadline: %+v", err)
+	}
 	if err := w.conn.WriteMessage(messageType, data); err != nil {
 		return err
 	}
