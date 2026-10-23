@@ -64,23 +64,6 @@ func (s *session) RemoveCloseCallback(handler, key any) {
 	s.closeCallback.Remove(handler, key)
 }
 
-// invokeCloseCallbacks executes all registered close callback functions
-//
-// Function description:
-//   - Executes all registered close callbacks in the order they were added
-//   - Uses read lock to protect the callback list, ensuring concurrency safety
-//   - This method is typically called automatically when the session closes
-//
-// Notes:
-//   - This is an internal method, not recommended for external direct calls
-//   - If panic occurs during callback execution, it will be caught and logged
-//   - Callback functions should avoid long blocking operations, async processing is recommended for time-consuming tasks
-func (s *session) invokeCloseCallbacks() {
-	s.closeCallbackMutex.RLock()
-	defer s.closeCallbackMutex.RUnlock()
-	s.invokeCallback(s.closeCallback.Invoke)
-}
-
 // CallBackFunc defines the callback function type when Session closes
 //
 // Usage notes:

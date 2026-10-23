@@ -127,9 +127,10 @@ func TestResetCallbackContract(t *testing.T) {
 				<-release
 			}
 			listener := &resetContractListener{target: target, hook: hook}
-			if target == "pooled message" {
+			switch target {
+			case "pooled message":
 				listener.target = "message"
-			} else if target == "pooled cron" {
+			case "pooled cron":
 				listener.target = "cron"
 			}
 			ss.SetEventListener(listener)

@@ -122,7 +122,7 @@ func TestSessionCallback(t *testing.T) {
 		callbackMutex.Unlock()
 	})
 
-	// Test invokeCloseCallbacks functionality
+	// Test close callback invocation
 	t.Run("InvokeCloseCallbacks", func(t *testing.T) {
 		s := &session{
 			once:          &sync.Once{},
@@ -162,7 +162,7 @@ func TestSessionCallback(t *testing.T) {
 			t.Errorf("Expected callback count is %d, but got %d", expectedCount, s.closeCallback.Len())
 		}
 
-		// Manually invoke close callbacks (simulate invokeCloseCallbacks)
+		// Manually invoke close callbacks (simulate session close)
 		callbackMutex.Lock()
 		callbackResults = nil // Clear previous results
 		callbackMutex.Unlock()

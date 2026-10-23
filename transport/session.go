@@ -1433,7 +1433,7 @@ func (s *session) stop() {
 					const size = 64 << 10
 					rBuf := make([]byte, size)
 					rBuf = rBuf[:runtime.Stack(rBuf, false)]
-					err := perrors.WithStack(fmt.Errorf("[session.invokeCloseCallbacks] panic session %s: err=%v\n%s",
+					err := perrors.WithStack(fmt.Errorf("[session.closeCallbacks] panic session %s: err=%v\n%s",
 						sessionToken, r, rBuf))
 					log.Error(err)
 				}
