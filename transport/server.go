@@ -220,9 +220,25 @@ func (s *server) listenTCP() error {
 	var (
 		err            error
 		streamListener net.Listener
+		sslConfig      *tls.Config
 	)
 	if s.IsClosed() {
 		return errServerClosed
+	}
+
+	if s.sslEnabled {
+		sslConfig, err = s.tlsConfigBuilder.BuildTlsConfig()
+		if err != nil {
+			return perrors.Wrapf(err, "BuildTlsConfig(addr:%s)", s.addr)
+		}
+		if sslConfig == nil {
+			return fmt.Errorf("BuildTlsConfig returned nil config without error for addr:%s", s.addr)
+		}
+		// Match tls.Listen's validation: tls.NewListener does not check that
+		// the config can supply a certificate. Reject it before opening a socket.
+		if len(sslConfig.Certificates) == 0 && sslConfig.GetCertificate == nil && sslConfig.GetConfigForClient == nil {
+			return fmt.Errorf("tls: neither Certificates, GetCertificate, nor GetConfigForClient set in Config")
+		}
 	}
 
 	if len(s.addr) == 0 || !strings.Contains(s.addr, ":") {
@@ -231,24 +247,15 @@ func (s *server) listenTCP() error {
 			return perrors.Wrapf(err, "gxnet.ListenOnTCPRandomPort(addr:%s)", s.addr)
 		}
 	} else {
-		if s.sslEnabled {
-			// #101: guard against a TLS config builder that returns (nil, nil);
-			// previously a nil config with nil err fell through, leaving
-			// streamListener nil, and s.streamListener.Addr() panicked below.
-			sslConfig, buildTlsConfErr := s.tlsConfigBuilder.BuildTlsConfig()
-			if buildTlsConfErr != nil {
-				return perrors.Wrapf(buildTlsConfErr, "BuildTlsConfig(addr:%s)", s.addr)
-			}
-			if sslConfig == nil {
-				return fmt.Errorf("BuildTlsConfig returned nil config without error for addr:%s", s.addr)
-			}
-			streamListener, err = tls.Listen("tcp", s.addr, sslConfig)
-		} else {
-			streamListener, err = net.Listen("tcp", s.addr)
-		}
+		streamListener, err = net.Listen("tcp", s.addr)
 		if err != nil {
 			return perrors.Wrapf(err, "net.Listen(tcp, addr:%s)", s.addr)
 		}
+	}
+
+	// Apply TLS to both explicit addresses and automatically assigned ports.
+	if s.sslEnabled {
+		streamListener = tls.NewListener(streamListener, sslConfig)
 	}
 
 	return s.publishStreamListener(streamListener)

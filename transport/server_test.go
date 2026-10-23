@@ -40,6 +40,142 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type listenerTLSConfigBuilder struct {
+	config *tls.Config
+	err    error
+	calls  int
+}
+
+func (b *listenerTLSConfigBuilder) BuildTlsConfig() (*tls.Config, error) {
+	b.calls++
+	return b.config, b.err
+}
+
+func TestTCPListenerRejectsInvalidTLSConfig(t *testing.T) {
+	buildErr := errors.New("test certificate failure")
+	for _, address := range []string{"", "127.0.0.1", "127.0.0.1:0"} {
+		for _, test := range []struct {
+			name   string
+			config *tls.Config
+			err    error
+		}{
+			{name: "builder error", err: buildErr},
+			{name: "nil config"},
+			{name: "no certificate", config: &tls.Config{}},
+		} {
+			t.Run(address+"/"+test.name, func(t *testing.T) {
+				builder := &listenerTLSConfigBuilder{config: test.config, err: test.err}
+				srv := newServer(TCP_SERVER, WithLocalAddress(address),
+					WithServerSslEnabled(true), WithServerTlsConfigBuilder(builder))
+				t.Cleanup(srv.Close)
+
+				err := srv.listenTCP()
+				if err == nil {
+					t.Fatal("listenTCP accepted an invalid TLS configuration")
+				}
+				if test.err != nil && !errors.Is(err, test.err) {
+					t.Fatalf("listenTCP error = %v, want %v", err, test.err)
+				}
+				if builder.calls != 1 {
+					t.Fatalf("TLS builder calls = %d, want 1", builder.calls)
+				}
+				if srv.Listener() != nil {
+					t.Fatal("listenTCP published a listener despite an invalid TLS configuration")
+				}
+			})
+		}
+	}
+}
+
+func TestTCPListenerTransport(t *testing.T) {
+	ca := newTestCertificateAuthority(t)
+	certificate := ca.issue(t, "getty test server", true)
+	roots := x509.NewCertPool()
+	roots.AddCert(ca.cert)
+
+	for _, address := range []string{"", "127.0.0.1", "127.0.0.1:0"} {
+		for _, secure := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/TLS=%t", address, secure), func(t *testing.T) {
+				builder := &listenerTLSConfigBuilder{config: &tls.Config{
+					Certificates: []tls.Certificate{certificate},
+					MinVersion:   tls.VersionTLS12,
+				}}
+				srv := newServer(TCP_SERVER, WithLocalAddress(address),
+					WithServerSslEnabled(secure), WithServerTlsConfigBuilder(builder))
+				t.Cleanup(srv.Close)
+				if err := srv.listenTCP(); err != nil {
+					t.Fatal(err)
+				}
+				wantCalls := 0
+				if secure {
+					wantCalls = 1
+				}
+				if builder.calls != wantCalls {
+					t.Fatalf("TLS builder calls = %d, want %d", builder.calls, wantCalls)
+				}
+
+				listener := srv.Listener()
+				addr := listener.Addr().(*net.TCPAddr)
+				if addr.Port == 0 {
+					t.Fatal("listenTCP did not allocate a port")
+				}
+				if address != "" && !addr.IP.Equal(net.ParseIP("127.0.0.1")) {
+					t.Fatalf("listener address = %v, want loopback", addr)
+				}
+				payload := []byte("hello")
+				received := make(chan error, 1)
+				go func() {
+					conn, err := listener.Accept()
+					if err != nil {
+						received <- err
+						return
+					}
+					defer conn.Close()
+					if _, isTLS := conn.(*tls.Conn); isTLS != secure {
+						received <- fmt.Errorf("accepted connection type = %T, TLS enabled = %t", conn, secure)
+						return
+					}
+					if err := conn.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
+						received <- err
+						return
+					}
+					buf := make([]byte, len(payload))
+					_, err = io.ReadFull(conn, buf)
+					if err == nil && !bytes.Equal(buf, payload) {
+						err = fmt.Errorf("received %q, want %q", buf, payload)
+					}
+					received <- err
+				}()
+
+				dialer := &net.Dialer{Timeout: 3 * time.Second}
+				peer := net.JoinHostPort("127.0.0.1", fmt.Sprint(addr.Port))
+				var conn net.Conn
+				var err error
+				if secure {
+					conn, err = tls.DialWithDialer(dialer, "tcp", peer, &tls.Config{
+						RootCAs: roots, MinVersion: tls.VersionTLS12,
+					})
+				} else {
+					conn, err = dialer.Dial("tcp", peer)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer conn.Close()
+				if err := conn.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := conn.Write(payload); err != nil {
+					t.Fatal(err)
+				}
+				if err := <-received; err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
+	}
+}
+
 func testTCPServer(t *testing.T, address string) {
 	var (
 		server           *server
@@ -90,13 +226,20 @@ func testTCPServer(t *testing.T, address string) {
 }
 
 func testTCPTlsServer(t *testing.T, address string) {
+	t.Helper()
+
 	var (
 		server           *server
 		serverMsgHandler MessageHandler
 	)
-	serverPemPath, _ := filepath.Abs("./demo/hello/tls/certs/server0.pem")
-	serverKeyPath, _ := filepath.Abs("./demo/hello/tls/certs/server0.key")
-	caPemPath, _ := filepath.Abs("./demo/hello/tls/certs/ca.pem")
+	ca := newTestCertificateAuthority(t)
+	dir := t.TempDir()
+	serverPemPath, serverKeyPath := writeTLSPair(t, dir, "server", ca.issue(t, "getty test server", true))
+	clientPemPath, clientKeyPath := writeTLSPair(t, dir, "client", ca.issue(t, "getty test client", false))
+	caPemPath := filepath.Join(dir, "ca.pem")
+	if err := os.WriteFile(caPemPath, ca.pem, 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	configBuilder := &ServerTlsConfigBuilder{
 		ServerKeyCertChainPath:        serverPemPath,
@@ -124,18 +267,17 @@ func testTCPTlsServer(t *testing.T, address string) {
 
 	addr := server.streamListener.Addr().String()
 	t.Logf("@address:%s, tcp server addr: %v", address, addr)
-	keyPath, _ := filepath.Abs("./demo/hello/tls/certs/ca.key")
-	clientCaPemPath, _ := filepath.Abs("./demo/hello/tls/certs/ca.pem")
-
 	clientConfig := &ClientTlsConfigBuilder{
-		ClientTrustCertCollectionPath: clientCaPemPath,
-		ClientPrivateKeyPath:          keyPath,
+		ClientKeyCertChainPath:        clientPemPath,
+		ClientTrustCertCollectionPath: caPemPath,
+		ClientPrivateKeyPath:          clientKeyPath,
 	}
 
 	clt := newClient(TCP_CLIENT,
 		WithServerAddress(addr),
 		WithReconnectInterval(5e8),
 		WithConnectionNumber(1),
+		WithClientSslEnabled(true),
 		WithClientTlsConfigBuilder(clientConfig),
 	)
 	assert.NotNil(t, clt)
@@ -316,7 +458,6 @@ func TestServer(t *testing.T) {
 	addr = "127.0.0.1"
 	testTCPServer(t, addr)
 	testUDPServer(t, addr)
-	addr = "127.0.0.9999"
 	testTCPTlsServer(t, addr)
 }
 
