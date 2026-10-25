@@ -928,18 +928,25 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) (int, error) {
 // Each call needs its own recovery: handlePackage's recovery cannot catch a
 // second panic raised later in the same defer.
 func (s *session) invokeEventCallback(name string, f func()) (panicked bool) {
+	completed := false
 	defer func() {
-		if r := recover(); r != nil {
-			panicked = true
-			const size = 64 << 10
-			rBuf := make([]byte, size)
-			rBuf = rBuf[:runtime.Stack(rBuf, false)]
-			// The pointer identifies the session even after stop has changed
-			// its token to session-closed for OnError/OnClose.
-			log.Errorf("[session.%s] panic session %p (%s): err=%v\n%s", name, s, s.sessionToken(), r, rBuf)
+		if completed {
+			return
 		}
+		// With GODEBUG=panicnil=1, recover returns nil for panic(nil) even
+		// though it still stops the panic. Track completion separately so that
+		// such a panic is logged and reported to the caller as well.
+		r := recover()
+		panicked = true
+		const size = 64 << 10
+		rBuf := make([]byte, size)
+		rBuf = rBuf[:runtime.Stack(rBuf, false)]
+		// The pointer identifies the session even after stop has changed
+		// its token to session-closed for OnError/OnClose.
+		log.Errorf("[session.%s] panic session %p (%s): err=%v\n%s", name, s, s.sessionToken(), r, rBuf)
 	}()
 	s.invokeCallback(f)
+	completed = true
 	return false
 }
 

@@ -37,10 +37,20 @@ const callbackPanicEnv = "GETTY_TEST_EVENT_PANIC"
 // A parent-goroutine recover cannot catch a panic escaping Getty's read loop
 // or shared timer wheel. Each regression therefore runs in its own process.
 func TestEventCallbackPanicContained(t *testing.T) {
-	for _, stage := range []string{"close", "error", "error-close", "cron", "pooled-cron"} {
+	for _, stage := range []string{"close", "error", "error-close", "cron", "cron-nil", "pooled-cron"} {
 		t.Run(stage, func(t *testing.T) {
 			cmd := exec.Command(os.Args[0], "-test.run=^TestEventCallbackPanicChild$", "-test.timeout=15s")
-			cmd.Env = append(os.Environ(), callbackPanicEnv+"="+stage)
+			cmd.Env = make([]string, 0, len(os.Environ())+2)
+			for _, env := range os.Environ() {
+				if stage == "cron-nil" && strings.HasPrefix(env, "GODEBUG=") {
+					continue
+				}
+				cmd.Env = append(cmd.Env, env)
+			}
+			cmd.Env = append(cmd.Env, callbackPanicEnv+"="+stage)
+			if stage == "cron-nil" {
+				cmd.Env = append(cmd.Env, "GODEBUG=panicnil=1")
+			}
 			output, err := cmd.CombinedOutput()
 			if err != nil {
 				t.Fatalf("callback panic regression failed: %v\n%s", err, output)
@@ -51,11 +61,15 @@ func TestEventCallbackPanicContained(t *testing.T) {
 				callbacks = []string{"OnError"}
 			case "error-close":
 				callbacks = []string{"OnError", "OnClose"}
-			case "cron", "pooled-cron":
+			case "cron", "cron-nil", "pooled-cron":
 				callbacks = []string{"OnCron"}
 			}
 			for _, callback := range callbacks {
-				for _, want := range []string{"[session." + callback + "] panic session", "test " + callback + " panic", "session_event_panic_test.go:"} {
+				wants := []string{"[session." + callback + "] panic session", "session_event_panic_test.go:"}
+				if stage != "cron-nil" {
+					wants = append(wants, "test "+callback+" panic")
+				}
+				for _, want := range wants {
 					if !strings.Contains(string(output), want) {
 						t.Errorf("missing panic context or stack %q in output:\n%s", want, output)
 					}
@@ -104,6 +118,9 @@ func (l *eventPanicListener) OnClose(Session) {
 
 func (l *eventPanicListener) OnCron(Session) {
 	l.events <- "cron"
+	if l.stage == "cron-nil" {
+		panic(nil)
+	}
 	panic("test OnCron panic")
 }
 
@@ -175,7 +192,7 @@ func TestEventCallbackPanicChild(t *testing.T) {
 	switch stage {
 	case "error", "error-close":
 		raw = &eventPanicReadConn{}
-	case "cron", "pooled-cron":
+	case "cron", "cron-nil", "pooled-cron":
 		local, remote := net.Pipe()
 		defer func() { _ = remote.Close() }()
 		raw = local
