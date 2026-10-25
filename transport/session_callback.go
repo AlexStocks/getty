@@ -28,6 +28,9 @@ package getty
 //   - If the session is already closed, this addition will be ignored
 //   - The combination of handler and key must be unique, otherwise it will override previous callbacks
 //   - Callback functions will be executed in the order they were added when the session closes
+//   - Use an AsyncResetter to request reset from a callback and observe its
+//     completion outside the callback. Session.Reset from a callback schedules
+//     the reset and returns; a TryResetter reports ErrResetDuringCallback.
 func (s *session) AddCloseCallback(handler, key any, f CallBackFunc) {
 	if f == nil {
 		return
@@ -59,23 +62,6 @@ func (s *session) RemoveCloseCallback(handler, key any) {
 		return
 	}
 	s.closeCallback.Remove(handler, key)
-}
-
-// invokeCloseCallbacks executes all registered close callback functions
-//
-// Function description:
-//   - Executes all registered close callbacks in the order they were added
-//   - Uses read lock to protect the callback list, ensuring concurrency safety
-//   - This method is typically called automatically when the session closes
-//
-// Notes:
-//   - This is an internal method, not recommended for external direct calls
-//   - If panic occurs during callback execution, it will be caught and logged
-//   - Callback functions should avoid long blocking operations, async processing is recommended for time-consuming tasks
-func (s *session) invokeCloseCallbacks() {
-	s.closeCallbackMutex.RLock()
-	defer s.closeCallbackMutex.RUnlock()
-	s.closeCallback.Invoke()
 }
 
 // CallBackFunc defines the callback function type when Session closes

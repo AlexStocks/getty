@@ -24,9 +24,13 @@ import (
 )
 
 var (
-	ErrSessionClosed  = perrors.New("session Already Closed")
-	ErrSessionBlocked = perrors.New("session Full Blocked")
-	ErrNullPeerAddr   = perrors.New("peer address is nil")
+	// ErrResetDuringCallback is returned by TryResetter.TryReset when it is
+	// called while any managed callback of the target session is active. Use ResetAsync and
+	// observe completion outside the callback instead.
+	ErrResetDuringCallback = perrors.New("cannot synchronously reset a session while a callback is active")
+	ErrSessionClosed       = perrors.New("session Already Closed")
+	ErrSessionBlocked      = perrors.New("session Full Blocked")
+	ErrNullPeerAddr        = perrors.New("peer address is nil")
 )
 
 // NewSessionCallback will be invoked when server accepts a new client connection or client connects to server successfully.
@@ -64,7 +68,10 @@ type ReadWriter interface {
 	Writer
 }
 
-// EventListener is used to process pkg that received from remote session
+// EventListener processes session events. Inside a callback, Session.Reset
+// schedules the reset and returns; it must not wait for the callback to finish.
+// Use an AsyncResetter to observe completion, or a TryResetter to get
+// ErrResetDuringCallback while any callback of this session is active.
 type EventListener interface {
 	// OnOpen invoked when session opened
 	// If the return error is not nil, @Session will be closed.
@@ -91,6 +98,22 @@ type EventListener interface {
 	//
 	// If this is a udp event listener, the second parameter type is UDPContext.
 	OnMessage(Session, any)
+}
+
+// AsyncResetter requests reset without blocking. Each call returns a separate
+// buffered channel that receives one error (nil on success) and then closes.
+// Concurrent pending requests share cleanup work, but retain their own result.
+// Success means managed work, connection cleanup, and field reset have finished.
+// Never wait for the result inside a callback of the session being reset.
+type AsyncResetter interface {
+	ResetAsync() <-chan error
+}
+
+// TryResetter reports ErrResetDuringCallback without requesting reset if any
+// managed callback of this session is active at entry, regardless of the caller's
+// goroutine. Otherwise it waits for reset and returns that operation's result.
+type TryResetter interface {
+	TryReset() error
 }
 
 // EndPoint represents the identity of the client/server

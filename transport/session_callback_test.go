@@ -122,7 +122,7 @@ func TestSessionCallback(t *testing.T) {
 		callbackMutex.Unlock()
 	})
 
-	// Test invokeCloseCallbacks functionality
+	// Test close callback invocation
 	t.Run("InvokeCloseCallbacks", func(t *testing.T) {
 		s := &session{
 			once:          &sync.Once{},
@@ -162,7 +162,7 @@ func TestSessionCallback(t *testing.T) {
 			t.Errorf("Expected callback count is %d, but got %d", expectedCount, s.closeCallback.Len())
 		}
 
-		// Manually invoke close callbacks (simulate invokeCloseCallbacks)
+		// Manually invoke close callbacks (simulate session close)
 		callbackMutex.Lock()
 		callbackResults = nil // Clear previous results
 		callbackMutex.Unlock()
@@ -238,12 +238,10 @@ func TestSessionCallback(t *testing.T) {
 	})
 }
 
-func TestResetWaitsForCloseCallbacks(t *testing.T) {
-	s := &session{
-		once:          &sync.Once{},
-		done:          make(chan struct{}),
-		closeCallback: callbacks{},
-	}
+// TestResetAsyncWaitsForCloseCallbacks verifies that reset completion includes
+// registered close callbacks even when no read goroutine was started.
+func TestResetAsyncWaitsForCloseCallbacks(t *testing.T) {
+	s := newTCPSession(&eofDataNetConn{}, nil).(*session)
 
 	callbackStarted := make(chan struct{})
 	releaseCallback := make(chan struct{})
@@ -252,33 +250,19 @@ func TestResetWaitsForCloseCallbacks(t *testing.T) {
 		<-releaseCallback
 	})
 
-	callbackDone := make(chan struct{})
-	go func() {
-		s.invokeCloseCallbacks()
-		close(callbackDone)
-	}()
+	s.Close()
 	<-callbackStarted
 
-	resetDone := make(chan struct{})
-	go func() {
-		s.Reset()
-		close(resetDone)
-	}()
+	resetDone := s.ResetAsync()
 
 	select {
 	case <-resetDone:
 		close(releaseCallback)
-		<-callbackDone
 		t.Fatal("Reset returned while a close callback was still running")
 	case <-time.After(50 * time.Millisecond):
 	}
 
 	close(releaseCallback)
-	select {
-	case <-callbackDone:
-	case <-time.After(time.Second):
-		t.Fatal("close callback did not finish")
-	}
 	select {
 	case <-resetDone:
 	case <-time.After(time.Second):
