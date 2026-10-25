@@ -274,7 +274,28 @@ type Session interface {
 - **`Conn()`**: 获取底层网络连接对象
 - **`IsClosed()`**: 检查会话是否已关闭
 - **`Close()`**: 关闭会话连接
-- **`Reset()`**: 重置会话状态
+- **`Reset()`**: 关闭会话，等待受管理工作和连接清理结束后重置状态。如果调用时本 Session 有任何受管理回调正在执行，则发起重置后立即返回，外部 goroutine 的调用也一样；否则同步等待。原有签名保持不变，但回调活跃期间的完成语义发生变化。
+- **`TryReset()`**（可选 `TryResetter`）：如果调用时本 Session 有回调正在执行，返回 `ErrResetDuringCallback`，不发起重置；否则等待并返回本次重置结果。
+- **`ResetAsync()`**（可选 `AsyncResetter`）：不阻塞地请求清理。每次调用返回独立的缓冲 channel，发送一次 error（成功为 `nil`）后关闭。并发未完成请求共享一次清理，但结果不会被后续重置覆盖。
+
+`Session` 保持原有 `Reset()` 签名，可选接口无需现有自定义 Session 实现新增方法。在等待完成或复用会话前，应停止发起新操作。不能在被重置 Session 的回调内等待完成，应发起请求后返回：
+
+```go
+func (l *listener) OnClose(s getty.Session) {
+    async, ok := s.(getty.AsyncResetter)
+    if !ok {
+        return
+    }
+    done := async.ResetAsync()
+    go func() {
+        if err := <-done; err != nil {
+            return // Reset failed; do not recycle the session.
+        }
+        // 会话清理和重置成功完成，现在可以回收。
+    }()
+    // 返回，让重置任务能够结束对本回调的等待。
+}
+```
 
 ##### 配置设置
 - **`SetName(string)`**: 设置会话名称

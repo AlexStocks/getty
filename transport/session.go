@@ -91,6 +91,11 @@ func init() {
 // Session wrap connection between the server and the client
 type Session interface {
 	Connection
+	// Reset closes and clears the session after its managed work finishes.
+	// If this session has any active callback when called, Reset schedules
+	// cleanup and returns, including calls from other goroutines. Otherwise
+	// it waits for completion. Use AsyncResetter to observe completion; never
+	// wait for reset inside a callback of the session being reset.
 	Reset()
 	Conn() net.Conn
 	Stat() string
@@ -160,10 +165,13 @@ type session struct {
 	grWG       sync.WaitGroup
 	lock       sync.RWMutex
 	packetLock sync.RWMutex
+	resetLock  sync.Mutex
+	resetRun   *sessionResetRun
 
 	// callbacks
 	closeCallback      callbacks
 	closeCallbackMutex sync.RWMutex
+	callbackDepth      uatomic.Int32
 }
 
 type sessionLifecycle struct {
@@ -260,12 +268,89 @@ func newWSSession(conn *websocket.Conn, endPoint EndPoint) Session {
 	return session
 }
 
+// sessionResetRun groups pending requests into one cleanup operation. Each
+// caller receives its own buffered result, so later resets cannot overwrite it.
+type sessionResetRun struct {
+	results []chan error // guarded by resetLock
+}
+
+// Reset requests cleanup and waits only if no callback of this session is
+// active at entry. The count covers all goroutines, not just the caller.
+// Later count changes do not change this call's decision to wait. Reset does
+// not return failures; the worker logs them. Use TryReset or ResetAsync when
+// the caller needs the result before reusing the session.
 func (s *session) Reset() {
+	async := s.callbackDepth.Load() > 0
+	result := s.ResetAsync()
+	if !async {
+		<-result // The worker logs failures for both synchronous and async callers.
+	}
+}
+
+// TryReset waits for cleanup unless a callback of this session is active at
+// entry, in which case it returns ErrResetDuringCallback without requesting reset.
+func (s *session) TryReset() error {
+	if s.callbackDepth.Load() > 0 {
+		return ErrResetDuringCallback
+	}
+	return <-s.ResetAsync()
+}
+
+// ResetAsync requests cleanup without waiting. Pending requests share one
+// worker, but each gets a channel containing its own result (nil on success),
+// followed by closure. Callbacks must return without waiting for that result.
+// Stop starting new operations before awaiting completion and reusing a session.
+func (s *session) ResetAsync() <-chan error {
+	s.resetLock.Lock()
+	defer s.resetLock.Unlock()
+	result := make(chan error, 1)
+	if s.resetRun != nil {
+		s.resetRun.results = append(s.resetRun.results, result)
+		return result
+	}
+	run := &sessionResetRun{results: []chan error{result}}
+	s.resetRun = run
+	go func() {
+		var resetErr error
+		defer func() {
+			if r := recover(); r != nil {
+				resetErr = perrors.Errorf("session reset panic: %v", r)
+				log.Error(resetErr)
+			}
+			s.resetLock.Lock()
+			for _, result := range run.results {
+				result <- resetErr
+				close(result)
+			}
+			s.resetRun = nil
+			s.resetLock.Unlock()
+		}()
+		s.reset()
+	}()
+	return result
+}
+
+var (
+	_ AsyncResetter = (*session)(nil)
+	_ TryResetter   = (*session)(nil)
+)
+
+// reset runs only in the reset worker, never on a callback's goroutine.
+func (s *session) reset() {
+	s.stop()
+	// Close the transport to release blocked reads, including idle codecs and
+	// WebSockets whose read loop cannot recover from deadline errors.
+	if conn := s.Conn(); conn != nil {
+		_ = conn.Close()
+	}
 	lifecycle := s.stopHeartbeat()
 	s.grWG.Wait()
+	s.gc()
 	if lifecycle != nil {
 		lifecycle.wait()
 	}
+	s.packetLock.Lock()
+	defer s.packetLock.Unlock()
 	// #105: Reset() previously did `*s = session{...}` without holding s.lock,
 	// racing with concurrent readers. Reset the fields individually under the
 	// lock instead; replacing the whole struct would also copy the mutexes
@@ -281,6 +366,7 @@ func (s *session) Reset() {
 	s.reader = nil
 	s.writer = nil
 	s.maxMsgLen = 0
+	s.maxWriteMsgLen = 0
 	s.once = &sync.Once{}
 	s.done = make(chan struct{})
 	s.period = period
@@ -290,6 +376,20 @@ func (s *session) Reset() {
 	s.attrs = gxcontext.NewValuesContext(context.Background())
 	s.grNum.Store(0)
 	s.closeCallback = callbacks{}
+}
+
+// invokeCallback counts active user callbacks across this session. The defer
+// restores the count on panic and supports nested and concurrent callbacks.
+func (s *session) invokeCallback(f func()) {
+	s.callbackDepth.Add(1)
+	defer s.callbackDepth.Add(-1)
+	f()
+}
+
+// readPackage applies the reset callback contract to application decoders.
+func (s *session) readPackage(data []byte) (pkg any, n int, err error) {
+	s.invokeCallback(func() { pkg, n, err = s.reader.Read(s, data) })
+	return
 }
 
 func (s *session) Conn() net.Conn {
@@ -544,6 +644,8 @@ func (s *session) sessionToken() string {
 		name, endPoint.EndPointType(), conn.ID(), conn.LocalAddr(), conn.RemoteAddr())
 }
 
+// WritePkg encodes and sends a package, keeping the encoder and write operation
+// in the current lifecycle until both finish so reset cannot clear their state.
 func (s *session) WritePkg(pkg any, timeout time.Duration) (pkgBytesLenth int, successCount int, err error) {
 	if pkg == nil {
 		return 0, 0, fmt.Errorf("@pkg is nil")
@@ -551,6 +653,13 @@ func (s *session) WritePkg(pkg any, timeout time.Duration) (pkgBytesLenth int, s
 	if s.IsClosed() {
 		return 0, 0, ErrSessionClosed
 	}
+	s.lock.RLock()
+	lifecycle, writer := s.lifecycle, s.writer
+	s.lock.RUnlock()
+	if lifecycle == nil || !lifecycle.acquire() {
+		return 0, 0, ErrSessionClosed
+	}
+	defer lifecycle.release()
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -562,7 +671,8 @@ func (s *session) WritePkg(pkg any, timeout time.Duration) (pkgBytesLenth int, s
 		}
 	}()
 
-	pkgBytes, err := s.writer.Write(s, pkg)
+	var pkgBytes []byte
+	s.invokeCallback(func() { pkgBytes, err = writer.Write(s, pkg) })
 	if err != nil {
 		log.Warnf("%s, [session.WritePkg] session.writer.Write(@pkg:%#v) = error:%+v", s.Stat(), pkg, err)
 		return len(pkgBytes), 0, perrors.WithStack(err)
@@ -829,10 +939,11 @@ func (s *session) invokeEventCallback(name string, f func()) (panicked bool) {
 			log.Errorf("[session.%s] panic session %p (%s): err=%v\n%s", name, s, s.sessionToken(), r, rBuf)
 		}
 	}()
-	f()
+	s.invokeCallback(f)
 	return false
 }
 
+// heartbeat schedules OnCron only while the captured session lifecycle is open.
 func heartbeat(_ gxtime.TimerID, _ time.Time, arg any) error {
 	ctx, _ := arg.(*heartbeatContext)
 	if ctx == nil || ctx.session == nil || ctx.lifecycle == nil {
@@ -906,11 +1017,23 @@ func (s *session) callOnOpen() (err error) {
 		}
 	}()
 
-	return s.listener.OnOpen(s)
+	s.invokeCallback(func() { err = s.listener.OnOpen(s) })
+	return err
 }
 
-// func (s *session) RunEventLoop() {
+// run opens the session and starts its heartbeat and read loop. Startup itself
+// is tracked so reset requests from OnOpen wait for initialization to unwind.
 func (s *session) run() {
+	// Register startup before OnOpen can request reset, and exclude new starts
+	// once a reset worker has begun waiting on grWG.
+	s.resetLock.Lock()
+	if s.resetRun != nil {
+		s.resetLock.Unlock()
+		return
+	}
+	s.grWG.Add(1)
+	s.resetLock.Unlock()
+	defer s.grWG.Done()
 	if s.Connection == nil || s.listener == nil || s.writer == nil {
 		errStr := fmt.Sprintf("session{name:%s, conn:%#v, listener:%#v, writer:%#v}",
 			s.name, s.Connection, s.listener, s.writer)
@@ -993,7 +1116,7 @@ func (s *session) addTask(pkg any) {
 		if listener == nil {
 			return
 		}
-		listener.OnMessage(s, pkg)
+		s.invokeCallback(func() { listener.OnMessage(s, pkg) })
 		s.IncReadPkgNum()
 	}
 	if endPoint != nil {
@@ -1128,7 +1251,7 @@ func (s *session) handleTCPPackage() error {
 				log.Warnf("%s, pktBuf.WriteNextEnd(%d) error:%+v", s.sessionToken(), bufLen, perrors.WithStack(werr))
 			}
 			for pktBuf.Len() > 0 {
-				pkg, pkgLen, err = s.reader.Read(s, pktBuf.Bytes())
+				pkg, pkgLen, err = s.readPackage(pktBuf.Bytes())
 				// SetMaxMsgLen uses the same lock; use one snapshot for both checks.
 				s.lock.RLock()
 				maxMsgLen := s.maxMsgLen
@@ -1214,7 +1337,7 @@ func (s *session) handleUDPPackage() error {
 			continue
 		}
 
-		pkg, pkgLen, err = s.reader.Read(s, buf[:bufLen])
+		pkg, pkgLen, err = s.readPackage(buf[:bufLen])
 		if log.IsDebugEnabled() {
 			log.Debugf("s.reader.Read() = pkg:%#v, pkgLen:%d, err:%+v", pkg, pkgLen, perrors.WithStack(err))
 		}
@@ -1271,7 +1394,7 @@ func (s *session) handleWSPackage() error {
 		}
 		s.UpdateActive()
 		if s.reader != nil {
-			unmarshalPkg, length, err = s.reader.Read(s, pkg)
+			unmarshalPkg, length, err = s.readPackage(pkg)
 			if err == nil && maxMsgLen > 0 && length > int(maxMsgLen) {
 				err = perrors.Errorf("Message Too Long, length %d, session max message len %d", length, maxMsgLen)
 			}
@@ -1298,6 +1421,7 @@ func (s *session) handleWSPackage() error {
 	return nil
 }
 
+// stop closes the current lifecycle once and schedules its close callbacks.
 func (s *session) stop() {
 	// #129: a repeat stop() used to return as soon as s.done was closed, while
 	// the first caller was still inside the once body. handlePackage's
@@ -1305,7 +1429,10 @@ func (s *session) stop() {
 	// before the body read sessionClientKey/ignoreReconnectKey, silently
 	// dropping the reconnect. Always going through once.Do makes repeat callers
 	// wait for the body, so the attributes are still readable when it finishes.
-	s.once.Do(func() {
+	s.lock.RLock()
+	once := s.once
+	s.lock.RUnlock()
+	once.Do(func() {
 		// let read/Write timeout asap
 		now := time.Now()
 		if conn := s.Conn(); conn != nil {
@@ -1335,13 +1462,13 @@ func (s *session) stop() {
 					const size = 64 << 10
 					rBuf := make([]byte, size)
 					rBuf = rBuf[:runtime.Stack(rBuf, false)]
-					err := perrors.WithStack(fmt.Errorf("[session.invokeCloseCallbacks] panic session %s: err=%v\n%s",
+					err := perrors.WithStack(fmt.Errorf("[session.closeCallbacks] panic session %s: err=%v\n%s",
 						sessionToken, r, rBuf))
 					log.Error(err)
 				}
 			}()
 
-			closeCallbacks.Invoke()
+			s.invokeCallback(closeCallbacks.Invoke)
 		}(s.sessionToken(), closeCallbacks, lifecycle)
 
 		clt, cltFound := s.GetAttribute(sessionClientKey).(*client)
@@ -1368,6 +1495,8 @@ func (s *session) stopHeartbeat() *sessionLifecycle {
 	return lifecycle
 }
 
+// gc detaches session resources and registers asynchronous connection cleanup
+// before making the detached state visible to a reset waiter.
 func (s *session) gc() {
 	var conn Connection
 	var wait time.Duration
@@ -1380,11 +1509,13 @@ func (s *session) gc() {
 		s.Connection = nil
 		wait = s.wait
 		lifecycle = s.lifecycle
+		if conn != nil && lifecycle != nil {
+			// Register cleanup before another gc/reset can see the detached
+			// connection and begin waiting for lifecycle completion.
+			lifecycle.addClosingTask()
+		}
 	}
 	s.lock.Unlock()
-	if conn != nil && lifecycle != nil {
-		lifecycle.addClosingTask()
-	}
 
 	go func(conn Connection, wait time.Duration, lifecycle *sessionLifecycle) {
 		if conn != nil && lifecycle != nil {

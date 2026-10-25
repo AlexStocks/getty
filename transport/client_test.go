@@ -1053,7 +1053,11 @@ func TestUDPClient(t *testing.T) {
 
 	clt.Close()
 	assert.True(t, clt.IsClosed())
-	msgHandler.array[0].Reset()
+	async, ok := msgHandler.array[0].(AsyncResetter)
+	if !ok {
+		t.Fatal("built-in session does not implement AsyncResetter")
+	}
+	waitForReset(t, async.ResetAsync())
 	assert.Nil(t, msgHandler.array[0].Conn())
 	// ss.WritePkg([]byte("hello"), 0)
 }
