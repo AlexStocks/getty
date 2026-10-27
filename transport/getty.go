@@ -85,9 +85,11 @@ type EventListener interface {
 	// Getty recovers and logs panics, then continues OnClose and cleanup.
 	OnError(Session, error)
 
-	// OnCron invoked periodically, its period can be set by (Session)SetCronPeriod
-	// Getty recovers and logs panics and closes the faulty session, including
-	// when a task pool is configured. Other sessions and timers keep running.
+	// OnCron is invoked periodically; its period can be set by
+	// (Session).SetCronPeriod. Getty recovers and logs panics and closes the
+	// faulty session, including when a task pool is configured. A client session
+	// may then follow the normal reconnect behavior. Other sessions and timers
+	// keep running.
 	OnCron(Session)
 
 	// OnMessage invoked when getty received a package. Pls attention that do not handle long time

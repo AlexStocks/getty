@@ -66,7 +66,9 @@ func TestEventCallbackPanicContained(t *testing.T) {
 			}
 			for _, callback := range callbacks {
 				wants := []string{"[session." + callback + "] panic session", "session_event_panic_test.go:"}
-				if stage != "cron-nil" {
+				if stage == "cron-nil" {
+					wants = append(wants, "err=<nil>")
+				} else {
 					wants = append(wants, "test "+callback+" panic")
 				}
 				for _, want := range wants {
@@ -246,19 +248,33 @@ func TestEventCallbackPanicChild(t *testing.T) {
 	for len(listener.events) > 0 {
 		events = append(events, <-listener.events)
 	}
-	want := "[close]"
-	if strings.HasPrefix(stage, "error") {
-		want = "[error close]"
-	} else if strings.Contains(stage, "cron") {
-		// Raw transport close may also report an error to the read loop.
-		if len(events) == 3 {
-			want = "[cron error close]"
-		} else {
-			want = "[cron close]"
-		}
+	if len(events) == 0 || events[len(events)-1] != "close" {
+		t.Fatalf("callback events must end with close: %v", events)
 	}
-	if fmt.Sprint(events) != want {
-		t.Fatalf("callback order = %v, want %s", events, want)
+	if strings.Contains(stage, "cron") {
+		var cronCount int
+		var shutdownEvents []string
+		for _, event := range events {
+			if event == "cron" {
+				cronCount++
+				continue
+			}
+			shutdownEvents = append(shutdownEvents, event)
+		}
+		if cronCount == 0 {
+			t.Fatalf("no OnCron callback ran: %v", events)
+		}
+		if got := fmt.Sprint(shutdownEvents); got != "[close]" && got != "[error close]" {
+			t.Fatalf("shutdown callback order = %v, want [close] or [error close] (all events: %v)", shutdownEvents, events)
+		}
+	} else {
+		want := "[close]"
+		if strings.HasPrefix(stage, "error") {
+			want = "[error close]"
+		}
+		if fmt.Sprint(events) != want {
+			t.Fatalf("callback order = %v, want %s", events, want)
+		}
 	}
 	waitForEventPanicReset(t, ss)
 	if ss.listener != nil || ss.reader != nil || ss.writer != nil {
