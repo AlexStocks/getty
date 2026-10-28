@@ -924,6 +924,32 @@ func (s *session) WriteBytesArray(pkgs ...[]byte) (int, error) {
 	return wlg, nil
 }
 
+// invokeEventCallback isolates callbacks invoked by cleanup or the timer wheel.
+// Each call needs its own recovery: handlePackage's recovery cannot catch a
+// second panic raised later in the same defer.
+func (s *session) invokeEventCallback(name string, f func()) (panicked bool) {
+	completed := false
+	defer func() {
+		if completed {
+			return
+		}
+		// With GODEBUG=panicnil=1, recover returns nil for panic(nil) even
+		// though it still stops the panic. Track completion separately so that
+		// such a panic is logged and reported to the caller as well.
+		r := recover()
+		panicked = true
+		const size = 64 << 10
+		rBuf := make([]byte, size)
+		rBuf = rBuf[:runtime.Stack(rBuf, false)]
+		// The pointer identifies the session even after stop has changed
+		// its token to session-closed for OnError/OnClose.
+		log.Errorf("[session.%s] panic session %p (%s): err=%v\n%s", name, s, s.sessionToken(), r, rBuf)
+	}()
+	s.invokeCallback(f)
+	completed = true
+	return false
+}
+
 // heartbeat schedules OnCron only while the captured session lifecycle is open.
 func heartbeat(_ gxtime.TimerID, _ time.Time, arg any) error {
 	ctx, _ := arg.(*heartbeatContext)
@@ -954,7 +980,17 @@ func heartbeat(_ gxtime.TimerID, _ time.Time, arg any) error {
 			}
 		}
 
-		ss.invokeCallback(func() { listener.OnCron(ss) })
+		if ss.invokeEventCallback("OnCron", func() { listener.OnCron(ss) }) {
+			// A faulty cron closes only its session, on both the timer-wheel
+			// and task-pool paths. Do not wait for this lifecycle task or
+			// detach resources that the read loop still owns. Close the raw
+			// transport to unblock reads regardless of their configured timeout;
+			// handlePackage will deliver shutdown events and perform gc.
+			ss.Close()
+			if rawConn := netConnOf(conn); rawConn != nil {
+				_ = rawConn.Close()
+			}
+		}
 	}
 
 	// if enable task pool, run @f asynchronously.
@@ -1116,11 +1152,11 @@ func (s *session) handlePackage() {
 		if err != nil {
 			log.Errorf("%s, [session.handlePackage] error:%+v", s.sessionToken(), perrors.WithStack(err))
 			if s != nil && s.listener != nil {
-				s.invokeCallback(func() { s.listener.OnError(s, err) })
+				s.invokeEventCallback("OnError", func() { s.listener.OnError(s, err) })
 			}
 		}
 		if s.listener != nil {
-			s.invokeCallback(func() { s.listener.OnClose(s) })
+			s.invokeEventCallback("OnClose", func() { s.listener.OnClose(s) })
 		}
 	}()
 
