@@ -383,12 +383,21 @@ func (c *client) GetTaskPool() gxsync.GenericTaskPool {
 	return c.tPool
 }
 
+// clientSessionActive reads one lifecycle snapshot: Reset installs an open done
+// channel after clearing Connection, but that empty session cannot occupy a slot.
+func clientSessionActive(ss Session) bool {
+	s := ss.(*session)
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	return s.Connection != nil && !s.closedLocked()
+}
+
 func (c *client) sessionNum() int {
 	var num int
 
 	c.Lock()
 	for s := range c.ssMap {
-		if s.IsClosed() {
+		if !clientSessionActive(s) {
 			delete(c.ssMap, s)
 		}
 	}
@@ -450,10 +459,9 @@ func (c *client) connect() bool {
 			ss.Close()
 			return false
 		}
-		if ss.IsClosed() {
-			// Closed during run() (e.g. OnOpen called Close): its stop() has
-			// already triggered a reconnect pass, so keep the dead session out
-			// of the pool and report the connect as failed.
+		if !clientSessionActive(ss) {
+			// Closed or reset during run(): keep the inactive session out of
+			// the pool and report the connect as failed.
 			ss.RemoveAttribute(sessionClientKey)
 			ss.RemoveAttribute(ignoreReconnectKey)
 			c.Unlock()
@@ -463,11 +471,10 @@ func (c *client) connect() bool {
 		// admits the session. reConnect()'s own size check and this insert live in
 		// different critical sections, and every session close triggers another
 		// reconnect pass, so two passes could both get here and push the pool above
-		// WithConnectionNumber permanently (sessionNum only prunes closed sessions).
-		// Closed sessions are pruned first so the pool is counted exactly the way
-		// sessionNum() counts it.
+		// WithConnectionNumber permanently. Inactive sessions are pruned first
+		// so the pool is counted exactly the way sessionNum() counts it.
 		for sess := range c.ssMap {
-			if sess.IsClosed() {
+			if !clientSessionActive(sess) {
 				delete(c.ssMap, sess)
 			}
 		}
