@@ -211,7 +211,8 @@ func newSession(session getty.Session) error {
 }
 
 func main() {
-    // 创建任务池（用于并发处理消息）
+    // 创建任务池，用于并发处理消息。
+    // 池大小不保证严格限制 OnMessage 的并发数量。
     taskPool := gxsync.NewTaskPoolSimple(0)
     defer taskPool.Close()
 
@@ -478,7 +479,7 @@ Getty 使用函数式选项模式来配置服务器和客户端，提供了灵�
 
 **基础配置**
 - **`WithLocalAddress(addr string)`**: 设置服务器监听地址
-- **`WithServerTaskPool(pool GenericTaskPool)`**: 设置服务器任务池
+- **`WithServerTaskPool(pool GenericTaskPool)`**: 设置服务器任务池；池大小不保证严格限制 `OnMessage` 的并发数量
 
 **WebSocket 配置**
 - **`WithWebsocketServerPath(path string)`**: 设置 WebSocket 请求路径
@@ -495,7 +496,7 @@ Getty 使用函数式选项模式来配置服务器和客户端，提供了灵�
 **基础配置**
 - **`WithServerAddress(addr string)`**: 设置服务器地址
 - **`WithConnectionNumber(num int)`**: 设置连接数量
-- **`WithClientTaskPool(pool GenericTaskPool)`**: 设置客户端任务池
+- **`WithClientTaskPool(pool GenericTaskPool)`**: 设置客户端任务池；池大小不保证严格限制 `OnMessage` 的并发数量
 
 **重连配置**
 - **`WithReconnectInterval(interval int)`**: 设置重连间隔（纳秒）
@@ -506,11 +507,24 @@ Getty 使用函数式选项模式来配置服务器和客户端，提供了灵�
 - **`WithClientSslEnabled(sslEnabled bool)`**: 启用/禁用客户端 SSL
 - **`WithClientTlsConfigBuilder(builder TlsConfigBuilder)`**: 设置客户端 TLS 配置
 
+#### 任务池与消息并发
+
+Getty 通过所配置任务池的 `AddTaskAlways()` 提交 `OnMessage` 回调。
+当前依赖 gost v1.13.1 的 `NewTaskPoolSimple` 在池满时会启动临时 goroutine，
+因此池大小不构成严格的 `OnMessage` 并发上限或在途消息总量上限，即使设置为 1
+也一样。
+
+当回调等待数据库或 RPC 时，持续输入可能增加 goroutine、保留的消息和下游请求。
+仅配置任务池不能保证消息处理总量有界，也不保证提供网络背压（让消息读取随处理能力
+放慢）。如需有界的过载策略，应单独设计：满载时等待、拒绝任务还是关闭会话，以及
+关闭时如何取消等待。将 `AddTaskAlways()` 改成阻塞式 `AddTask()` 会影响读取时序
+和关闭行为，需要先明确这些策略。
+
 #### 配置示例
 
 **TCP 服务器配置**
 ```go
-// 创建任务池
+// 创建任务池；池大小不保证严格限制 OnMessage 的并发数量。
 taskPool := gxsync.NewTaskPoolSimple(0)
 defer taskPool.Close()
 

@@ -135,6 +135,7 @@ type EndPoint interface {
 	// Close closes the endpoint. For servers, see Server for the initialization
 	// callback exception to waiting for registered event loops to exit.
 	Close()
-	// GetTaskPool get task pool implemented by dubbogo/gost
+	// GetTaskPool returns the configured task pool. Message dispatch uses
+	// AddTaskAlways; a pool does not guarantee a strict OnMessage concurrency limit.
 	GetTaskPool() gxsync.GenericTaskPool
 }

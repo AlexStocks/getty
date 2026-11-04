@@ -211,7 +211,8 @@ func newSession(session getty.Session) error {
 }
 
 func main() {
-    // Create task pool (for concurrent message processing)
+    // Create task pool for concurrent message processing.
+    // Pool size is not a strict OnMessage concurrency limit.
     taskPool := gxsync.NewTaskPoolSimple(0)
     defer taskPool.Close()
 
@@ -482,7 +483,7 @@ Getty uses functional options pattern to configure servers and clients, providin
 
 **Basic Configuration**
 - **`WithLocalAddress(addr string)`**: Set server listen address
-- **`WithServerTaskPool(pool GenericTaskPool)`**: Set server task pool
+- **`WithServerTaskPool(pool GenericTaskPool)`**: Set server task pool; its size does not guarantee a strict `OnMessage` concurrency limit
 
 **WebSocket Configuration**
 - **`WithWebsocketServerPath(path string)`**: Set WebSocket request path
@@ -499,7 +500,7 @@ Getty uses functional options pattern to configure servers and clients, providin
 **Basic Configuration**
 - **`WithServerAddress(addr string)`**: Set server address
 - **`WithConnectionNumber(num int)`**: Set connection number
-- **`WithClientTaskPool(pool GenericTaskPool)`**: Set client task pool
+- **`WithClientTaskPool(pool GenericTaskPool)`**: Set client task pool; its size does not guarantee a strict `OnMessage` concurrency limit
 
 **Reconnection Configuration**
 - **`WithReconnectInterval(interval int)`**: Set reconnection interval (nanoseconds)
@@ -510,11 +511,27 @@ Getty uses functional options pattern to configure servers and clients, providin
 - **`WithClientSslEnabled(sslEnabled bool)`**: Enable/disable client SSL
 - **`WithClientTlsConfigBuilder(builder TlsConfigBuilder)`**: Set client TLS config
 
+#### Task Pool Concurrency
+
+Getty submits `OnMessage` callbacks through the configured pool's
+`AddTaskAlways()` method. With the current gost v1.13.1 dependency,
+`NewTaskPoolSimple` can start temporary goroutines when the pool is full. Its size
+is therefore not a strict limit on concurrent `OnMessage` callbacks or total
+in-flight messages, even when set to 1.
+
+If callbacks wait for a database or RPC, continued input can increase goroutines,
+retained messages, and downstream requests. Configuring a task pool alone does
+not guarantee bounded message processing or network backpressure. A bounded
+overload policy requires a separate design: decide whether to wait, reject work,
+or close sessions, and how shutdown cancels any pending waits. Replacing
+`AddTaskAlways()` with blocking `AddTask()` changes read timing and shutdown
+behavior and requires that design first.
+
 #### Configuration Examples
 
 **TCP Server Configuration**
 ```go
-// Create task pool
+// Create task pool; its size is not a strict OnMessage concurrency limit.
 taskPool := gxsync.NewTaskPoolSimple(0)
 defer taskPool.Close()
 
