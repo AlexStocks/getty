@@ -428,6 +428,27 @@ type PacketServer interface {
 - **`ID()`**: Get server ID
 - **`EndPointType()`**: Get endpoint type
 
+#### Server Shutdown
+
+`Server.Close()` stops accepting connections and normally waits for registered
+event loops to exit. While a TCP/UDP `NewSessionCallback` or `OnOpen` callback is
+active, it initiates shutdown without waiting for those
+loops. This allows these callbacks to call `Close()` directly without waiting for
+their own goroutine to finish.
+
+This exception applies to the whole server: an external goroutine calling
+`Close()` while an initialization callback is active may also return before the event loops
+exit. It does not identify which goroutine called `Close()`. Let initialization
+return; call `Close()` again from outside the callbacks afterwards if the caller
+needs to wait for loop termination. Do not wait inside the callback for that
+second call to complete. Errors and panics in either initialization callback do
+not keep the server in this early-return mode.
+
+WS/WSS callbacks run in HTTP handler goroutines outside the server's event-loop
+wait group, so they retain the normal event-loop wait. This wait does not include
+the upgraded (hijacked) websocket connections or their handlers; applications
+remain responsible for closing established sessions as needed.
+
 #### Event Loop
 
 The server starts the event loop through the `RunEventLoop` method:

@@ -1024,8 +1024,20 @@ func (s *session) callOnOpen() (err error) {
 		}
 	}()
 
-	s.invokeCallback(func() { err = s.listener.OnOpen(s) })
-	return err
+	invoke := func() error {
+		s.invokeCallback(func() { err = s.listener.OnOpen(s) })
+		return err
+	}
+	if srv, ok := s.endPoint.(*server); ok && (srv.endPointType == TCP_SERVER || srv.endPointType == UDP_ENDPOINT) {
+		err = srv.invokeInitCallback(invoke)
+		// Startup still holds grWG here, so Reset cannot replace this lifecycle.
+		// Let the read loop own gc; detaching after run would race with its start.
+		if srv.IsClosed() {
+			s.Close()
+		}
+		return err
+	}
+	return invoke()
 }
 
 // run opens the session and starts its heartbeat and read loop. Startup itself

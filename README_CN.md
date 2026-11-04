@@ -428,6 +428,23 @@ type PacketServer interface {
 - **`ID()`**: 获取服务器ID
 - **`EndPointType()`**: 获取端点类型
 
+#### 服务端关闭
+
+`Server.Close()` 停止接受连接，通常会等待已登记的事件循环退出。TCP/UDP
+的 `NewSessionCallback` 或 `OnOpen` 初始化回调活跃期间，它发起关闭但不等待
+这些循环退出，因此可以在这两个回调中直接调用，不会等待当前回调所在的
+goroutine 结束。
+
+这个例外作用于整个服务端：初始化回调活跃期间，外部 goroutine 调用 `Close()`
+也可能在事件循环退出前返回。这不是对调用者 goroutine 身份的识别。
+应先让回调返回；如果需要等待循环退出，在回调结束后从外部再次调用
+`Close()`。不要在回调内等待第二次调用完成。初始化回调返回错误或发生 panic
+后，也会撤销初始化活动登记，不会一直保持提前返回模式。
+
+WS/WSS 回调运行在 HTTP handler goroutine 中，不属于服务端事件循环等待组，
+保留原有的事件循环等待行为。该等待不包含升级后已被接管（hijacked）的
+WebSocket 连接及其 handler；应用仍需按需关闭已建立的会话。
+
 #### 事件循环
 
 服务器通过 `RunEventLoop` 方法启动事件循环：
