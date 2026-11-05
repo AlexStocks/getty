@@ -413,18 +413,32 @@ func (s *server) invokeInitCallback(f func() error) error {
 	return f()
 }
 
-// initSession configures and starts a TCP/UDP session.
-// The caller closes the connection if this method returns an error.
-// Once run starts, the session lifecycle handles OnOpen failure and shutdown.
+// initSession configures and starts a TCP/UDP session, cleaning up the session
+// if initialization fails before run. The caller also closes the connection on
+// error. Once run starts, its lifecycle handles OnOpen failure and shutdown.
 func (s *server) initSession(newSession NewSessionCallback, ss Session) error {
-	if err := s.invokeInitCallback(func() error { return callNewSession(newSession, ss) }); err != nil {
+	candidate := ss.(*session)
+	if !candidate.beginStartup() {
+		return ErrSessionClosed
+	}
+	defer candidate.grWG.Done()
+
+	err := s.invokeInitCallback(func() (err error) {
+		candidate.invokeCallback(func() { err = callNewSession(newSession, ss) })
+		return err
+	})
+	// A callback may have closed the server; do not start OnOpen afterwards.
+	if err == nil && s.IsClosed() {
+		err = errServerClosed
+	}
+	if err != nil {
+		// No read loop owns cleanup yet. Keep startup registered until stop/gc
+		// finish, so a close callback requesting Reset cannot replace this session.
+		candidate.Close()
+		candidate.gc()
 		return err
 	}
-	// A callback may have closed the server; do not start OnOpen afterwards.
-	if s.IsClosed() {
-		return errServerClosed
-	}
-	ss.(*session).run()
+	candidate.run()
 	return nil
 }
 
@@ -526,7 +540,8 @@ func (s *server) runUDPEventLoop(newSession NewSessionCallback) {
 			// #125: this runs in a goroutine the library started, so a panic here
 			// is unrecoverable and takes the whole process down over a caller
 			// error. The TCP accept path logs and keeps serving; do the same.
-			log.Errorf("server{%s}.newSession(ss{%#v}) = err {%s}", s.addr, ss, perrors.WithStack(err))
+			// Close callbacks may reset ss concurrently; do not dump its fields.
+			log.Errorf("server{%s}.newSession() = err {%s}", s.addr, perrors.WithStack(err))
 			_ = conn.Close()
 			return
 		}

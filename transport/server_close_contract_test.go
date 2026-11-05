@@ -111,6 +111,8 @@ func TestServerCloseStartupTransports(t *testing.T) {
 	closed := make(chan struct{})
 	sessions := make(chan Session, 1)
 	var opens atomic.Int32
+	var closeCalls atomic.Int32
+	closeCallbackDone := make(chan struct{})
 	hook := func() {
 		close(entered)
 		if caller == "callback" {
@@ -137,6 +139,11 @@ func TestServerCloseStartupTransports(t *testing.T) {
 		ss.SetEventListener(listener)
 		sessions <- ss
 		if phase == "new-session" {
+			ss.AddCloseCallback("startup", "cleanup", func() {
+				if closeCalls.Add(1) == 1 {
+					close(closeCallbackDone)
+				}
+			})
 			hook()
 		}
 		return nil
@@ -197,7 +204,7 @@ func TestServerCloseStartupTransports(t *testing.T) {
 	waitForReset(t, loopsDone)
 	srv.Close()
 	if (protocol == "TCP" || protocol == "UDP") && phase == "new-session" {
-		if capture.contains(".Accept() = err") || capture.contains(".newSession(ss{") {
+		if capture.contains(".Accept() = err") || capture.contains(".newSession(") {
 			t.Fatalf("normal startup shutdown logged as a failure: %v", capture.snapshot())
 		}
 	}
@@ -206,8 +213,16 @@ func TestServerCloseStartupTransports(t *testing.T) {
 		assertPeerClosed(t, tcp, "Server.Close during initialization")
 	}
 	if protocol == "TCP" || protocol == "UDP" {
-		if phase == "new-session" && opens.Load() != 0 {
-			t.Fatal("OnOpen started after NewSessionCallback closed the server")
+		if phase == "new-session" {
+			waitForReset(t, closeCallbackDone)
+			ss.grWG.Wait()
+			ss.lifecycle.wait()
+			if !ss.IsClosed() || ss.Conn() != nil || closeCalls.Load() != 1 {
+				t.Fatal("interrupted initialization did not clean up the session exactly once")
+			}
+			if opens.Load() != 0 {
+				t.Fatal("OnOpen started after NewSessionCallback closed the server")
+			}
 		}
 		if phase == "open" {
 			waitForReset(t, closed)
@@ -287,6 +302,7 @@ func TestServerStartupFailureReleasesActivity(t *testing.T) {
 				t.Cleanup(func() { _ = local.Close(); _ = remote.Close() })
 				srv.streamListener = &singleAcceptListener{conn: &startupDistinctAddrConn{Conn: local}}
 				var ss Session
+				closeCallbackDone := make(chan struct{})
 				fail := func() error {
 					if panics {
 						panic("startup failure")
@@ -296,6 +312,7 @@ func TestServerStartupFailureReleasesActivity(t *testing.T) {
 				listener := &serverStartupCloseListener{closed: make(chan struct{}), onOpen: fail}
 				_, err := srv.accept(func(candidate Session) error {
 					ss = candidate
+					ss.AddCloseCallback("failure", "cleanup", func() { close(closeCallbackDone) })
 					ss.SetPkgHandler(wholeBufferReadWriter{})
 					ss.SetEventListener(listener)
 					if phase == "new-session" {
@@ -306,8 +323,11 @@ func TestServerStartupFailureReleasesActivity(t *testing.T) {
 				if phase == "new-session" && err == nil {
 					t.Fatal("initialization failure was lost")
 				}
-				if phase == "open" && !ss.IsClosed() {
-					t.Fatal("OnOpen failure left the session open")
+				waitForReset(t, closeCallbackDone)
+				ss.(*session).grWG.Wait()
+				ss.(*session).lifecycle.wait()
+				if !ss.IsClosed() || ss.Conn() != nil {
+					t.Fatal("initialization failure left session resources attached")
 				}
 				if !srv.startEventLoop() {
 					t.Fatal("initialization failure unexpectedly closed the server")
@@ -422,6 +442,80 @@ func TestServerCloseAndResetFromOnOpen(t *testing.T) {
 	}
 }
 
+// TestServerCloseAndResetBeforeOnOpen ensures interrupted configuration cleans
+// up the old lifecycle without closing the fresh state installed by Reset.
+func TestServerCloseAndResetBeforeOnOpen(t *testing.T) {
+	for _, kind := range []EndPointType{TCP_SERVER, UDP_ENDPOINT} {
+		for _, source := range []string{"close-callback", "new-session", "reset"} {
+			t.Run(kind.String()+"/"+source, func(t *testing.T) {
+				for range 20 {
+					srv := newServer(kind)
+					var ss *session
+					if kind == TCP_SERVER {
+						local, remote := net.Pipe()
+						t.Cleanup(func() { _ = local.Close(); _ = remote.Close() })
+						ss = newTCPSession(local, srv).(*session)
+					} else {
+						conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+						if err != nil {
+							t.Fatal(err)
+						}
+						t.Cleanup(func() { _ = conn.Close() })
+						ss = newUDPSession(conn, srv).(*session)
+					}
+					oldDone, lifecycle := ss.done, ss.lifecycle
+					requests := make(chan (<-chan error), 1)
+					callbackDone := make(chan struct{})
+					initDone := make(chan error, 1)
+					var calls atomic.Int32
+					go func() {
+						initDone <- srv.initSession(func(Session) error {
+							ss.AddCloseCallback("startup", "reset", func() {
+								calls.Add(1)
+								if source == "close-callback" {
+									requests <- ss.ResetAsync()
+								}
+								close(callbackDone)
+							})
+							if source != "close-callback" {
+								if source == "reset" {
+									ss.Reset()
+								}
+								requests <- ss.ResetAsync()
+							}
+							srv.Close()
+							return nil
+						}, ss)
+					}()
+					select {
+					case err := <-initDone:
+						if err != errServerClosed {
+							t.Fatalf("initialization returned %v", err)
+						}
+					case <-time.After(3 * time.Second):
+						t.Fatal("initialization blocked while requesting reset")
+					}
+					waitForReset(t, callbackDone)
+					select {
+					case err := <-(<-requests):
+						if err != nil {
+							t.Fatal(err)
+						}
+					case <-time.After(3 * time.Second):
+						t.Fatal("reset did not complete")
+					}
+					waitForReset(t, oldDone)
+					lifecycle.wait()
+					srv.Close()
+					if calls.Load() != 1 || ss.IsClosed() || ss.Conn() != nil {
+						t.Fatal("cleanup did not preserve the completed reset state")
+					}
+				}
+			})
+		}
+	}
+}
+
 // TestServerCloseRacesEventLoopRegistration preserves registration/Wait ordering
 // while repeated Close calls compete with startup on an otherwise idle server.
 func TestServerCloseRacesEventLoopRegistration(t *testing.T) {
@@ -446,5 +540,38 @@ func TestServerCloseRacesEventLoopRegistration(t *testing.T) {
 			srv.wg.Done()
 			t.Fatal("closed server accepted a late event-loop registration")
 		}
+	}
+}
+
+// TestUDPInitFailureResetDoesNotRace exercises the real UDP error logger after
+// cleanup schedules a close callback that resets the session.
+func TestUDPInitFailureResetDoesNotRace(t *testing.T) {
+	capture := &logLineRecorder{}
+	previousLogger := logutil.GetLogger()
+	logutil.SetLogger(capture)
+	defer logutil.SetLogger(previousLogger)
+
+	for range 100 {
+		srv := newServer(UDP_ENDPOINT, WithLocalAddress("127.0.0.1:0"))
+		result := make(chan (<-chan error), 1)
+		srv.RunEventLoop(func(ss Session) error {
+			ss.AddCloseCallback("initialization", "reset", func() {
+				result <- ss.(*session).ResetAsync()
+			})
+			return errors.New("initialization failed")
+		})
+		select {
+		case done := <-result:
+			waitForReset(t, done)
+		case <-time.After(3 * time.Second):
+			t.Fatal("initialization failure did not invoke the close callback")
+		}
+		srv.Close()
+	}
+	if !capture.contains(".newSession() = err {initialization failed}") {
+		t.Fatal("initialization error was not logged")
+	}
+	if capture.contains(".newSession(ss{") {
+		t.Fatal("initialization error logger accessed the entire session")
 	}
 }

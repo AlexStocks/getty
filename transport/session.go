@@ -1040,18 +1040,24 @@ func (s *session) callOnOpen() (err error) {
 	return invoke()
 }
 
+// beginStartup protects initialization from Reset replacing its lifecycle.
+// The caller must release grWG when startup (including failure cleanup) ends.
+func (s *session) beginStartup() bool {
+	s.resetLock.Lock()
+	defer s.resetLock.Unlock()
+	if s.resetRun != nil {
+		return false
+	}
+	s.grWG.Add(1)
+	return true
+}
+
 // run opens the session and starts its heartbeat and read loop. Startup itself
 // is tracked so reset requests from OnOpen wait for initialization to unwind.
 func (s *session) run() {
-	// Register startup before OnOpen can request reset, and exclude new starts
-	// once a reset worker has begun waiting on grWG.
-	s.resetLock.Lock()
-	if s.resetRun != nil {
-		s.resetLock.Unlock()
+	if !s.beginStartup() {
 		return
 	}
-	s.grWG.Add(1)
-	s.resetLock.Unlock()
 	defer s.grWG.Done()
 	if s.Connection == nil || s.listener == nil || s.writer == nil {
 		errStr := fmt.Sprintf("session{name:%s, conn:%#v, listener:%#v, writer:%#v}",
