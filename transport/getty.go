@@ -132,8 +132,11 @@ type EndPoint interface {
 	RunEventLoop(newSession NewSessionCallback)
 	// IsClosed check the endpoint has been closed
 	IsClosed() bool
-	// Close close the endpoint and free its resource
+	// Close closes the endpoint. For servers, see Server for the initialization
+	// callback exception to waiting for registered event loops to exit.
 	Close()
-	// GetTaskPool get task pool implemented by dubbogo/gost
+	// GetTaskPool returns the configured task pool. OnMessage and OnCron dispatch
+	// uses AddTaskAlways; a pool does not guarantee a strict concurrency limit.
+	// OnOpen, OnError and OnClose are invoked directly.
 	GetTaskPool() gxsync.GenericTaskPool
 }

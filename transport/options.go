@@ -72,7 +72,10 @@ func WithWebsocketServerRootCert(cert string) ServerOption {
 	}
 }
 
-// WithServerTaskPool @pool server task pool.
+// WithServerTaskPool sets the pool used to dispatch OnMessage and OnCron.
+// Getty submits both through the pool's AddTaskAlways, so configuring a pool does
+// not guarantee a strict concurrency limit: gost's NewTaskPoolSimple can start
+// temporary goroutines when full. OnOpen/OnError/OnClose are invoked directly.
 func WithServerTaskPool(pool gxsync.GenericTaskPool) ServerOption {
 	return func(o *ServerOptions) {
 		o.tPool = pool
@@ -132,7 +135,10 @@ func WithReconnectInterval(reconnectInterval int) ClientOption {
 	}
 }
 
-// WithClientTaskPool @pool client task pool.
+// WithClientTaskPool sets the pool used to dispatch OnMessage and OnCron.
+// Getty submits both through the pool's AddTaskAlways, so configuring a pool does
+// not guarantee a strict concurrency limit: gost's NewTaskPoolSimple can start
+// temporary goroutines when full. OnOpen/OnError/OnClose are invoked directly.
 func WithClientTaskPool(pool gxsync.GenericTaskPool) ClientOption {
 	return func(o *ClientOptions) {
 		o.tPool = pool

@@ -1024,22 +1024,40 @@ func (s *session) callOnOpen() (err error) {
 		}
 	}()
 
-	s.invokeCallback(func() { err = s.listener.OnOpen(s) })
-	return err
+	invoke := func() error {
+		s.invokeCallback(func() { err = s.listener.OnOpen(s) })
+		return err
+	}
+	if srv, ok := s.endPoint.(*server); ok && (srv.endPointType == TCP_SERVER || srv.endPointType == UDP_ENDPOINT) {
+		err = srv.invokeInitCallback(invoke)
+		// Startup still holds grWG here, so Reset cannot replace this lifecycle.
+		// Let the read loop own gc; detaching after run would race with its start.
+		if srv.IsClosed() {
+			s.Close()
+		}
+		return err
+	}
+	return invoke()
+}
+
+// beginStartup protects initialization from Reset replacing its lifecycle.
+// The caller must release grWG when startup (including failure cleanup) ends.
+func (s *session) beginStartup() bool {
+	s.resetLock.Lock()
+	defer s.resetLock.Unlock()
+	if s.resetRun != nil {
+		return false
+	}
+	s.grWG.Add(1)
+	return true
 }
 
 // run opens the session and starts its heartbeat and read loop. Startup itself
 // is tracked so reset requests from OnOpen wait for initialization to unwind.
 func (s *session) run() {
-	// Register startup before OnOpen can request reset, and exclude new starts
-	// once a reset worker has begun waiting on grWG.
-	s.resetLock.Lock()
-	if s.resetRun != nil {
-		s.resetLock.Unlock()
+	if !s.beginStartup() {
 		return
 	}
-	s.grWG.Add(1)
-	s.resetLock.Unlock()
 	defer s.grWG.Done()
 	if s.Connection == nil || s.listener == nil || s.writer == nil {
 		errStr := fmt.Sprintf("session{name:%s, conn:%#v, listener:%#v, writer:%#v}",
