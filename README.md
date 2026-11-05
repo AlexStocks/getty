@@ -211,8 +211,8 @@ func newSession(session getty.Session) error {
 }
 
 func main() {
-    // Create task pool for concurrent message processing.
-    // Pool size is not a strict OnMessage concurrency limit.
+    // Create task pool for OnMessage and OnCron callbacks.
+    // Pool size is not a strict OnMessage/OnCron concurrency limit.
     taskPool := gxsync.NewTaskPoolSimple(0)
     defer taskPool.Close()
 
@@ -483,7 +483,7 @@ Getty uses functional options pattern to configure servers and clients, providin
 
 **Basic Configuration**
 - **`WithLocalAddress(addr string)`**: Set server listen address
-- **`WithServerTaskPool(pool GenericTaskPool)`**: Set server task pool; its size does not guarantee a strict `OnMessage` concurrency limit
+- **`WithServerTaskPool(pool GenericTaskPool)`**: Set server task pool; its size does not guarantee a strict `OnMessage`/`OnCron` concurrency limit
 
 **WebSocket Configuration**
 - **`WithWebsocketServerPath(path string)`**: Set WebSocket request path
@@ -500,7 +500,7 @@ Getty uses functional options pattern to configure servers and clients, providin
 **Basic Configuration**
 - **`WithServerAddress(addr string)`**: Set server address
 - **`WithConnectionNumber(num int)`**: Set connection number
-- **`WithClientTaskPool(pool GenericTaskPool)`**: Set client task pool; its size does not guarantee a strict `OnMessage` concurrency limit
+- **`WithClientTaskPool(pool GenericTaskPool)`**: Set client task pool; its size does not guarantee a strict `OnMessage`/`OnCron` concurrency limit
 
 **Reconnection Configuration**
 - **`WithReconnectInterval(interval int)`**: Set reconnection interval (nanoseconds)
@@ -513,11 +513,12 @@ Getty uses functional options pattern to configure servers and clients, providin
 
 #### Task Pool Concurrency
 
-Getty submits `OnMessage` callbacks through the configured pool's
-`AddTaskAlways()` method. With the current gost v1.13.1 dependency,
+Getty dispatches `OnMessage` and `OnCron` through the configured pool's
+`AddTaskAlways()` method; `OnOpen`, `OnError` and `OnClose` are invoked directly.
+With the current gost v1.13.1 dependency,
 `NewTaskPoolSimple` can start temporary goroutines when the pool is full. Its size
-is therefore not a strict limit on concurrent `OnMessage` callbacks or total
-in-flight messages, even when set to 1.
+is therefore not a strict limit on concurrent `OnMessage` and `OnCron` callbacks
+or total in-flight messages, even when set to 1.
 
 If callbacks wait for a database or RPC, continued input can increase goroutines,
 retained messages, and downstream requests. Configuring a task pool alone does
@@ -531,7 +532,7 @@ behavior and requires that design first.
 
 **TCP Server Configuration**
 ```go
-// Create task pool; its size is not a strict OnMessage concurrency limit.
+// Create task pool; its size is not a strict OnMessage/OnCron concurrency limit.
 taskPool := gxsync.NewTaskPoolSimple(0)
 defer taskPool.Close()
 

@@ -365,6 +365,9 @@ func callNewSession(cb NewSessionCallback, ss Session) (err error) {
 	return cb(ss)
 }
 
+// accept accepts a connection, configures its session and runs session startup.
+// If initialization fails before run, it closes the accepted connection.
+// Session startup handles OnOpen failure and shutdown through its own lifecycle.
 func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 	conn, err := s.streamListener.Accept()
 	if err != nil {
@@ -410,8 +413,9 @@ func (s *server) invokeInitCallback(f func() error) error {
 	return f()
 }
 
-// initSession configures and starts a TCP/UDP session, releasing its connection
-// if an initialization callback requests server shutdown.
+// initSession configures and starts a TCP/UDP session.
+// The caller closes the connection if this method returns an error.
+// Once run starts, the session lifecycle handles OnOpen failure and shutdown.
 func (s *server) initSession(newSession NewSessionCallback, ss Session) error {
 	if err := s.invokeInitCallback(func() error { return callNewSession(newSession, ss) }); err != nil {
 		return err
@@ -472,6 +476,9 @@ func (s *server) runTCPEventLoop(newSession NewSessionCallback) {
 			}
 			_, err = s.accept(newSession)
 			if err != nil {
+				if perrors.Cause(err) == errServerClosed {
+					return
+				}
 				//	Accept timeouts (per https://github.com/golang/go/issues/45729,
 				//  Timeout() captures the retryable subset of the old Temporary()) are
 				//  retried quietly; every other error - EMFILE/ENFILE from fd exhaustion,
@@ -512,6 +519,10 @@ func (s *server) runUDPEventLoop(newSession NewSessionCallback) {
 		conn = s.pktListener.(*net.UDPConn)
 		ss = newUDPSession(conn, s)
 		if err = s.initSession(newSession, ss); err != nil {
+			if perrors.Cause(err) == errServerClosed {
+				_ = conn.Close()
+				return
+			}
 			// #125: this runs in a goroutine the library started, so a panic here
 			// is unrecoverable and takes the whole process down over a caller
 			// error. The TCP accept path logs and keeps serving; do the same.

@@ -135,7 +135,8 @@ type EndPoint interface {
 	// Close closes the endpoint. For servers, see Server for the initialization
 	// callback exception to waiting for registered event loops to exit.
 	Close()
-	// GetTaskPool returns the configured task pool. Message dispatch uses
-	// AddTaskAlways; a pool does not guarantee a strict OnMessage concurrency limit.
+	// GetTaskPool returns the configured task pool. OnMessage and OnCron dispatch
+	// uses AddTaskAlways; a pool does not guarantee a strict concurrency limit.
+	// OnOpen, OnError and OnClose are invoked directly.
 	GetTaskPool() gxsync.GenericTaskPool
 }

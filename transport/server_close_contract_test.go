@@ -35,6 +35,10 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+import (
+	logutil "github.com/AlexStocks/getty/util"
+)
+
 // serverStartupCloseListener supplies startup behavior and observes read cleanup.
 type serverStartupCloseListener struct {
 	recordingEventListener
@@ -75,6 +79,11 @@ func TestServerCloseStartupTransports(t *testing.T) {
 		}
 		return
 	}
+
+	capture := &logLineRecorder{}
+	previousLogger := logutil.GetLogger()
+	logutil.SetLogger(capture)
+	defer logutil.SetLogger(previousLogger)
 
 	parts := strings.Split(scenario, "/")
 	protocol, phase, caller := parts[0], parts[1], parts[2]
@@ -187,6 +196,11 @@ func TestServerCloseStartupTransports(t *testing.T) {
 	go func() { srv.wg.Wait(); close(loopsDone) }()
 	waitForReset(t, loopsDone)
 	srv.Close()
+	if (protocol == "TCP" || protocol == "UDP") && phase == "new-session" {
+		if capture.contains(".Accept() = err") || capture.contains(".newSession(ss{") {
+			t.Fatalf("normal startup shutdown logged as a failure: %v", capture.snapshot())
+		}
+	}
 	if protocol == "TCP" {
 		defer func() { _ = tcp.Close() }()
 		assertPeerClosed(t, tcp, "Server.Close during initialization")
@@ -232,6 +246,7 @@ func TestServerCloseWaitsAfterStartup(t *testing.T) {
 	t.Cleanup(finishInit)
 	go func() {
 		defer srv.wg.Done()
+		// Server shutdown short-circuits run; this fixture intentionally omits session handlers.
 		_, _ = srv.accept(func(Session) error {
 			close(entered)
 			<-releaseInit
