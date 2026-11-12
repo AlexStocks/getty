@@ -211,7 +211,8 @@ func newSession(session getty.Session) error {
 }
 
 func main() {
-    // Create task pool (for concurrent message processing)
+    // Create task pool for OnMessage and OnCron callbacks.
+    // Pool size is not a strict OnMessage/OnCron concurrency limit.
     taskPool := gxsync.NewTaskPoolSimple(0)
     defer taskPool.Close()
 
@@ -428,6 +429,27 @@ type PacketServer interface {
 - **`ID()`**: Get server ID
 - **`EndPointType()`**: Get endpoint type
 
+#### Server Shutdown
+
+`Server.Close()` stops accepting connections and normally waits for registered
+event loops to exit. While a TCP/UDP `NewSessionCallback` or `OnOpen` callback is
+active, it initiates shutdown without waiting for those
+loops. This allows these callbacks to call `Close()` directly without waiting for
+their own goroutine to finish.
+
+This exception applies to the whole server: an external goroutine calling
+`Close()` while an initialization callback is active may also return before the event loops
+exit. It does not identify which goroutine called `Close()`. Let initialization
+return; call `Close()` again from outside the callbacks afterwards if the caller
+needs to wait for loop termination. Do not wait inside the callback for that
+second call to complete. Errors and panics in either initialization callback do
+not keep the server in this early-return mode.
+
+WS/WSS callbacks run in HTTP handler goroutines outside the server's event-loop
+wait group, so they retain the normal event-loop wait. This wait does not include
+the upgraded (hijacked) websocket connections or their handlers; applications
+remain responsible for closing established sessions as needed.
+
 #### Event Loop
 
 The server starts the event loop through the `RunEventLoop` method:
@@ -461,7 +483,7 @@ Getty uses functional options pattern to configure servers and clients, providin
 
 **Basic Configuration**
 - **`WithLocalAddress(addr string)`**: Set server listen address
-- **`WithServerTaskPool(pool GenericTaskPool)`**: Set server task pool
+- **`WithServerTaskPool(pool GenericTaskPool)`**: Set server task pool; its size does not guarantee a strict `OnMessage`/`OnCron` concurrency limit
 
 **WebSocket Configuration**
 - **`WithWebsocketServerPath(path string)`**: Set WebSocket request path
@@ -478,7 +500,7 @@ Getty uses functional options pattern to configure servers and clients, providin
 **Basic Configuration**
 - **`WithServerAddress(addr string)`**: Set server address
 - **`WithConnectionNumber(num int)`**: Set connection number
-- **`WithClientTaskPool(pool GenericTaskPool)`**: Set client task pool
+- **`WithClientTaskPool(pool GenericTaskPool)`**: Set client task pool; its size does not guarantee a strict `OnMessage`/`OnCron` concurrency limit
 
 **Reconnection Configuration**
 - **`WithReconnectInterval(interval int)`**: Set reconnection interval (nanoseconds)
@@ -489,11 +511,28 @@ Getty uses functional options pattern to configure servers and clients, providin
 - **`WithClientSslEnabled(sslEnabled bool)`**: Enable/disable client SSL
 - **`WithClientTlsConfigBuilder(builder TlsConfigBuilder)`**: Set client TLS config
 
+#### Task Pool Concurrency
+
+Getty dispatches `OnMessage` and `OnCron` through the configured pool's
+`AddTaskAlways()` method; `OnOpen`, `OnError` and `OnClose` are invoked directly.
+With the current gost v1.13.1 dependency,
+`NewTaskPoolSimple` can start temporary goroutines when the pool is full. Its size
+is therefore not a strict limit on concurrent `OnMessage` and `OnCron` callbacks
+or total in-flight messages, even when set to 1.
+
+If callbacks wait for a database or RPC, continued input can increase goroutines,
+retained messages, and downstream requests. Configuring a task pool alone does
+not guarantee bounded message processing or network backpressure. A bounded
+overload policy requires a separate design: decide whether to wait, reject work,
+or close sessions, and how shutdown cancels any pending waits. Replacing
+`AddTaskAlways()` with blocking `AddTask()` changes read timing and shutdown
+behavior and requires that design first.
+
 #### Configuration Examples
 
 **TCP Server Configuration**
 ```go
-// Create task pool
+// Create task pool; its size is not a strict OnMessage/OnCron concurrency limit.
 taskPool := gxsync.NewTaskPoolSimple(0)
 defer taskPool.Close()
 

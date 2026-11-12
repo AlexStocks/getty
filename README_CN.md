@@ -211,7 +211,8 @@ func newSession(session getty.Session) error {
 }
 
 func main() {
-    // 创建任务池（用于并发处理消息）
+    // 创建任务池，用于执行 OnMessage 和 OnCron 回调。
+    // 池大小不保证严格限制 OnMessage 和 OnCron 的并发数量。
     taskPool := gxsync.NewTaskPoolSimple(0)
     defer taskPool.Close()
 
@@ -428,6 +429,23 @@ type PacketServer interface {
 - **`ID()`**: 获取服务器ID
 - **`EndPointType()`**: 获取端点类型
 
+#### 服务端关闭
+
+`Server.Close()` 停止接受连接，通常会等待已登记的事件循环退出。TCP/UDP
+的 `NewSessionCallback` 或 `OnOpen` 初始化回调活跃期间，它发起关闭但不等待
+这些循环退出，因此可以在这两个回调中直接调用，不会等待当前回调所在的
+goroutine 结束。
+
+这个例外作用于整个服务端：初始化回调活跃期间，外部 goroutine 调用 `Close()`
+也可能在事件循环退出前返回。这不是对调用者 goroutine 身份的识别。
+应先让回调返回；如果需要等待循环退出，在回调结束后从外部再次调用
+`Close()`。不要在回调内等待第二次调用完成。初始化回调返回错误或发生 panic
+后，也会撤销初始化活动登记，不会一直保持提前返回模式。
+
+WS/WSS 回调运行在 HTTP handler goroutine 中，不属于服务端事件循环等待组，
+保留原有的事件循环等待行为。该等待不包含升级后已被接管（hijacked）的
+WebSocket 连接及其 handler；应用仍需按需关闭已建立的会话。
+
 #### 事件循环
 
 服务器通过 `RunEventLoop` 方法启动事件循环：
@@ -461,7 +479,7 @@ Getty 使用函数式选项模式来配置服务器和客户端，提供了灵�
 
 **基础配置**
 - **`WithLocalAddress(addr string)`**: 设置服务器监听地址
-- **`WithServerTaskPool(pool GenericTaskPool)`**: 设置服务器任务池
+- **`WithServerTaskPool(pool GenericTaskPool)`**: 设置服务器任务池；池大小不保证严格限制 `OnMessage` 和 `OnCron` 的并发数量
 
 **WebSocket 配置**
 - **`WithWebsocketServerPath(path string)`**: 设置 WebSocket 请求路径
@@ -478,7 +496,7 @@ Getty 使用函数式选项模式来配置服务器和客户端，提供了灵�
 **基础配置**
 - **`WithServerAddress(addr string)`**: 设置服务器地址
 - **`WithConnectionNumber(num int)`**: 设置连接数量
-- **`WithClientTaskPool(pool GenericTaskPool)`**: 设置客户端任务池
+- **`WithClientTaskPool(pool GenericTaskPool)`**: 设置客户端任务池；池大小不保证严格限制 `OnMessage` 和 `OnCron` 的并发数量
 
 **重连配置**
 - **`WithReconnectInterval(interval int)`**: 设置重连间隔（纳秒）
@@ -489,11 +507,25 @@ Getty 使用函数式选项模式来配置服务器和客户端，提供了灵�
 - **`WithClientSslEnabled(sslEnabled bool)`**: 启用/禁用客户端 SSL
 - **`WithClientTlsConfigBuilder(builder TlsConfigBuilder)`**: 设置客户端 TLS 配置
 
+#### 任务池与消息并发
+
+Getty 通过所配置任务池的 `AddTaskAlways()` 提交 `OnMessage` 和 `OnCron` 回调；
+`OnOpen`、`OnError` 和 `OnClose` 直接调用，不经过任务池。
+当前依赖 gost v1.13.1 的 `NewTaskPoolSimple` 在池满时会启动临时 goroutine，
+因此池大小不构成严格的 `OnMessage` 和 `OnCron` 并发上限或在途消息总量上限，即使设置为 1
+也一样。
+
+当回调等待数据库或 RPC 时，持续输入可能增加 goroutine、保留的消息和下游请求。
+仅配置任务池不能保证消息处理总量有界，也不保证提供网络背压（让消息读取随处理能力
+放慢）。如需有界的过载策略，应单独设计：满载时等待、拒绝任务还是关闭会话，以及
+关闭时如何取消等待。将 `AddTaskAlways()` 改成阻塞式 `AddTask()` 会影响读取时序
+和关闭行为，需要先明确这些策略。
+
 #### 配置示例
 
 **TCP 服务器配置**
 ```go
-// 创建任务池
+// 创建任务池；池大小不保证严格限制 OnMessage 和 OnCron 的并发数量。
 taskPool := gxsync.NewTaskPoolSimple(0)
 defer taskPool.Close()
 

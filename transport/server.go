@@ -56,7 +56,14 @@ var (
 	serverID uatomic.Int32
 )
 
-// Server interface
+// Server accepts connections and manages its registered event loops.
+// Close normally waits for those loops to exit. While any TCP/UDP session
+// NewSessionCallback or OnOpen callback is active, Close
+// initiates shutdown without waiting for the loops, even when called by another
+// goroutine. Callbacks must return so initialization and loop cleanup can finish;
+// call Close again after callbacks finish to wait. This is endpoint-wide activity tracking,
+// not detection of the calling goroutine. WS/WSS callbacks run in HTTP handlers
+// outside this wait group and retain the normal event-loop wait.
 type Server interface {
 	EndPoint
 }
@@ -90,6 +97,8 @@ type server struct {
 	sync.Once
 	done chan struct{}
 	wg   sync.WaitGroup
+	// initializing counts active TCP/UDP initialization callbacks under lock.
+	initializing int
 }
 
 func (s *server) init(opts ...ServerOption) {
@@ -356,6 +365,9 @@ func callNewSession(cb NewSessionCallback, ss Session) (err error) {
 	return cb(ss)
 }
 
+// accept accepts a connection, configures its session and runs session startup.
+// If initialization fails before run, it closes the accepted connection.
+// Session startup handles OnOpen failure and shutdown through its own lifecycle.
 func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 	conn, err := s.streamListener.Accept()
 	if err != nil {
@@ -372,13 +384,62 @@ func (s *server) accept(newSession NewSessionCallback) (Session, error) {
 	}
 
 	ss := newTCPSession(conn, s)
-	err = callNewSession(newSession, ss)
+	err = s.initSession(newSession, ss)
 	if err != nil {
 		_ = conn.Close()
 		return nil, perrors.WithStack(err)
 	}
 
 	return ss, nil
+}
+
+// invokeInitCallback tracks a callback on an event-loop goroutine, so it can
+// close the server without waiting for that same goroutine to exit.
+// It is also used by session.callOnOpen for TCP/UDP server sessions.
+func (s *server) invokeInitCallback(f func() error) error {
+	s.lock.Lock()
+	if s.IsClosed() {
+		s.lock.Unlock()
+		return errServerClosed
+	}
+	s.initializing++
+	s.lock.Unlock()
+	defer func() {
+		s.lock.Lock()
+		s.initializing--
+		s.lock.Unlock()
+	}()
+
+	return f()
+}
+
+// initSession configures and starts a TCP/UDP session, cleaning up the session
+// if initialization fails before run. The caller also closes the connection on
+// error. Once run starts, its lifecycle handles OnOpen failure and shutdown.
+func (s *server) initSession(newSession NewSessionCallback, ss Session) error {
+	candidate := ss.(*session)
+	if !candidate.beginStartup() {
+		return ErrSessionClosed
+	}
+	defer candidate.grWG.Done()
+
+	err := s.invokeInitCallback(func() (err error) {
+		candidate.invokeCallback(func() { err = callNewSession(newSession, ss) })
+		return err
+	})
+	// A callback may have closed the server; do not start OnOpen afterwards.
+	if err == nil && s.IsClosed() {
+		err = errServerClosed
+	}
+	if err != nil {
+		// No read loop owns cleanup yet. Keep startup registered until stop/gc
+		// finish, so a close callback requesting Reset cannot replace this session.
+		candidate.Close()
+		candidate.gc()
+		return err
+	}
+	candidate.run()
+	return nil
 }
 
 // startEventLoop registers one event loop goroutine. RunEventLoop publishes the
@@ -409,9 +470,8 @@ func (s *server) runTCPEventLoop(newSession NewSessionCallback) {
 	go func() {
 		defer s.wg.Done()
 		var (
-			err    error
-			client Session
-			delay  time.Duration
+			err   error
+			delay time.Duration
 		)
 		for {
 			if s.IsClosed() {
@@ -428,8 +488,11 @@ func (s *server) runTCPEventLoop(newSession NewSessionCallback) {
 				case <-gxtime.After(delay):
 				}
 			}
-			client, err = s.accept(newSession)
+			_, err = s.accept(newSession)
 			if err != nil {
+				if perrors.Cause(err) == errServerClosed {
+					return
+				}
 				//	Accept timeouts (per https://github.com/golang/go/issues/45729,
 				//  Timeout() captures the retryable subset of the old Temporary()) are
 				//  retried quietly; every other error - EMFILE/ENFILE from fd exhaustion,
@@ -451,7 +514,6 @@ func (s *server) runTCPEventLoop(newSession NewSessionCallback) {
 				continue
 			}
 			delay = 0
-			client.(*session).run()
 		}
 	}()
 }
@@ -470,15 +532,19 @@ func (s *server) runUDPEventLoop(newSession NewSessionCallback) {
 
 		conn = s.pktListener.(*net.UDPConn)
 		ss = newUDPSession(conn, s)
-		if err = callNewSession(newSession, ss); err != nil {
+		if err = s.initSession(newSession, ss); err != nil {
+			if perrors.Cause(err) == errServerClosed {
+				_ = conn.Close()
+				return
+			}
 			// #125: this runs in a goroutine the library started, so a panic here
 			// is unrecoverable and takes the whole process down over a caller
 			// error. The TCP accept path logs and keeps serving; do the same.
-			log.Errorf("server{%s}.newSession(ss{%#v}) = err {%s}", s.addr, ss, perrors.WithStack(err))
+			// Close callbacks may reset ss concurrently; do not dump its fields.
+			log.Errorf("server{%s}.newSession() = err {%s}", s.addr, perrors.WithStack(err))
 			_ = conn.Close()
 			return
 		}
-		ss.(*session).run()
 	}()
 }
 
@@ -671,7 +737,14 @@ func (s *server) PacketConn() net.PacketConn {
 	return s.pktListener
 }
 
+// Close stops accepting connections. It waits for registered event loops unless
+// a TCP/UDP initialization callback is active; see Server for the caller contract.
 func (s *server) Close() {
 	s.stop()
-	s.wg.Wait()
+	s.lock.RLock()
+	initializing := s.initializing > 0
+	s.lock.RUnlock()
+	if !initializing {
+		s.wg.Wait()
+	}
 }
