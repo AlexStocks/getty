@@ -18,6 +18,8 @@
 package getty
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net"
 	"os"
@@ -27,6 +29,48 @@ import (
 	"testing"
 	"time"
 )
+
+func TestBuildWSSTLSConfigVerificationPolicy(t *testing.T) {
+	certPath, keyPath, caPath := writeServerTLSFixtures(t)
+	for _, test := range []struct {
+		name       string
+		caPath     string
+		clientAuth tls.ClientAuthType
+	}{
+		{name: "without CA", clientAuth: tls.NoClientCert},
+		{name: "with CA", caPath: caPath, clientAuth: tls.RequireAndVerifyClientCert},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			srv := newServer(WSS_SERVER,
+				WithWebsocketServerPath("/ws"),
+				WithWebsocketServerCert(certPath),
+				WithWebsocketServerPrivateKey(keyPath),
+				WithWebsocketServerRootCert(test.caPath),
+			)
+			t.Cleanup(srv.Close)
+			config := srv.buildWSSTLSConfig()
+			if config.InsecureSkipVerify {
+				t.Error("WSS server TLS config sets InsecureSkipVerify")
+			}
+			if config.ClientAuth != test.clientAuth {
+				t.Errorf("ClientAuth = %v, want %v", config.ClientAuth, test.clientAuth)
+			}
+			if test.caPath == "" {
+				if config.ClientCAs != nil {
+					t.Error("ClientCAs is non-nil without a configured CA")
+				}
+				return
+			}
+			expectedCAs := x509.NewCertPool()
+			if !expectedCAs.AppendCertsFromPEM(tlsTestRootCertificate) {
+				t.Fatal("failed to parse the expected client CA")
+			}
+			if config.ClientCAs == nil || !config.ClientCAs.Equal(expectedCAs) {
+				t.Error("ClientCAs does not match the configured CA")
+			}
+		})
+	}
+}
 
 func TestWSSCertificateErrorsPanicOnCallerStackBeforeListen(t *testing.T) {
 	certPath, err := filepath.Abs("../examples/profiles/wss/server_cert/server.crt")

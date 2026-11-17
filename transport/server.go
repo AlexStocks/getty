@@ -589,10 +589,9 @@ func (s *server) buildWSSTLSConfig() *tls.Config {
 			s.cert, s.privateKey, perrors.WithStack(err)))
 	}
 	config := &tls.Config{
-		InsecureSkipVerify: true, // do not verify peer certs
-		ClientAuth:         tls.NoClientCert,
-		NextProtos:         []string{"http/1.1"},
-		Certificates:       []tls.Certificate{certificate},
+		ClientAuth:   tls.NoClientCert,
+		NextProtos:   []string{"http/1.1"},
+		Certificates: []tls.Certificate{certificate},
 	}
 
 	if s.caCert != "" {
@@ -606,7 +605,6 @@ func (s *server) buildWSSTLSConfig() *tls.Config {
 		}
 		config.ClientCAs = certPool
 		config.ClientAuth = tls.RequireAndVerifyClientCert
-		config.InsecureSkipVerify = false
 	}
 
 	return config
