@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"runtime"
 	"sync"
 	"testing"
@@ -222,6 +223,9 @@ func TestPeerRSTProducesNonEOFError(t *testing.T) {
 	if errors.Is(err, io.EOF) {
 		t.Fatalf("peer RST read error = %v, want non-EOF error", err)
 	}
+	if errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Fatalf("peer RST read timed out without a reset: %v", err)
+	}
 	if got := cut.AcceptCount(); got != 1 {
 		t.Fatalf("accept count = %d, want 1", got)
 	}
@@ -286,7 +290,18 @@ func TestNetCutHighVolumeFINCleansUp(t *testing.T) {
 		t.Fatalf("close listener rebound at %s: %v", cut.Addr(), err)
 	}
 
-	if got := runtime.NumGoroutine(); got > goroutinesBefore {
-		t.Fatalf("goroutine count after closing fixture = %d, want at most baseline %d", got, goroutinesBefore)
+	deadline := time.NewTimer(netCutWaitTimeout)
+	defer deadline.Stop()
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	for runtime.NumGoroutine() > goroutinesBefore {
+		select {
+		case <-tick.C:
+		case <-deadline.C:
+			if got := runtime.NumGoroutine(); got > goroutinesBefore {
+				t.Fatalf("goroutine count after closing fixture = %d, want at most baseline %d", got, goroutinesBefore)
+			}
+			return
+		}
 	}
 }
