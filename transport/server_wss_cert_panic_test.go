@@ -131,6 +131,34 @@ func TestWSSCertificateErrorsPanicOnCallerStackBeforeListen(t *testing.T) {
 	}
 }
 
+func TestClosedWSSServerRunEventLoopDoesNotLoadCertificates(t *testing.T) {
+	dir := t.TempDir()
+	srv := NewWSSServer(
+		WithLocalAddress("127.0.0.1:0"),
+		WithWebsocketServerPath("/ws"),
+		WithWebsocketServerCert(filepath.Join(dir, "missing.crt")),
+		WithWebsocketServerPrivateKey(filepath.Join(dir, "missing.key")),
+	).(*server)
+	t.Cleanup(srv.Close)
+	srv.Close()
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("RunEventLoop on a closed WSS server panicked: %v", r)
+		}
+	}()
+	srv.RunEventLoop(func(Session) error {
+		t.Error("RunEventLoop invoked the session callback on a closed WSS server")
+		return nil
+	})
+	if listener := srv.Listener(); listener != nil {
+		t.Fatalf("Listener() = %v on a closed WSS server, want nil", listener)
+	}
+	if srv.server != nil {
+		t.Fatal("RunEventLoop created an HTTP server after Close")
+	}
+}
+
 func wssUnusedTCPAddress(t *testing.T) string {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")

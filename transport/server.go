@@ -648,6 +648,10 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback, config *tls.Conf
 // RunEventLoop serves client request.
 // @newSession: new connection callback
 func (s *server) RunEventLoop(newSession NewSessionCallback) {
+	if s.IsClosed() {
+		return
+	}
+
 	var wssConfig *tls.Config
 	if s.endPointType == WSS_SERVER {
 		wssConfig = s.buildWSSTLSConfig()
