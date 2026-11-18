@@ -639,48 +639,56 @@ func (s *server) runWSEventLoop(newSession NewSessionCallback) {
 	}()
 }
 
+// buildWSSTLSConfig loads the WSS certificates before RunEventLoop opens a
+// listener or registers an event loop. Its panics therefore run on the caller's
+// goroutine, where the caller can recover without leaking server resources.
+func (s *server) buildWSSTLSConfig() *tls.Config {
+	var (
+		err         error
+		certPem     []byte
+		certificate tls.Certificate
+		certPool    *x509.CertPool
+	)
+
+	if certificate, err = tls.LoadX509KeyPair(s.cert, s.privateKey); err != nil {
+		panic(fmt.Sprintf("tls.LoadX509KeyPair(certs{%s}, privateKey{%s}) = err:%+v",
+			s.cert, s.privateKey, perrors.WithStack(err)))
+	}
+	config := &tls.Config{
+		ClientAuth:   tls.NoClientCert,
+		NextProtos:   []string{"http/1.1"},
+		Certificates: []tls.Certificate{certificate},
+	}
+
+	if s.caCert != "" {
+		certPem, err = os.ReadFile(s.caCert)
+		if err != nil {
+			panic(fmt.Errorf("os.ReadFile(certFile{%s}) = err:%+v", s.caCert, perrors.WithStack(err)))
+		}
+		certPool = x509.NewCertPool()
+		if ok := certPool.AppendCertsFromPEM(certPem); !ok {
+			panic(fmt.Sprintf("certPool.AppendCertsFromPEM(certFile{%s}) = false", s.caCert))
+		}
+		config.ClientCAs = certPool
+		config.ClientAuth = tls.RequireAndVerifyClientCert
+	}
+
+	return config
+}
+
 // serve websocket client request
 // RunWSSEventLoop serve websocket client request
-func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
+func (s *server) runWSSEventLoop(newSession NewSessionCallback, config *tls.Config) {
 	if !s.startEventLoop() {
 		return
 	}
 	go func() {
 		var (
-			err         error
-			certPem     []byte
-			certificate tls.Certificate
-			certPool    *x509.CertPool
-			config      *tls.Config
-			handler     *wsHandler
-			server      *http.Server
+			err     error
+			handler *wsHandler
+			server  *http.Server
 		)
 		defer s.wg.Done()
-
-		if certificate, err = tls.LoadX509KeyPair(s.cert, s.privateKey); err != nil {
-			panic(fmt.Sprintf("tls.LoadX509KeyPair(certs{%s}, privateKey{%s}) = err:%+v",
-				s.cert, s.privateKey, perrors.WithStack(err)))
-		}
-		config = &tls.Config{
-			InsecureSkipVerify: true, // do not verify peer certs
-			ClientAuth:         tls.NoClientCert,
-			NextProtos:         []string{"http/1.1"},
-			Certificates:       []tls.Certificate{certificate},
-		}
-
-		if s.caCert != "" {
-			certPem, err = os.ReadFile(s.caCert)
-			if err != nil {
-				panic(fmt.Errorf("os.ReadFile(certFile{%s}) = err:%+v", s.caCert, perrors.WithStack(err)))
-			}
-			certPool = x509.NewCertPool()
-			if ok := certPool.AppendCertsFromPEM(certPem); !ok {
-				panic("failed to parse root certificate file")
-			}
-			config.ClientCAs = certPool
-			config.ClientAuth = tls.RequireAndVerifyClientCert
-			config.InsecureSkipVerify = false
-		}
 
 		handler = newWSHandler(s, newSession)
 		handler.HandleFunc(s.path, handler.serveWSRequest)
@@ -704,6 +712,15 @@ func (s *server) runWSSEventLoop(newSession NewSessionCallback) {
 // RunEventLoop serves client request.
 // @newSession: new connection callback
 func (s *server) RunEventLoop(newSession NewSessionCallback) {
+	if s.IsClosed() {
+		return
+	}
+
+	var wssConfig *tls.Config
+	if s.endPointType == WSS_SERVER {
+		wssConfig = s.buildWSSTLSConfig()
+	}
+
 	if err := s.listen(); err != nil {
 		if perrors.Cause(err) == errServerClosed {
 			return
@@ -719,7 +736,7 @@ func (s *server) RunEventLoop(newSession NewSessionCallback) {
 	case WS_SERVER:
 		s.runWSEventLoop(newSession)
 	case WSS_SERVER:
-		s.runWSSEventLoop(newSession)
+		s.runWSSEventLoop(newSession, wssConfig)
 	default:
 		panic(fmt.Sprintf("illegal server type %s", s.endPointType.String()))
 	}
