@@ -926,6 +926,32 @@ func TestSessionCloseWithSubsecondWaitSendsFIN(t *testing.T) {
 	}
 }
 
+func TestWSSessionCloseWithSubsecondWaitSendsFIN(t *testing.T) {
+	server, client := newWSTestConnPair(t)
+	ss := newWSSession(server, newServer(WS_SERVER, WithWebsocketServerPath("/"))).(*session)
+	t.Cleanup(func() { waitForReset(t, ss.ResetAsync()) })
+	ss.SetWaitTime(500 * time.Millisecond)
+
+	// Parse the close frame without replying, then read the TCP shutdown.
+	client.SetCloseHandler(func(int, string) error { return nil })
+	peer := client.UnderlyingConn()
+	if err := peer.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+
+	ss.gc()
+
+	_, _, err := client.ReadMessage()
+	if !websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+		t.Fatalf("WebSocket read after cleanup = %v, want normal close frame", err)
+	}
+	n, err := peer.Read(make([]byte, 1))
+	t.Logf("peer TCP read after WebSocket close frame = (%d, %v)", n, err)
+	if n != 0 || !errors.Is(err, io.EOF) {
+		t.Fatalf("peer TCP read after WebSocket close frame = (%d, %v), want (0, EOF)", n, err)
+	}
+}
+
 // Regression test for #112: WriteTimeout used to be the promoted Connection
 // method with no nil guard, so stop() crashed once gc()/Reset() had cleared
 // s.Connection.

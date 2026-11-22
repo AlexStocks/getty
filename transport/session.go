@@ -1561,12 +1561,8 @@ func (s *session) gc() {
 			defer lifecycle.release()
 		}
 		if conn != nil {
-			if _, ok := conn.(*gettyWSConn); ok {
-				conn.CloseConn(int(wait / time.Second))
-			} else {
-				// A zero TCP linger resets the connection on close.
-				conn.CloseConn(lingerSeconds(wait))
-			}
+			// A zero linger resets the TCP socket used by TCP and WS sessions.
+			conn.CloseConn(lingerSeconds(wait))
 		}
 	}(conn, wait, lifecycle)
 }

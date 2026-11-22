@@ -22,9 +22,9 @@ The fix captures the connection identifier before closing the session. Each conn
 --- PASS: TestSessionCloseLogsConnectionIdentity (0.00s)
 ```
 
-## B. TCP linger rounding and loopback behavior
+## B. Linger rounding and loopback behavior
 
-The TCP session path rounds linger up to whole seconds, with a minimum of one second and a maximum set by the platform's `SO_LINGER` field. For WS and WSS sessions, `gc()` passes `int(wait / time.Second)` to `gettyWSConn.CloseConn`.
+Session cleanup rounds the wait up to whole seconds, with a minimum of one second and a maximum set by the platform's `SO_LINGER` field. TCP and plain WS apply that value to their TCP sockets. WSS closes the TLS write side with `CloseWrite()`.
 
 | `SetWaitTime` | Baseline `CloseConn` argument (seconds) | After the fix (seconds) |
 | --- | ---: | ---: |
@@ -54,6 +54,20 @@ After the fix, the client reads `EOF`.
 --- PASS: TestSessionCloseWithSubsecondWaitSendsFIN (0.00s)
 ```
 
+The plain WS loopback test sets the same `500ms` wait and checks both the WebSocket close frame and the following TCP read. On `8b375fe`, the peer received the normal close frame followed by a reset on all three runs.
+
+```text
+    session_test.go:949: peer TCP read after WebSocket close frame = (0, read tcp 127.0.0.1:62298->127.0.0.1:62297: read: connection reset by peer)
+--- FAIL: TestWSSessionCloseWithSubsecondWaitSendsFIN (0.00s)
+```
+
+After the fix, the normal close frame is followed by TCP `EOF`.
+
+```text
+    session_test.go:949: peer TCP read after WebSocket close frame = (0, EOF)
+--- PASS: TestWSSessionCloseWithSubsecondWaitSendsFIN (0.00s)
+```
+
 ## Verification results
 
 | Check | Result |
@@ -62,6 +76,7 @@ After the fix, the client reads `EOF`.
 | Repeated sequential calls to `Close()` produce one log entry per connection | PASS |
 | Linger rounding at the tested boundaries and for the default value | PASS |
 | The TCP loopback peer reads `EOF` with a `500ms` wait | PASS |
+| The plain WS loopback peer reads a normal close frame followed by TCP `EOF` with a `500ms` wait | PASS |
 | `go test ./transport ./util -count=1` | PASS |
 | `go test -race ./transport ./util -count=1` | PASS, zero data races reported |
 | `go vet ./...` | PASS |
