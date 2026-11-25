@@ -50,6 +50,186 @@ type PackageHandler struct{}
 
 var errTestTLSConfig = errors.New("test TLS config failure")
 
+// Exercise the real receive loop: earlier reconnect tests triggered stop
+// directly and could not catch EOF suppression or successful short-lived dials.
+func TestTCPClientReconnectsAfterPeerDisconnect(t *testing.T) {
+	for _, mode := range []netCutMode{netCutFIN, netCutRST} {
+		t.Run(fmt.Sprintf("mode-%d", mode), func(t *testing.T) {
+			ln, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			accepted := make(chan *net.TCPConn, 8)
+			acceptDone := make(chan struct{})
+			go func() {
+				defer close(acceptDone)
+				for {
+					conn, err := ln.AcceptTCP()
+					if err != nil {
+						return
+					}
+					select {
+					case accepted <- conn:
+					case <-t.Context().Done():
+						_ = conn.Close()
+						return
+					}
+				}
+			}()
+			t.Cleanup(func() {
+				_ = ln.Close()
+				<-acceptDone
+				for len(accepted) > 0 {
+					_ = (<-accepted).Close()
+				}
+			})
+
+			const interval = 100 * time.Millisecond
+			clt := newClient(TCP_CLIENT, WithServerAddress(ln.Addr().String()),
+				WithConnectionNumber(1), WithReconnectInterval(int(interval)), WithReconnectAttempts(3))
+			sessions := make(chan Session, 8)
+			clt.RunEventLoop(func(ss Session) error {
+				ss.SetPkgHandler(&PackageHandler{})
+				ss.SetEventListener(&recordingEventListener{})
+				ss.SetReadTimeout(50 * time.Millisecond)
+				sessions <- ss
+				return nil
+			})
+			t.Cleanup(clt.Close)
+			var peer *net.TCPConn
+			for attempt := range 4 {
+				select {
+				case conn := <-accepted:
+					peer = conn
+					t.Cleanup(func() { _ = conn.Close() })
+				case <-time.After(2 * time.Second):
+					t.Fatalf("peer disconnect did not restore connection %d", attempt+1)
+				}
+				var ss Session
+				select {
+				case ss = <-sessions:
+					t.Cleanup(func() {
+						clt.Close()
+						waitForReset(t, ss.(AsyncResetter).ResetAsync())
+					})
+				case <-time.After(time.Second):
+					t.Fatal("accepted connection did not initialize a session")
+				}
+				deadline := time.Now().Add(time.Second)
+				for {
+					clt.Lock()
+					_, admitted := clt.ssMap[ss]
+					clt.Unlock()
+					if admitted {
+						break
+					}
+					if time.Now().After(deadline) {
+						t.Fatal("replacement session did not enter the pool")
+					}
+					time.Sleep(time.Millisecond)
+				}
+				if got := clt.sessionNum(); got != 1 {
+					t.Fatalf("active pool size = %d, want 1", got)
+				}
+				if attempt == 3 {
+					break
+				}
+				if mode == netCutRST {
+					if err := peer.SetLinger(0); err != nil {
+						t.Fatal(err)
+					}
+				}
+				closedAt := time.Now()
+				if err := peer.Close(); err != nil {
+					t.Fatal(err)
+				}
+				select {
+				case <-sessions:
+					t.Fatal("replacement bypassed the configured disconnect backoff")
+				case <-time.After(interval * 3 / 4):
+				}
+				t.Logf("disconnect %d: no replacement within %v", attempt+1, time.Since(closedAt))
+			}
+			select {
+			case <-accepted:
+				t.Fatal("healthy replacement caused another connection")
+			case <-time.After(interval):
+			}
+		})
+	}
+}
+
+func TestTCPClientDisconnectBackoffCancelledByClose(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	accepted := make(chan net.Conn, 1)
+	acceptDone := make(chan struct{})
+	go func() {
+		defer close(acceptDone)
+		conn, err := ln.Accept()
+		if err == nil {
+			accepted <- conn
+		}
+	}()
+	clt := newClient(TCP_CLIENT, WithServerAddress(ln.Addr().String()), WithConnectionNumber(1),
+		WithReconnectInterval(int(2*time.Second)), WithReconnectAttempts(3))
+	t.Cleanup(clt.Close)
+	var ss Session
+	clt.RunEventLoop(func(session Session) error {
+		ss = session
+		ss.SetPkgHandler(&PackageHandler{})
+		ss.SetEventListener(&recordingEventListener{})
+		return nil
+	})
+	t.Cleanup(func() {
+		clt.Close()
+		waitForReset(t, ss.(AsyncResetter).ResetAsync())
+	})
+	var peer net.Conn
+	select {
+	case peer = <-accepted:
+	case <-time.After(time.Second):
+		t.Fatal("server did not accept initial connection")
+	}
+	<-acceptDone
+	if err := peer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var done <-chan struct{}
+	deadline := time.Now().Add(time.Second)
+	for {
+		clt.Lock()
+		done = clt.reconnectDone
+		waiting := time.Until(clt.reconnectAfter) > time.Second
+		clt.Unlock()
+		if done != nil && waiting {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("peer close did not schedule the disconnect backoff")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	clt.Close()
+	select {
+	case <-done:
+	case <-time.After(300 * time.Millisecond):
+		t.Fatal("Close did not interrupt reconnect waiting")
+	}
+	if err := ln.(*net.TCPListener).SetDeadline(time.Now().Add(100 * time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	if conn, err := ln.Accept(); err == nil {
+		_ = conn.Close()
+		t.Fatal("client dialed again after Close")
+	} else if netErr, ok := err.(net.Error); !ok || !netErr.Timeout() {
+		t.Fatalf("unexpected accept error: %v", err)
+	}
+}
+
 type countingTLSConfigBuilder struct {
 	calls   atomic.Int32
 	entered chan struct{}
