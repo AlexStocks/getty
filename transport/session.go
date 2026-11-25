@@ -1254,9 +1254,13 @@ func (s *session) handleTCPPackage() error {
 					break
 				}
 				if perrors.Cause(err) == io.EOF {
+					if clt, ok := s.GetAttribute(sessionClientKey).(*client); ok {
+						// Set the deadline before stop() can request a refill.
+						clt.delayReconnectAfterFIN()
+					} else {
+						s.SetAttribute(ignoreReconnectKey, true)
+					}
 					log.Infof("%s, session.conn read EOF, client send over, session exit", s.sessionToken())
-					//when read EOF, means that the peer has closed the connection, stop to reconnect to maintain the connection pool.
-					s.SetAttribute(ignoreReconnectKey, true)
 					err = nil
 					exit = true
 					if bufLen != 0 {

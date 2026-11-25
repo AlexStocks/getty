@@ -85,17 +85,19 @@ func TestClientPoolRefillsAfterCloseAndReset(t *testing.T) {
 			name = "reset"
 		}
 		t.Run(name, func(t *testing.T) {
-			builder := &countingTLSConfigBuilder{}
+			builder := &countingTLSConfigBuilder{entered: make(chan struct{}, 1)}
 			c := newFailingReconnectClient(builder, time.Millisecond, 1)
 			t.Cleanup(c.Close)
 			closeClientPoolSession(t, c, reset)
-			if got := builder.calls.Load(); got != 0 {
-				t.Fatalf("EOF triggered %d automatic dial attempts; want 0", got)
+			waitForReset(t, builder.entered)
+			c.Lock()
+			done := c.reconnectDone
+			c.Unlock()
+			if done != nil {
+				waitForReset(t, done)
 			}
-			// Do not call sessionNum first: RunEventLoop must find the gap itself.
-			c.RunEventLoop(func(Session) error { return nil })
 			if got := builder.calls.Load(); got != 1 {
-				t.Fatalf("RunEventLoop made %d replacement dial attempts; want 1", got)
+				t.Fatalf("EOF triggered %d replacement dial attempts; want 1", got)
 			}
 		})
 	}

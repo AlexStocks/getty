@@ -20,6 +20,7 @@ package getty
 import (
 	"bytes"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -28,6 +29,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -371,6 +373,205 @@ func TestRunReconnectAfterCloseIsNoop(t *testing.T) {
 		t.Fatal("runReconnect did not return immediately after Close")
 	}
 	assert.Equal(t, int32(0), builder.calls.Load())
+}
+
+func TestTCPReconnectAfterPeerFIN(t *testing.T) {
+	t.Run("plain", func(t *testing.T) { testTCPReconnectAfterPeerEOF(t, false) })
+	t.Run("TLS", func(t *testing.T) { testTCPReconnectAfterPeerEOF(t, true) })
+}
+
+func testTCPReconnectAfterPeerEOF(t *testing.T, useTLS bool) {
+	t.Helper()
+	const interval = 50 * time.Millisecond
+	listener, err := net.ListenTCP("tcp", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+
+	var peerListener net.Listener = listener
+	options := []ClientOption{WithServerAddress(listener.Addr().String()),
+		WithConnectionNumber(1), WithReconnectInterval(int(interval)),
+		WithReconnectAttempts(1)}
+	if useTLS {
+		ca := newTestCertificateAuthority(t)
+		roots := x509.NewCertPool()
+		roots.AddCert(ca.cert)
+		peerListener = tls.NewListener(listener, &tls.Config{
+			Certificates: []tls.Certificate{ca.issue(t, "FIN test server", true)},
+			MinVersion:   tls.VersionTLS12,
+		})
+		options = append(options, WithClientSslEnabled(true),
+			WithClientTlsConfigBuilder(&listenerTLSConfigBuilder{
+				config: &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12},
+			}))
+	}
+	c := NewTCPClient(options...).(*client)
+	defer c.Close()
+	var attempts atomic.Int32
+	handler := &MessageHandler{}
+	initialDone := make(chan struct{})
+	go func() {
+		defer close(initialDone)
+		c.RunEventLoop(func(s Session) error {
+			attempts.Add(1)
+			return newSessionCallback(s, handler)
+		})
+	}()
+	accept := func() (net.Conn, error) {
+		deadline := time.Now().Add(2 * time.Second)
+		if err := listener.SetDeadline(deadline); err != nil {
+			t.Fatal(err)
+		}
+		conn, err := peerListener.Accept()
+		if secure, ok := conn.(*tls.Conn); ok {
+			if err := secure.SetDeadline(deadline); err != nil {
+				_ = secure.Close()
+				t.Fatalf("set TLS handshake deadline: %v", err)
+			}
+			if err := secure.Handshake(); err != nil {
+				_ = secure.Close()
+				t.Fatalf("TLS handshake: %v", err)
+			}
+		}
+		return conn, err
+	}
+
+	first, err := accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = first.Close() })
+	waitForReset(t, initialDone)
+	if got := c.sessionNum(); got != 1 {
+		t.Fatalf("initial pool = %d, want 1", got)
+	}
+	extra, err := accept()
+	if extra != nil {
+		_ = extra.Close()
+	}
+	if !isTimeoutError(err) || attempts.Load() != 1 {
+		t.Fatalf("healthy peer over 2s: callbacks=%d, extra Accept error=%v, want 1 callback and no new connection", attempts.Load(), err)
+	}
+	t.Log("healthy peer over 2s: callbacks=1, pool=1")
+
+	cutAt := time.Now()
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	replacement, err := accept()
+	if err != nil {
+		t.Fatalf("after FIN: callbacks=%d, pool=%d, replacement Accept failed: %v", attempts.Load(), c.sessionNum(), err)
+	}
+	t.Cleanup(func() { _ = replacement.Close() })
+	if elapsed := time.Since(cutAt); elapsed < interval {
+		t.Errorf("replacement accepted after %v, want at least %v after FIN", elapsed, interval)
+	}
+	if !assert.Eventually(t, func() bool { return c.sessionNum() == 1 }, time.Second, 10*time.Millisecond) {
+		t.FailNow()
+	}
+	t.Logf("after FIN: callbacks=%d, pool=%d", attempts.Load(), c.sessionNum())
+	if got := attempts.Load(); got != 2 {
+		t.Fatalf("after FIN: callbacks=%d, want 2", got)
+	}
+}
+
+func TestTCPReconnectRateAfterRepeatedPeerFIN(t *testing.T) {
+	const interval = 50 * time.Millisecond
+	baseline := runtime.NumGoroutine()
+	cut := newNetCutServer(t, netCutFIN)
+	c := NewTCPClient(WithServerAddress(cut.Addr()), WithConnectionNumber(1),
+		WithReconnectInterval(int(interval))).(*client)
+	t.Cleanup(c.Close)
+	var attempts atomic.Int32
+	loopDone := make(chan struct{})
+	go func() {
+		defer close(loopDone)
+		c.RunEventLoop(func(s Session) error {
+			attempts.Add(1)
+			s.SetPkgHandler(&PackageHandler{})
+			s.SetEventListener(&recordingEventListener{})
+			return nil
+		})
+	}()
+	cut.WaitForAccepts(t, 1)
+
+	<-time.After(2 * time.Second)
+	total := cut.AcceptCount()
+	t.Logf("continuous FIN over 2s: accepts=%d, callbacks=%d, pool=%d", total, attempts.Load(), c.sessionNum())
+	if total < 2 || total > 100 {
+		t.Errorf("accepts=%d, want 2 to 100", total)
+	}
+
+	c.Lock()
+	workerDone := c.reconnectDone
+	c.Unlock()
+	c.Close()
+	if workerDone != nil {
+		waitForReset(t, workerDone)
+	}
+	waitForReset(t, loopDone)
+	afterClose := cut.AcceptCount()
+	<-time.After(200 * time.Millisecond)
+	if got := cut.AcceptCount(); got != afterClose {
+		t.Errorf("accepts grew after Close from %d to %d", afterClose, got)
+	}
+	if err := cut.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := cut.Err(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.NewTimer(time.Second)
+	defer deadline.Stop()
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	for runtime.NumGoroutine() > baseline {
+		select {
+		case <-tick.C:
+		case <-deadline.C:
+			if got := runtime.NumGoroutine(); got > baseline {
+				t.Fatalf("goroutines after Close=%d, want at most baseline %d", got, baseline)
+			}
+			return
+		}
+	}
+	t.Logf("after Close: accepts=%d, goroutines=%d (baseline=%d)", afterClose, runtime.NumGoroutine(), baseline)
+}
+
+func TestTCPReconnectAfterPeerFINIsCancelledByClose(t *testing.T) {
+	cut := newNetCutServer(t, netCutFIN)
+	c := NewTCPClient(WithServerAddress(cut.Addr()), WithConnectionNumber(1),
+		WithReconnectInterval(int(5*time.Second))).(*client)
+	t.Cleanup(c.Close)
+
+	handler := &sessionCloseMessageHandler{closed: make(chan struct{}, 1)}
+	loopDone := make(chan struct{})
+	go func() {
+		defer close(loopDone)
+		c.RunEventLoop(func(s Session) error {
+			s.SetPkgHandler(&PackageHandler{})
+			s.SetEventListener(handler)
+			return nil
+		})
+	}()
+
+	waitForReset(t, handler.closed)
+	c.Lock()
+	workerDone := c.reconnectDone
+	c.Unlock()
+	if workerDone == nil {
+		t.Fatal("peer FIN did not start a reconnect worker")
+	}
+	c.Close()
+	waitForReset(t, workerDone)
+	waitForReset(t, loopDone)
+	if got := cut.AcceptCount(); got != 1 {
+		t.Fatalf("Close during FIN retry delay: accepts=%d, want 1", got)
+	}
+	if err := cut.Err(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestSessionTriggeredReconnectDoesNotBlockClose(t *testing.T) {

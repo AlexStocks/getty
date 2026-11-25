@@ -82,6 +82,9 @@ type client struct {
 	// served by it, keeping reconnect triggers single-flight.
 	reconnectDone    chan struct{}
 	reconnectPending bool
+	// A successful dial can be followed immediately by FIN. Keep the retry
+	// deadline across reconnect passes and successful pool admissions.
+	reconnectAfterFIN time.Time
 
 	sync.Once
 	done chan struct{}
@@ -566,13 +569,23 @@ func (c *client) runReconnect() <-chan struct{} {
 	return done
 }
 
+func (c *client) retryInterval() time.Duration {
+	if c.reconnectInterval == 0 {
+		return defaultReconnectInterval
+	}
+	return time.Duration(c.reconnectInterval)
+}
+
+func (c *client) delayReconnectAfterFIN() {
+	c.Lock()
+	c.reconnectAfterFIN = time.Now().Add(c.retryInterval())
+	c.Unlock()
+}
+
 // a for-loop connect to make sure the connection pool is valid
 func (c *client) reConnect() {
 	var reconnectAttempts int
-	reconnectInterval := c.reconnectInterval
-	if reconnectInterval == 0 {
-		reconnectInterval = defaultReconnectInterval
-	}
+	reconnectInterval := c.retryInterval()
 	maxReconnectAttempts := c.maxReconnectAttempts
 	if maxReconnectAttempts == 0 {
 		maxReconnectAttempts = defaultMaxReconnectAttempts
@@ -586,6 +599,20 @@ func (c *client) reConnect() {
 
 		if connPoolSize <= c.sessionNum() {
 			return
+		}
+		c.Lock()
+		finDelay := time.Until(c.reconnectAfterFIN)
+		c.Unlock()
+		if finDelay > 0 {
+			timer := time.NewTimer(finDelay)
+			select {
+			case <-c.done:
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+			// Another session may have received FIN while we were waiting.
+			continue
 		}
 		if c.connect() {
 			reconnectAttempts = 0
