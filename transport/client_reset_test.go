@@ -23,7 +23,9 @@ import (
 )
 
 // closeClientPoolSession follows the admitted session's EOF/OnClose path. It
-// waits outside the callback and leaves pool maintenance to the caller.
+// waits outside the callback and leaves pool maintenance to the caller. Disable
+// automatic reconnect here so these admission/reset tests control the next dial;
+// real peer-close recovery is covered by TestTCPClientReconnectsAfterPeerDisconnect.
 func closeClientPoolSession(t *testing.T, c *client, reset bool) *session {
 	t.Helper()
 
@@ -31,7 +33,7 @@ func closeClientPoolSession(t *testing.T, c *client, reset bool) *session {
 	request := make(chan (<-chan error), 1)
 	s := newTCPSession(&eofDataNetConn{}, c).(*session)
 	s.SetAttribute(sessionClientKey, c)
-	s.SetAttribute(ignoreReconnectKey, false)
+	s.SetAttribute(ignoreReconnectKey, true)
 	s.SetPkgHandler(wholeBufferReadWriter{})
 	s.SetEventListener(&resetContractListener{target: "close", hook: func(ss Session) {
 		if reset {
@@ -90,7 +92,7 @@ func TestClientPoolRefillsAfterCloseAndReset(t *testing.T) {
 			t.Cleanup(c.Close)
 			closeClientPoolSession(t, c, reset)
 			if got := builder.calls.Load(); got != 0 {
-				t.Fatalf("EOF triggered %d automatic dial attempts; want 0", got)
+				t.Fatalf("isolated pool fixture triggered %d automatic dial attempts; want 0", got)
 			}
 			// Do not call sessionNum first: RunEventLoop must find the gap itself.
 			c.RunEventLoop(func(Session) error { return nil })

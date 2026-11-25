@@ -36,7 +36,8 @@ func TestClientCloseDuringCallbackReset(t *testing.T) {
 
 	s := newTCPSession(&eofDataNetConn{}, c).(*session)
 	s.SetAttribute(sessionClientKey, c)
-	s.SetAttribute(ignoreReconnectKey, false)
+	// This test controls Close during reset, independently of peer recovery.
+	s.SetAttribute(ignoreReconnectKey, true)
 	s.SetPkgHandler(resetContractCodec{})
 	s.SetEventListener(&resetContractListener{
 		target: "close",

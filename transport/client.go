@@ -82,6 +82,10 @@ type client struct {
 	// served by it, keeping reconnect triggers single-flight.
 	reconnectDone    chan struct{}
 	reconnectPending bool
+	// A disconnect delay survives worker completion so a successful but
+	// short-lived connection cannot start a fresh, unthrottled reconnect pass.
+	reconnectAfter time.Time
+	lastConnect    time.Time
 
 	sync.Once
 	done chan struct{}
@@ -430,7 +434,13 @@ func (c *client) connect() bool {
 		// client has been closed
 		return false
 	}
-	err = callNewSession(c.newSession, ss)
+	c.Lock()
+	newSession := c.newSession
+	// Record the successful dial before run starts its reader: an immediate
+	// peer close must be throttled even if the session never reaches the pool.
+	c.lastConnect = time.Now()
+	c.Unlock()
+	err = callNewSession(newSession, ss)
 	if err == nil {
 		// NewSessionCallback is the documented place to ask for a bigger
 		// maxMsgLen, and gorilla's read limit can only change before the first
@@ -514,6 +524,41 @@ func (c *client) RunEventLoop(newSession NewSessionCallback) {
 	<-c.runReconnect()
 }
 
+// runReconnectAfterDisconnect makes a short-lived TCP connection consume one
+// reconnect interval. A connection that lived longer can reconnect immediately.
+// Initial pool filling and the failed-dial attempt budget remain unchanged.
+func (c *client) runReconnectAfterDisconnect() {
+	c.Lock()
+	if c.endPointType == TCP_CLIENT {
+		interval := time.Duration(c.reconnectInterval)
+		if interval == 0 {
+			interval = defaultReconnectInterval
+		}
+		c.reconnectAfter = c.lastConnect.Add(interval)
+	}
+	c.Unlock()
+	c.runReconnect()
+}
+
+func (c *client) waitReconnect() bool {
+	for {
+		c.Lock()
+		delay := time.Until(c.reconnectAfter)
+		c.Unlock()
+		if delay <= 0 {
+			return !c.IsClosed()
+		}
+		timer := time.NewTimer(delay)
+		select {
+		case <-c.done:
+			timer.Stop()
+			return false
+		case <-timer.C:
+		}
+		// Another disconnect may have moved the deadline while we waited.
+	}
+}
+
 // runReconnect triggers a reconnect pass and returns the channel of the loop
 // serving it; while a loop is active, further triggers are coalesced into it
 // (single-flight). After the client is closed the returned channel closes
@@ -585,6 +630,9 @@ func (c *client) reConnect() {
 		}
 
 		if connPoolSize <= c.sessionNum() {
+			return
+		}
+		if !c.waitReconnect() {
 			return
 		}
 		if c.connect() {
