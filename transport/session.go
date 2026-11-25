@@ -1520,6 +1520,20 @@ func (s *session) stopHeartbeat() *sessionLifecycle {
 	return lifecycle
 }
 
+func lingerSeconds(wait time.Duration) int {
+	seconds := int64(wait / time.Second)
+	if wait%time.Second > 0 {
+		seconds++
+	}
+	// SO_LINGER uses a signed 32-bit field on Unix and an unsigned 16-bit
+	// field on Windows. Clamp before any narrowing conversion.
+	limit := int64(math.MaxInt32)
+	if runtime.GOOS == "windows" {
+		limit = math.MaxUint16
+	}
+	return int(min(max(seconds, 1), limit))
+}
+
 // gc detaches session resources and registers asynchronous connection cleanup
 // before making the detached state visible to a reset waiter.
 func (s *session) gc() {
@@ -1547,10 +1561,8 @@ func (s *session) gc() {
 			defer lifecycle.release()
 		}
 		if conn != nil {
-			// #112: CloseConn takes seconds, but wait is a time.Duration in
-			// nanoseconds: int(wait) overflowed the int32 linger field and made
-			// Close() block for minutes instead of the pending duration.
-			conn.CloseConn(int(wait / time.Second))
+			// A zero linger resets the TCP socket used by TCP and WS sessions.
+			conn.CloseConn(lingerSeconds(wait))
 		}
 	}(conn, wait, lifecycle)
 }
@@ -1558,8 +1570,11 @@ func (s *session) gc() {
 // Close will be invoked by NewSessionCallback(if return error is not nil)
 // or (session)handleLoop automatically. It's thread safe.
 func (s *session) Close() {
+	token := s.sessionToken()
 	s.stop()
-	log.Infof("%s closed now. its current gr num is %d", s.sessionToken(), s.grNum.Load())
+	if token != "session-closed" {
+		log.Infof("%s closed now. its current gr num is %d", token, s.grNum.Load())
+	}
 }
 
 // GetActive return connection's time

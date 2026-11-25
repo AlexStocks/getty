@@ -28,6 +28,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -37,6 +38,10 @@ import (
 
 import (
 	"github.com/gorilla/websocket"
+)
+
+import (
+	logutil "github.com/AlexStocks/getty/util"
 )
 
 var (
@@ -821,21 +826,129 @@ func TestSendDoesNotHoldSessionLockAcrossConnectionSend(t *testing.T) {
 // without converting nanoseconds to seconds, so int(wait) overflowed the
 // int32 linger field and Close blocked for minutes.
 func TestGCClosesConnWithSeconds(t *testing.T) {
-	rec := &closeConnRecorder{
-		gettyTCPConn: newGettyTCPConn(&eofDataNetConn{}),
-		waits:        make(chan int, 1),
+	maxSeconds := math.MaxInt32
+	if runtime.GOOS == "windows" {
+		maxSeconds = math.MaxUint16
 	}
-	ss := newSession(nil, rec)
+	for _, test := range []struct {
+		name string
+		wait time.Duration
+		want int
+	}{
+		{name: "default", want: 3},
+		{name: "minimum", wait: time.Nanosecond, want: 1},
+		{name: "subsecond", wait: 999 * time.Millisecond, want: 1},
+		{name: "one second", wait: time.Second, want: 1},
+		{name: "above one second", wait: time.Second + time.Nanosecond, want: 2},
+		{name: "fractional seconds", wait: 1500 * time.Millisecond, want: 2},
+		{name: "whole seconds", wait: 7 * time.Second, want: 7},
+		{name: "maximum duration", wait: time.Duration(math.MaxInt64), want: maxSeconds},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			rec := &closeConnRecorder{
+				gettyTCPConn: newGettyTCPConn(&eofDataNetConn{}),
+				waits:        make(chan int, 1),
+			}
+			ss := newSession(nil, rec)
+			t.Cleanup(func() { waitForReset(t, ss.ResetAsync()) })
+			if test.wait != 0 {
+				ss.SetWaitTime(test.wait)
+			}
+
+			ss.gc()
+
+			select {
+			case seconds := <-rec.waits:
+				if seconds != test.want {
+					t.Fatalf("CloseConn waitSec = %d, want %d", seconds, test.want)
+				}
+				t.Logf("wait %v: CloseConn(%d)", ss.wait, seconds)
+			case <-time.After(time.Second):
+				t.Fatal("gc() did not call Connection.CloseConn")
+			}
+		})
+	}
+}
+
+func TestSessionCloseLogsConnectionIdentity(t *testing.T) {
+	rec := &logLineRecorder{}
+	previousLogger := logutil.GetLogger()
+	logutil.SetLogger(rec)
+	t.Cleanup(func() { logutil.SetLogger(previousLogger) })
+
+	endpoint := newServer(TCP_SERVER)
+	_, firstConn := newTCPConnPair(t)
+	_, secondConn := newTCPConnPair(t)
+	var want []string
+	for _, conn := range []*gettyTCPConn{firstConn, secondConn} {
+		ss := newSession(endpoint, conn)
+		t.Cleanup(func() { waitForReset(t, ss.ResetAsync()) })
+		want = append(want, fmt.Sprintf("{%s:TCP_SERVER:%d:%s<->%s} closed now. its current gr num is 0",
+			defaultSessionName, conn.ID(), conn.LocalAddr(), conn.RemoteAddr()))
+		ss.Close()
+		ss.Close()
+		if token := ss.sessionToken(); token != "session-closed" {
+			t.Errorf("sessionToken after Close = %q, want session-closed", token)
+		}
+	}
+
+	var got []string
+	for _, line := range rec.snapshot() {
+		if strings.Contains(line, " closed now.") {
+			got = append(got, line)
+			t.Log(line)
+		}
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Close logs = %q, want %q", got, want)
+	}
+}
+
+func TestSessionCloseWithSubsecondWaitSendsFIN(t *testing.T) {
+	clientConn, serverConn := newTCPConnPair(t)
+	ss := newSession(newServer(TCP_SERVER), serverConn)
+	t.Cleanup(func() { waitForReset(t, ss.ResetAsync()) })
+	ss.SetPkgHandler(&PackageHandler{})
+	ss.SetEventListener(&recordingEventListener{})
+	ss.SetReadTimeout(50 * time.Millisecond)
+	ss.SetWaitTime(500 * time.Millisecond)
+
+	ss.run()
+	ss.Close()
+
+	if err := clientConn.conn.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	n, err := clientConn.conn.Read(make([]byte, 1))
+	t.Logf("peer Read after Close: %d bytes, %v", n, err)
+	if n != 0 || !errors.Is(err, io.EOF) {
+		t.Fatalf("peer Read after Close = (%d, %v), want (0, EOF)", n, err)
+	}
+}
+
+func TestWSSessionCloseWithSubsecondWaitSendsFIN(t *testing.T) {
+	server, client := newWSTestConnPair(t)
+	ss := newWSSession(server, newServer(WS_SERVER, WithWebsocketServerPath("/"))).(*session)
+	t.Cleanup(func() { waitForReset(t, ss.ResetAsync()) })
+	ss.SetWaitTime(500 * time.Millisecond)
+
+	// Parse the close frame without replying, then read the TCP shutdown.
+	client.SetCloseHandler(func(int, string) error { return nil })
+	peer := client.UnderlyingConn()
+	if err := peer.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
 
 	ss.gc()
 
-	select {
-	case waitSec := <-rec.waits:
-		if want := int(pendingDuration / time.Second); waitSec != want {
-			t.Fatalf("CloseConn waitSec = %d, want %d (seconds, not nanoseconds)", waitSec, want)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("gc() did not call Connection.CloseConn")
+	_, _, err := client.ReadMessage()
+	if !websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+		t.Fatalf("WebSocket read after cleanup = %v, want normal close frame", err)
+	}
+	n, err := peer.Read(make([]byte, 1))
+	t.Logf("peer TCP read after WebSocket close frame = (%d, %v)", n, err)
+	if n != 0 || !errors.Is(err, io.EOF) {
+		t.Fatalf("peer TCP read after WebSocket close frame = (%d, %v), want (0, EOF)", n, err)
 	}
 }
 
